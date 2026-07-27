@@ -1,7 +1,7 @@
 /* Service worker de la Calculadora SilverShine.
    Al actualizar la app hay que subir el número de CACHE para que
    los teléfonos descarguen la versión nueva. */
-const CACHE = "silvershine-v1";
+const CACHE = "silvershine-v2";
 const ARCHIVOS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

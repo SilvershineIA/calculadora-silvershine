@@ -135,11 +135,39 @@
     .row > div[style*="flex:0 0 auto"]{width:100%}
     .row button{width:100%}
     .kilates{grid-template-columns:repeat(2,1fr)}
-    .card{overflow-x:auto}
-    table{min-width:520px}
-    #tblHistorial{min-width:640px}
     .total .amount{font-size:1.5rem}
     header{margin-bottom:18px}
+
+    /* Tablas → tarjetas apiladas (sin scroll horizontal) */
+    #tblPiedras thead, #tblHistorial thead{display:none}
+    #tblPiedras, #tblHistorial,
+    #tblPiedras tbody, #tblHistorial tbody,
+    #tblPiedras tr, #tblHistorial tr,
+    #tblPiedras td, #tblHistorial td{display:block;width:100%}
+    #tblPiedras tr, #tblHistorial tr{
+      border:1px solid var(--border);border-radius:10px;
+      padding:10px 12px;margin-bottom:10px;background:var(--panel2);
+    }
+    #tblPiedras td, #tblHistorial td{
+      border:none;padding:5px 0;
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    #tblPiedras td::before, #tblHistorial td::before{
+      content:attr(data-label);
+      font-size:.72rem;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.5px;flex:0 0 auto;
+    }
+    #tblPiedras td:not([data-label])::before, #tblHistorial td:not([data-label])::before{content:none}
+    #tblPiedras td input, #tblPiedras td select{width:58%}
+    #tblHistorial td select{width:58%}
+    #tblHistorial td[style]{text-align:right}
+    #tblPiedras td input{background:var(--panel)}
+    #tblPiedras td select{background:var(--panel)}
+    #tblHistorial td select{background:var(--panel)}
+
+    /* Tabla de precios estándar: 3 columnas sí caben, solo compactar */
+    #tblPrecios th, #tblPrecios td{padding:5px 4px}
+    #tblPrecios th:nth-child(2), #tblPrecios td:nth-child(2){width:120px}
   }
 
   /* ---------- Cotización imprimible ---------- */
@@ -1005,6 +1033,7 @@ function renderPiedras(){
     const tr = document.createElement("tr");
 
     const tdT = document.createElement("td");
+    tdT.setAttribute("data-label", "Tipo");
     const sel = document.createElement("select");
     state.tiposPiedra.forEach(t => {
       const o = document.createElement("option");
@@ -1016,12 +1045,14 @@ function renderPiedras(){
     tdT.appendChild(sel);
 
     const tdQ = document.createElement("td");
+    tdQ.setAttribute("data-label", "Quilates (c/u)");
     const inQ = document.createElement("input");
     inQ.type = "number"; inQ.step = "0.01"; inQ.min = "0"; inQ.value = p.quilates;
     inQ.onchange = () => { p.quilates = Number(inQ.value)||0; guardar(); render(); };
     tdQ.appendChild(inQ);
 
     const tdC = document.createElement("td");
+    tdC.setAttribute("data-label", "Cantidad");
     const inC = document.createElement("input");
     inC.type = "number"; inC.step = "1"; inC.min = "1"; inC.value = p.cantidad;
     inC.onchange = () => { p.cantidad = Math.max(1, Math.round(Number(inC.value)||1)); guardar(); render(); };
@@ -1029,6 +1060,7 @@ function renderPiedras(){
 
     const tdS = document.createElement("td");
     tdS.className = "num";
+    tdS.setAttribute("data-label", "Subtotal");
     tdS.textContent = fmtM(subtotalPiedra(p));
 
     const tdX = document.createElement("td");
@@ -1381,12 +1413,13 @@ function renderHistorial(){
   state.historial.forEach((item,i) => {
     const tr = document.createElement("tr");
     const f = new Date(item.fecha);
-    tr.innerHTML = `<td>${f.toLocaleDateString("es")} ${f.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"})}</td>
-      <td>${item.cliente ? escapeHtml(item.cliente) : "—"}</td>
-      <td>${escapeHtml(descripcionAnillo(item))}</td>
-      <td class="num">${escapeHtml(item.totalTexto)}</td>`;
+    tr.innerHTML = `<td data-label="Fecha">${f.toLocaleDateString("es")} ${f.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"})}</td>
+      <td data-label="Cliente">${item.cliente ? escapeHtml(item.cliente) : "—"}</td>
+      <td data-label="Anillo">${escapeHtml(descripcionAnillo(item))}</td>
+      <td class="num" data-label="Precio">${escapeHtml(item.totalTexto)}</td>`;
 
     const tdE = document.createElement("td");
+    tdE.setAttribute("data-label", "Estado");
     const sel = document.createElement("select");
     sel.style.padding = "6px 8px"; sel.style.fontSize = ".85rem"; sel.style.fontWeight = "600";
     ESTADOS.forEach(e => {
