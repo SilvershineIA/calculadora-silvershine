@@ -180,6 +180,9 @@ button:hover{filter:brightness(1.12)}
   display:flex;align-items:center;justify-content:center;
   z-index:100;padding:16px;
 }
+/* Crítico: cuando está oculto, que NO tape la pantalla */
+.modal-bg[hidden]{display:none}
+.toast[hidden]{display:none}
 .modal{
   background:var(--panel);border-radius:var(--radius);
   width:100%;max-width:480px;max-height:90vh;
