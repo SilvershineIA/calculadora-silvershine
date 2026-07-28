@@ -60,7 +60,8 @@ const Cotizaciones = (() => {
         <div class="item-info">
           <div class="item-name">${esc(c.clienteNombre)} ${badge(c)}</div>
           <div class="item-sub">COT-${esc(String(c.numero || 's/n'))} · ${fmtFecha(c.fecha)} · ${fmtMoneda(c.total, c.moneda)}${
-            c.vence && ABIERTAS.includes(estadoDe(c)) ? ` · vence ${fmtFecha(c.vence)}` : ''}</div>
+            c.vence && ABIERTAS.includes(estadoDe(c)) ? ` · vence ${fmtFecha(c.vence)}` : ''}${
+            (c.seguimientos || []).length ? ` · 🤝 ${fmtFecha(c.seguimientos[c.seguimientos.length - 1].fecha)}` : ''}</div>
         </div>
         <span class="item-arrow">›</span>
       </div>`).join('');
@@ -88,11 +89,21 @@ const Cotizaciones = (() => {
       ${c.facturaId ? `<p class="muted" style="margin-top:8px">✅ Convertida en factura.</p>` : ''}
 
       ${abierta ? `<button class="btn-gold btn-block" id="cConvertir" style="margin:14px 0 6px">🧾 Convertir en factura</button>` : ''}
-      <div class="row" style="margin-top:10px">
+      <h3 class="sub-h" style="margin-top:14px">📤 Enviar cotización</h3>
+      <div class="row">
         <button class="btn-ghost btn-block" id="cImprimir">🖨 Imprimir</button>
         ${cliente && cliente.telefono ? `<button class="btn-ghost btn-block" id="cWhatsApp">💬 WhatsApp</button>` : ''}
         ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="cCorreo">✉️ Correo</button>` : ''}
       </div>
+      ${abierta && cliente && (cliente.telefono || cliente.correo) ? `
+      <h3 class="sub-h" style="margin-top:14px">🤝 Seguimiento (mensaje suave)${
+        (c.seguimientos || []).length
+          ? ` <span class="muted" style="text-transform:none;letter-spacing:0">· último: ${fmtFecha(c.seguimientos[c.seguimientos.length - 1].fecha)} por ${esc(c.seguimientos[c.seguimientos.length - 1].via)}</span>`
+          : ''}</h3>
+      <div class="row">
+        ${cliente.telefono ? `<button class="btn-ghost btn-block" id="cSegWA">💬 WhatsApp</button>` : ''}
+        ${cliente.correo ? `<button class="btn-ghost btn-block" id="cSegCorreo">✉️ Correo</button>` : ''}
+      </div>` : ''}
       ${abierta ? `
       <div class="row" style="margin-top:10px">
         <button class="btn-ghost btn-block" id="cEditar">✏️ Editar</button>
@@ -155,6 +166,37 @@ const Cotizaciones = (() => {
       if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
       if (modo === 'compartido' && cliente.correo) toast(`✉️ ${cliente.correo} copiado — pégalo en "Para:"`);
     });
+    /* Seguimiento suave: saludo sin presión, se registra con fecha y vía */
+    const mensajeSeguimiento = emp =>
+      `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
+      `Solo pasamos a saludarle 😊 Hace unos días le compartimos la cotización de:\n` +
+      `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
+      `Sin ningún compromiso — si tiene alguna duda, quiere ajustar algo de la pieza o ver otras opciones, estamos a la orden con mucho gusto.\n\n` +
+      `¡Que tenga un excelente día! 💎\n${emp.nombre} · ${emp.web}`;
+
+    const registrarSeguimiento = async via => {
+      c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via }];
+      await DB.cotizaciones.upsert(c);
+      toast(`🤝 Seguimiento por ${via} registrado`);
+      render();
+    };
+
+    on('#cSegWA', async () => {
+      const emp = await UI.getEmpresa();
+      const tel = cliente.telefono.replace(/\D/g, '');
+      const num = tel.length === 10 ? '1' + tel : tel;
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeSeguimiento(emp))}`, '_blank');
+      await registrarSeguimiento('WhatsApp');
+      detalle(c.id);
+    });
+    on('#cSegCorreo', async () => {
+      const emp = await UI.getEmpresa();
+      const asunto = `¿Alguna duda con su cotización? — ${emp.nombre}`;
+      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensajeSeguimiento(emp).replace(/\*/g, ''))}`;
+      await registrarSeguimiento('correo');
+      detalle(c.id);
+    });
+
     on('#cEditar', () => formulario(c));
     on('#cRechazar', async () => {
       c.estado = 'rechazada';
