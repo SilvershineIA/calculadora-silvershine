@@ -98,23 +98,23 @@ const Sync = (() => {
   }
 
   async function bajarTodo() {
+    const PAGINA = 1000, MAX_PAGINAS = 100;
     for (const tabla of TABLAS) {
-      const filas = [];
-      for (let desde = 0; ; desde += 1000) {
+      const porId = new Map();               // dedupe por id: doble seguro
+      for (let p = 0; p < MAX_PAGINAS; p++) {
         const t = await token();
-        const resp = await fetch(`${cfg.url}/rest/v1/${tabla}?select=id,data&order=id`, {
-          headers: {
-            apikey: cfg.anonKey, Authorization: `Bearer ${t}`,
-            Range: `${desde}-${desde + 999}`,
-          },
-        });
+        const resp = await fetch(
+          `${cfg.url}/rest/v1/${tabla}?select=id,data&order=id&limit=${PAGINA}&offset=${p * PAGINA}`,
+          { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${t}` } },
+        );
         if (!resp.ok) throw new Error(`Supabase ${resp.status} al bajar ${tabla}`);
         const pagina = await resp.json();
-        filas.push(...pagina);
-        if (pagina.length < 1000) break;
+        if (!Array.isArray(pagina)) throw new Error(`Respuesta inesperada al bajar ${tabla}`);
+        for (const f of pagina) porId.set(f.id, f.data);
+        if (pagina.length < PAGINA) break;
       }
-      await DB.reemplazar(tabla, filas.map(f => f.data));
-      estadoUI(`Descargando… ${tabla} (${filas.length})`);
+      await DB.reemplazar(tabla, [...porId.values()]);
+      estadoUI(`Descargando… ${tabla} (${porId.size})`);
     }
   }
 
