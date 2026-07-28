@@ -148,8 +148,10 @@ const Cotizaciones = (() => {
       const msg =
         `✨ *${emp.nombre} — Cotización*\n📅 ${fechaLarga}\n\n` +
         `Hola ${c.clienteNombre} 👋 Gracias por tu interés. Aquí tienes tu cotización:\n\n` +
-        `${lineasTxt}\n\n` +
+        `${lineasTxt}\n` +
+        `${c.peso ? `⚖️ Peso aprox.: ${c.peso} g\n` : ''}\n` +
         `💰 *Precio: ${precioTxt}*\n\n` +
+        `Si lo prefiere, podemos ajustar el peso de la pieza para llevarla a su presupuesto — solo díganos 😊\n\n` +
         `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
         `${emp.direccion ? '📍 ' + emp.direccion + '\n' : ''}📞 ${emp.telefono} · ${emp.web}`;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -234,6 +236,7 @@ const Cotizaciones = (() => {
               <option value="DOP" ${c.moneda !== 'USD' ? 'selected' : ''}>RD$ (DOP)</option>
               <option value="USD" ${c.moneda === 'USD' ? 'selected' : ''}>US$ (USD)</option>
             </select></div>
+          <div><label>Peso aprox. (g)</label><input name="peso" type="number" step="0.01" min="0" value="${c.peso ?? ''}" placeholder="opcional"></div>
         </div>
         <label>Líneas</label>
         <div id="cotLineasCont"></div>
@@ -299,6 +302,7 @@ const Cotizaciones = (() => {
         fecha: fd.get('fecha'),
         vence: fd.get('vence'),
         moneda: fd.get('moneda'),
+        peso: Number(fd.get('peso')) || null,
         lineas: lineasOk,
         total: Math.round(total * 100) / 100,
         estado: c.estado && c.estado !== 'pendiente' ? c.estado : 'enviada',

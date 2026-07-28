@@ -284,7 +284,7 @@ const Calculadora = (() => {
       lineas: [{ descripcion: descripcionPieza(c), cantidad: 1, precio: round2(c.total) }],
     };
     if (destino === 'factura') Facturas.formulario(obj);
-    else Cotizaciones.formulario(obj);
+    else Cotizaciones.formulario({ ...obj, peso: c.peso || null });
   }
 
   /* ── Eventos ── */
