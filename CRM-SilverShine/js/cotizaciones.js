@@ -153,6 +153,7 @@ const Cotizaciones = (() => {
       toast('Generando el PDF de la cotización…');
       const modo = await PDFDoc.enviarPorCorreo('cotizacion', c, cliente, cuerpo, asunto);
       if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
+      if (modo === 'compartido' && cliente.correo) toast(`✉️ ${cliente.correo} copiado — pégalo en "Para:"`);
     });
     on('#cEditar', () => formulario(c));
     on('#cRechazar', async () => {

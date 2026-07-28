@@ -211,6 +211,7 @@ const Facturas = (() => {
       toast('Generando el PDF de la factura…');
       const modo = await PDFDoc.enviarPorCorreo('factura', f, cliente, mensajeFactura(emp).replace(/\*/g, ''), asunto);
       if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
+      if (modo === 'compartido' && cliente.correo) toast(`✉️ ${cliente.correo} copiado — pégalo en "Para:"`);
     });
     on('#fEditar', () => formulario(f));
     on('#fAnular', async () => {

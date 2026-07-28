@@ -192,8 +192,14 @@ const PDFDoc = (() => {
     const blob = doc.output('blob');
     const file = new File([blob], nombre, { type: 'application/pdf' });
 
-    // Celular / navegadores con compartir de archivos: el PDF va adjunto
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    // Solo en el celular usamos el menú de compartir (PDF adjunto).
+    // Ese menú no permite pre-llenar el destinatario, así que copiamos
+    // el correo del cliente al portapapeles para pegarlo en "Para:".
+    const esMovil = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (esMovil && navigator.canShare && navigator.canShare({ files: [file] })) {
+      if (cliente && cliente.correo) {
+        try { await navigator.clipboard.writeText(cliente.correo); } catch {}
+      }
       try {
         await navigator.share({ files: [file], title: asunto, text: cuerpo });
         return 'compartido';
