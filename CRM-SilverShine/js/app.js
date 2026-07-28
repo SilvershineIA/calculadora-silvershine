@@ -149,7 +149,7 @@
           '· CANCELAR: conservar los de ESTE dispositivo (luego usa "Reparar nube" en Ajustes para subirlos).')) {
           await Sync.bajarTodo();
           toast('☁️ Datos descargados de la nube');
-        } else if (confirm('¿Subir AHORA los datos de este dispositivo a la nube? (Reemplaza lo que hay allá — recomendado para que no se pierdan al reabrir la app.)')) {
+        } else if (localConDatos && confirm('¿Subir AHORA los datos de este dispositivo a la nube? (Reemplaza lo que hay allá — recomendado para que no se pierdan al reabrir la app.)')) {
           pintarEstadoNube('Reparando la nube…');
           await Sync.repararNube();
           toast('☁️ Nube reparada con los datos de este dispositivo');
@@ -164,9 +164,49 @@
     }
   });
 
+  /* Enlace mágico: conexión pre-llenada para otro dispositivo (sin la clave) */
+  const PUB_URL = 'https://silvershineia.github.io/calculadora-silvershine/CRM-SilverShine/';
+  $('#btnEnlaceMovil').addEventListener('click', () => {
+    const c = Sync.cfgPublica();
+    if (!c) return;
+    const payload = btoa(unescape(encodeURIComponent(JSON.stringify(c))));
+    const enlace = PUB_URL + '#cfg=' + payload;
+    UI.abrirModal('Conectar el celular', `
+      <p class="muted" style="margin-bottom:10px">1. Copia este enlace y envíatelo por WhatsApp o correo.<br>
+      2. Ábrelo en el celular: la conexión ya irá puesta.<br>
+      3. Escribe tu clave de usuario y presiona Conectar.<br>
+      <b>Tu clave nunca viaja en el enlace.</b></p>
+      <textarea id="enlaceMovil" readonly style="height:120px;font-size:.78rem;word-break:break-all">${enlace}</textarea>
+      <button type="button" class="btn-gold btn-block" id="copiarEnlace" style="margin-top:10px">📋 Copiar enlace</button>
+    `);
+    $('#copiarEnlace').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(enlace); }
+      catch { $('#enlaceMovil').select(); document.execCommand('copy'); }
+      toast('Enlace copiado — pégalo en WhatsApp');
+    });
+  });
+
+  $('#btnDescargarNube').addEventListener('click', async () => {
+    try {
+      pintarEstadoNube('Descargando…');
+      await Sync.bajarTodo();
+      pintarEstadoNube();
+      toast('☁️ Datos descargados de la nube');
+      renderPanel();
+      irA('panel');
+    } catch (err) {
+      pintarEstadoNube();
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
+    }
+  });
+
   $('#btnRepararNube').addEventListener('click', async () => {
     const clientes = (await DB.clientes.list()).length;
     const facturas = (await DB.facturas.list()).length;
+    if (!clientes && !facturas) {
+      toast('Este dispositivo está vacío: no puede reparar la nube. Usa "Descargar todo de la nube".');
+      return;
+    }
     if (!confirm(`Esto BORRA todo lo que hay en la nube y sube lo de este dispositivo (${clientes} clientes, ${facturas} facturas).\n\n¿Continuar?`)) return;
     try {
       pintarEstadoNube('Reparando la nube…');
@@ -208,6 +248,24 @@
   Tareas.init();
   renderPanel();
   pintarEstadoNube();
+
+  // ¿Llegamos con un enlace mágico? (#cfg=...) → pre-llenar la conexión
+  const mCfg = location.hash.match(/^#cfg=(.+)$/);
+  if (mCfg && !Sync.conectado()) {
+    try {
+      const c = JSON.parse(decodeURIComponent(escape(atob(mCfg[1]))));
+      const f = $('#formNube');
+      f.url.value = c.url || '';
+      f.anonKey.value = c.anonKey || '';
+      f.email.value = c.email || '';
+      history.replaceState(null, '', location.pathname + location.search);
+      irA('ajustes');
+      setTimeout(() => {
+        toast('Conexión lista: escribe tu clave y presiona Conectar');
+        f.password.focus();
+      }, 300);
+    } catch { /* enlace inválido: se ignora */ }
+  }
 
   // Al abrir: vaciar cambios pendientes y bajar lo último de la nube
   Sync.alAbrir().then(ok => { if (ok) { renderPanel(); pintarEstadoNube(); } });

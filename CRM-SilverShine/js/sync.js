@@ -191,6 +191,7 @@ const Sync = (() => {
     notificar, vaciarCola, alAbrir, desconectar,
     pendientes: () => cola.leer().length,
     info: () => cfg ? { url: cfg.url, email: cfg.email } : null,
+    cfgPublica: () => cfg ? { url: cfg.url, anonKey: cfg.anonKey, email: cfg.email } : null,
     setEstadoUI: fn => { estadoUI = fn || (() => {}); },
   };
 })();
