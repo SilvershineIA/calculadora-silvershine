@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CRM SilverShine</title>
+<meta name="theme-color" content="#FAF8F6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CRM SilverShine">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <img src="logo.png" alt="SilverShine" class="topbar-logo">
+  <span class="topbar-title">CRM</span>
+</header>
+
+<div class="layout">
+
+  <nav class="sidenav" id="mainNav">
+    <button class="nav-btn active" data-view="panel"><span class="nav-ico">◇</span><span>Panel</span></button>
+    <button class="nav-btn" data-view="clientes"><span class="nav-ico">👤</span><span>Clientes</span></button>
+    <button class="nav-btn" data-view="catalogo"><span class="nav-ico">💍</span><span>Catálogo</span></button>
+    <button class="nav-btn" data-view="facturas"><span class="nav-ico">🧾</span><span>Facturas</span></button>
+    <button class="nav-btn" data-view="cotizaciones"><span class="nav-ico">📋</span><span>Cotizaciones</span></button>
+    <button class="nav-btn" data-view="cobros"><span class="nav-ico">💰</span><span>Cobros</span></button>
+    <button class="nav-btn" data-view="tareas"><span class="nav-ico">✓</span><span>Tareas</span></button>
+    <button class="nav-btn" data-view="ajustes"><span class="nav-ico">⚙</span><span>Ajustes</span></button>
+  </nav>
+
+  <main class="content" id="content">
+
+    <!-- ══════════ PANEL ══════════ -->
+    <section class="view active" data-view="panel">
+      <h1 class="view-title">Panel</h1>
+      <div class="stat-grid" id="panelStats"></div>
+      <div class="card">
+        <h2>Cobros vencidos</h2>
+        <div id="panelPendientes" class="list"></div>
+      </div>
+      <div class="card">
+        <h2>Tareas de hoy</h2>
+        <div id="panelTareas"></div>
+      </div>
+    </section>
+
+    <!-- ══════════ CLIENTES ══════════ -->
+    <section class="view" data-view="clientes">
+      <div class="view-head">
+        <h1 class="view-title">Clientes</h1>
+        <button class="btn-gold btn-sm" id="btnNuevoCliente">+ Nuevo cliente</button>
+      </div>
+      <input type="search" id="buscarCliente" class="search" placeholder="Buscar por nombre o teléfono…">
+      <div id="listaClientes" class="list"></div>
+    </section>
+
+    <!-- ══════════ CATÁLOGO ══════════ -->
+    <section class="view" data-view="catalogo">
+      <div class="view-head">
+        <h1 class="view-title">Catálogo</h1>
+        <button class="btn-gold btn-sm" id="btnNuevoProducto">+ Nuevo producto</button>
+      </div>
+      <div class="filter-row">
+        <input type="search" id="buscarProducto" class="search" placeholder="Buscar producto…">
+        <select id="filtroCategoria"><option value="">Todas las categorías</option></select>
+      </div>
+      <div id="listaProductos" class="prod-grid"></div>
+    </section>
+
+    <!-- ══════════ MÓDULOS FUTUROS ══════════ -->
+    <section class="view" data-view="facturas">
+      <div class="view-head">
+        <h1 class="view-title">Facturas</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaFactura">+ Nueva factura</button>
+      </div>
+      <div class="stat-grid" id="factResumen"></div>
+      <div class="filter-row">
+        <input type="search" id="buscarFactura" class="search" placeholder="Buscar por número o cliente…">
+        <select id="filtroEstadoFact">
+          <option value="">Todas</option>
+          <option value="pendiente">Pendientes</option>
+          <option value="pagada">Pagadas</option>
+          <option value="anulada">Anuladas</option>
+        </select>
+      </div>
+      <div id="listaFacturas" class="list"></div>
+    </section>
+    <section class="view" data-view="cotizaciones">
+      <div class="view-head">
+        <h1 class="view-title">Cotizaciones</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaCot">+ Nueva cotización</button>
+      </div>
+      <div class="stat-grid" id="cotResumen"></div>
+      <div class="filter-row">
+        <input type="search" id="buscarCot" class="search" placeholder="Buscar por número o cliente…">
+        <select id="filtroEstadoCot">
+          <option value="">Todas</option>
+          <option value="enviada">Enviadas</option>
+          <option value="aceptada">Aceptadas</option>
+          <option value="rechazada">Rechazadas</option>
+          <option value="vencida">Vencidas</option>
+        </select>
+      </div>
+      <div id="listaCotizaciones" class="list"></div>
+    </section>
+
+    <section class="view" data-view="cobros">
+      <h1 class="view-title">Cobros</h1>
+      <div class="stat-grid" id="cobrosResumen"></div>
+      <div id="listaCobros" class="list"></div>
+    </section>
+
+    <section class="view" data-view="tareas">
+      <div class="view-head">
+        <h1 class="view-title">Tareas</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaTarea">+ Nueva tarea</button>
+      </div>
+      <div id="listaTareas" class="list"></div>
+    </section>
+
+    <!-- ══════════ AJUSTES ══════════ -->
+    <section class="view" data-view="ajustes">
+      <h1 class="view-title">Ajustes</h1>
+      <div class="card">
+        <h2>☁️ Nube (Supabase)</h2>
+        <div id="nubeEstado" class="muted" style="margin-bottom:12px"></div>
+        <form id="formNube" autocomplete="off">
+          <div class="row">
+            <div><label>URL del proyecto</label><input name="url" placeholder="https://xxxx.supabase.co"></div>
+            <div><label>Clave anon / public</label><input name="anonKey" placeholder="eyJhbGciOi…"></div>
+          </div>
+          <div class="row">
+            <div><label>Correo</label><input name="email" type="email" autocomplete="off"></div>
+            <div><label>Clave de usuario</label><input name="password" type="password" autocomplete="new-password"></div>
+          </div>
+          <div class="row">
+            <button type="submit" class="btn-gold">🔗 Conectar</button>
+            <button type="button" class="btn-danger" id="btnDesconectar" hidden>Desconectar</button>
+          </div>
+        </form>
+        <p class="muted" style="margin-top:10px">Guía completa en <b>SETUP-SUPABASE.md</b> (en la carpeta de la app).</p>
+      </div>
+      <div class="card">
+        <h2>Datos</h2>
+        <p class="muted" style="margin-bottom:12px">Por ahora los datos se guardan en este dispositivo. En la fase de nube se sincronizarán entre PC y celular.</p>
+        <div class="row">
+          <button class="btn-gold" id="btnExportar">⬇ Exportar respaldo</button>
+          <button class="btn-ghost" id="btnImportar">⬆ Importar respaldo</button>
+          <input type="file" id="fileImportar" accept=".json" hidden>
+        </div>
+      </div>
+      <div class="card">
+        <h2>QuickBooks</h2>
+        <p class="muted" style="margin-bottom:12px">Carga el histórico exportado de QuickBooks: clientes, facturas, pagos y cotizaciones. Reemplaza los datos actuales de este dispositivo.</p>
+        <button class="btn-gold" id="btnCargarQB">📥 Cargar datos de QuickBooks</button>
+      </div>
+      <div class="card">
+        <h2>Acerca de</h2>
+        <p class="muted">CRM SilverShine · Fase 1<br>silvershine.com.do</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Modal genérico -->
+<div class="modal-bg" id="modalBg" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 id="modalTitle"></h2>
+      <button class="btn-x" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- Área de impresión de facturas -->
+<div id="printArea"></div>
+
+<script src="js/db.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/clientes.js"></script>
+<script src="js/catalogo.js"></script>
+<script src="js/facturas.js"></script>
+<script src="js/cotizaciones.js"></script>
+<script src="js/cobros.js"></script>
+<script src="js/tareas.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+/* ═══════════════════════════════════════════════════════════
+   app.js — Navegación, panel y ajustes.
+   ═══════════════════════════════════════════════════════════ */
+(() => {
+  const { $, $$, toast } = UI;
+
+  /* ── Navegación entre vistas ── */
+  const vistas = {
+    clientes:     () => Clientes.render(),
+    catalogo:     () => Catalogo.render(),
+    facturas:     () => Facturas.render(),
+    cotizaciones: () => Cotizaciones.render(),
+    cobros:       () => Cobros.render(),
+    tareas:       () => Tareas.render(),
+    panel:        () => renderPanel(),
+  };
+
+  function irA(nombre) {
+    $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === nombre));
+    $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === nombre));
+    if (vistas[nombre]) vistas[nombre]();
+    window.scrollTo({ top: 0 });
+  }
+
+  $$('.nav-btn').forEach(b => b.addEventListener('click', () => irA(b.dataset.view)));
+
+  /* ── Panel ── */
+  async function renderPanel() {
+    const clientes = await DB.clientes.list();
+    const facturas = await DB.facturas.list();
+
+    const pendientes = facturas.filter(f => f.estado === 'pendiente' && f.saldo > 0);
+    const porCobrar = pendientes.reduce((s, f) => s + f.saldo, 0);
+    const mes = new Date().toISOString().slice(0, 7);
+    const facturadoMes = facturas
+      .filter(f => f.estado !== 'anulada' && (f.fecha || '').startsWith(mes))
+      .reduce((s, f) => s + f.total, 0);
+
+    $('#panelStats').innerHTML = `
+      <div class="stat"><div class="n">${UI.fmtMoneda(porCobrar)}</div><div class="l">Por cobrar</div></div>
+      <div class="stat"><div class="n">${pendientes.length}</div><div class="l">Fact. pendientes</div></div>
+      <div class="stat"><div class="n">${UI.fmtMoneda(facturadoMes)}</div><div class="l">Facturado este mes</div></div>
+      <div class="stat"><div class="n">${clientes.length}</div><div class="l">Clientes</div></div>
+    `;
+
+    // Cobros vencidos primero (van directo al detalle de cobro)
+    const vencidos = pendientes.filter(f => Cobros.clasificar(f) === 'vencido')
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 6);
+    $('#panelPendientes').innerHTML = vencidos.length ? vencidos.map(f => `
+      <div class="item" data-id="${f.id}">
+        <div class="item-info">
+          <div class="item-name">${UI.esc(f.clienteNombre)}</div>
+          <div class="item-sub">${UI.esc(f.numero || 's/n')} · ${UI.fmtFecha(f.fecha)}</div>
+        </div>
+        <b class="rojo">${UI.fmtMoneda(f.saldo, f.moneda)}</b>
+      </div>`).join('')
+      : '<p class="muted">🎉 No hay cobros vencidos.</p>';
+    $('#panelPendientes').querySelectorAll('.item').forEach(el =>
+      el.addEventListener('click', () => Cobros.detalle(el.dataset.id)));
+
+    // Tareas de hoy y vencidas
+    const tareas = (await DB.tareas.list()).filter(t => !t.hecha);
+    const hoy = new Date().toISOString().slice(0, 10);
+    const deHoy = tareas.filter(t => t.fecha && t.fecha <= hoy)
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 5);
+    $('#panelTareas').innerHTML = deHoy.length ? deHoy.map(t => `
+      <div class="abono-row"><span>${t.fecha < hoy ? '🔴' : '📌'} ${UI.esc(t.titulo)}${t.clienteNombre ? ' · ' + UI.esc(t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(t.fecha)}</span></div>`).join('')
+      : '<p class="muted">Sin tareas para hoy.</p>';
+  }
+
+  /* ── Ajustes: respaldo ── */
+  $('#btnExportar').addEventListener('click', async () => {
+    const data = await DB.exportar();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `respaldo-crm-silvershine-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Respaldo descargado');
+  });
+
+  $('#btnImportar').addEventListener('click', () => $('#fileImportar').click());
+  $('#fileImportar').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!confirm('Importar un respaldo REEMPLAZA los datos actuales de este dispositivo. ¿Continuar?')) {
+      e.target.value = '';
+      return;
+    }
+    try {
+      const data = JSON.parse(await file.text());
+      const n = await DB.importar(data);
+      toast(`Respaldo importado (${n} registros)`);
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nube…'); await Sync.subirTodo(); pintarEstadoNube(); }
+      irA('panel');
+    } catch {
+      toast('El archivo no es un respaldo válido');
+    }
+    e.target.value = '';
+  });
+
+  /* ── Nube (Supabase) ── */
+  function pintarEstadoNube(msj) {
+    const el = $('#nubeEstado');
+    const info = Sync.info();
+    if (msj) { el.innerHTML = `⏳ ${msj}`; return; }
+    if (Sync.conectado()) {
+      const pend = Sync.pendientes();
+      el.innerHTML = `🟢 Conectado como <b>${info.email}</b>` +
+        (pend ? ` · ${pend} cambio(s) esperando internet` : ' · todo sincronizado');
+      $('#btnDesconectar').hidden = false;
+      $('#formNube').querySelectorAll('input').forEach(i => i.disabled = true);
+    } else {
+      el.innerHTML = info
+        ? '🟠 Sesión cerrada — vuelve a poner tu clave y presiona Conectar.'
+        : '⚪ Sin conectar. Los datos solo viven en este dispositivo.';
+      $('#btnDesconectar').hidden = !info;
+      $('#formNube').querySelectorAll('input').forEach(i => i.disabled = false);
+      if (info) { $('#formNube').url.value = info.url; $('#formNube').email.value = info.email; }
+    }
+  }
+  Sync.setEstadoUI(pintarEstadoNube);
+
+  $('#formNube').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const url = fd.get('url').trim().replace(/\/+$/, '');
+    const anonKey = fd.get('anonKey').trim();
+    const email = fd.get('email').trim();
+    const password = fd.get('password');
+    if (!url || !anonKey || !email || !password) { toast('Completa los cuatro campos'); return; }
+    try {
+      pintarEstadoNube('Conectando…');
+      await Sync.login(url, anonKey, email, password);
+      const nubeConDatos = await Sync.nubeTieneDatos();
+      const localConDatos = (await DB.clientes.list()).length > 0;
+      if (!nubeConDatos && localConDatos) {
+        pintarEstadoNube('Primera subida de datos…');
+        await Sync.subirTodo();
+        toast('☁️ Datos subidos a la nube');
+      } else if (nubeConDatos) {
+        if (!localConDatos || confirm('La nube ya tiene datos. ¿Descargarlos y usar esos aquí? (Recomendado)')) {
+          await Sync.bajarTodo();
+          toast('☁️ Datos descargados de la nube');
+        }
+      }
+      e.target.password.value = '';
+      pintarEstadoNube();
+      renderPanel();
+    } catch (err) {
+      pintarEstadoNube();
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
+    }
+  });
+
+  $('#btnDesconectar').addEventListener('click', () => {
+    if (!confirm('¿Desconectar de la nube? Los datos locales se conservan; solo se detiene la sincronización.')) return;
+    Sync.desconectar();
+    pintarEstadoNube();
+    toast('Desconectado de la nube');
+  });
+
+  /* ── Cargar histórico de QuickBooks ── */
+  $('#btnCargarQB').addEventListener('click', async () => {
+    if (!confirm('Esto carga el histórico de QuickBooks y REEMPLAZA los clientes, facturas, pagos y cotizaciones actuales de este dispositivo. ¿Continuar?')) return;
+    try {
+      const n = await DB.cargarQuickBooks();
+      toast(`Cargado: ${n.clientes} clientes, ${n.facturas} facturas, ${n.pagos} pagos, ${n.cotizaciones} cotizaciones`);
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nube…'); await Sync.subirTodo(); pintarEstadoNube(); }
+      irA('panel');
+    } catch (err) {
+      toast('No se pudo cargar: ' + err.message);
+    }
+  });
+
+  /* ── Arranque ── */
+  Clientes.init();
+  Catalogo.init();
+  Facturas.init();
+  Cotizaciones.init();
+  Tareas.init();
+  renderPanel();
+  pintarEstadoNube();
+
+  // Al abrir: vaciar cambios pendientes y bajar lo último de la nube
+  Sync.alAbrir().then(ok => { if (ok) { renderPanel(); pintarEstadoNube(); } });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
