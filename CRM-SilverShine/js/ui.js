@@ -141,6 +141,44 @@ const UI = (() => {
     });
   }
 
+  /* ── Buscador del catálogo con opciones en un clic ──
+     Clic o escribir → productos; un producto con opciones
+     (formato · material · gema) las despliega; clic → línea lista. */
+  function buscadorCatalogo(inp, sug, alAgregar) {
+    const cerrar = () => { sug.hidden = true; inp.value = ''; };
+    const mostrarVariantes = p => {
+      sug.innerHTML =
+        `<div class="sug sug-volver" data-volver>← <b>${esc(p.nombre)}</b> — elige la opción:</div>` +
+        p.variantes.map((v, i) =>
+          `<div class="sug" data-var="${i}">${esc(v.nombre)}<span class="muted"> — ${fmtMoneda(v.precio, p.moneda)}</span></div>`).join('');
+      sug.querySelector('[data-volver]').addEventListener('click', () => pintar(inp.value.trim()));
+      sug.querySelectorAll('[data-var]').forEach(el => el.addEventListener('click', () => {
+        const v = p.variantes[Number(el.dataset.var)];
+        alAgregar({ descripcion: `${p.nombre} — ${v.nombre}`, precio: v.precio, moneda: p.moneda });
+        cerrar();
+      }));
+    };
+    const pintar = async q => {
+      const productos = await DB.productos.list();
+      const res = (q
+        ? productos.filter(p => p.nombre.toLowerCase().includes(q.toLowerCase()))
+        : productos).slice(0, 9);
+      sug.innerHTML = res.map((p, i) => {
+        const nVar = (p.variantes || []).length;
+        return `<div class="sug" data-i="${i}">${esc(p.nombre)}<span class="muted"> — ${
+          nVar ? nVar + ' opciones · desde ' : ''}${fmtMoneda(p.precio, p.moneda)}</span></div>`;
+      }).join('') || '<div class="sug muted">Sin resultados en el catálogo</div>';
+      sug.hidden = false;
+      sug.querySelectorAll('[data-i]').forEach(el => el.addEventListener('click', () => {
+        const p = res[Number(el.dataset.i)];
+        if ((p.variantes || []).length) mostrarVariantes(p);
+        else { alAgregar({ descripcion: p.nombre, precio: p.precio, moneda: p.moneda }); cerrar(); }
+      }));
+    };
+    inp.addEventListener('focus', () => pintar(inp.value.trim()));
+    inp.addEventListener('input', () => pintar(inp.value.trim()));
+  }
+
   /* Imprimir el área de impresión esperando a que el logo cargue */
   async function imprimirArea() {
     const img = $('#printArea .p-logo');
@@ -150,5 +188,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo };
 })();

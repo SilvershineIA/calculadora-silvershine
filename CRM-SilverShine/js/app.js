@@ -324,10 +324,35 @@
     if (cambio) await DB.config.upsert(emp);
   }
 
+  // Si el catálogo está vacío, cargar el de Shopify automáticamente
+  async function cargarCatalogoSiVacio() {
+    if ((await DB.productos.list()).length) return;
+    try {
+      const n = await DB.cargarCatalogoShopify();
+      if (n) {
+        toast(`🛍 Catálogo de Shopify cargado (${n} diseños)`);
+        if (Sync.conectado()) await Sync.subirTodo();
+      }
+    } catch { /* sin archivo o sin red: se queda vacío */ }
+  }
+
+  $('#btnCargarCatalogo').addEventListener('click', async () => {
+    if (!confirm('Esto REEMPLAZA el catálogo actual con los productos publicados en silvershine.com.do. ¿Continuar?')) return;
+    try {
+      const n = await DB.cargarCatalogoShopify();
+      toast(`🛍 Catálogo recargado: ${n} diseños`);
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo catálogo…'); await Sync.subirTodo(); pintarEstadoNube(); }
+      irA('catalogo');
+    } catch (err) {
+      toast('No se pudo recargar: ' + err.message);
+    }
+  });
+
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
     await actualizarGarantiaVieja();
+    await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();
     renderPanel();
   });

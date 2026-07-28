@@ -259,6 +259,8 @@ button:hover{filter:brightness(1.12)}
 .sug:last-child{border-bottom:none}
 .sug:hover{background:var(--rose-soft)}
 .sug-nuevo{color:var(--gold-bright);font-weight:600}
+.sug-volver{background:var(--rose-soft);font-size:.85rem}
+.var-row input:nth-child(2){flex:0 0 120px;text-align:right}
 .sug-form{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .sug-form input{font-size:.9rem}
 .sug-form button{align-self:flex-start}

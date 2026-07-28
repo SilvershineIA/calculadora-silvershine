@@ -243,8 +243,10 @@ const Cotizaciones = (() => {
         <div id="cotLineasCont"></div>
         <div class="row" style="margin-top:6px">
           <button type="button" class="btn-ghost btn-sm" id="cotAddLinea">+ Línea libre</button>
-          ${productos.length ? `<select id="cotAddProducto" style="flex:1"><option value="">+ Del catálogo…</option>${
-            productos.map(p => `<option value="${p.id}">${esc(p.nombre)} — ${fmtMoneda(p.precio, p.moneda)}</option>`).join('')}</select>` : ''}
+          <div style="flex:1;position:relative">
+            <input id="cotAddProdBuscar" placeholder="🛍 Del catálogo…" autocomplete="off">
+            <div id="cotAddProdSug" class="sugerencias" hidden></div>
+          </div>
         </div>
         <div class="fact-preview" id="cotPreview"></div>
         <button type="submit" class="btn-gold btn-block">${esNueva ? 'Crear cotización' : 'Guardar cambios'}</button>
@@ -277,11 +279,18 @@ const Cotizaciones = (() => {
       $('#cotPreview').innerHTML = `Total: <b class="dorado">${fmtMoneda(total, $('#formCot').moneda.value)}</b>`;
     }
     $('#cotAddLinea').addEventListener('click', () => { lineas.push({ descripcion: '', cantidad: 1, precio: '' }); pintar(); });
-    const selProd = $('#cotAddProducto');
-    if (selProd) selProd.addEventListener('change', () => {
-      const p = productos.find(x => x.id === selProd.value);
-      if (p) { lineas.push({ descripcion: p.nombre, cantidad: 1, precio: p.precio }); pintar(); }
-      selProd.value = '';
+    UI.buscadorCatalogo($('#cotAddProdBuscar'), $('#cotAddProdSug'), item => {
+      const m = $('#formCot').moneda.value;
+      let precio = item.precio;
+      if (item.moneda && item.moneda !== m) {
+        const tasa = typeof Calculadora !== 'undefined' ? Calculadora.tasaActual() : 0;
+        if (tasa) {
+          precio = Math.round((m === 'DOP' ? precio * tasa : precio / tasa) * 100) / 100;
+          toast(`Convertido de ${item.moneda} a ${m} (tasa ${tasa})`);
+        }
+      }
+      lineas.push({ descripcion: item.descripcion, cantidad: 1, precio });
+      pintar();
     });
     $('#formCot').moneda.addEventListener('change', preview);
     pintar();
