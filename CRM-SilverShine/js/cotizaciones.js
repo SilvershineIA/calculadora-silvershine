@@ -258,12 +258,18 @@ const Cotizaciones = (() => {
   }
 
   /* ── Imprimir ── */
-  function imprimir(c, cliente) {
+  async function imprimir(c, cliente) {
     const t = c.moneda || 'DOP';
+    const emp = await UI.getEmpresa();
+    const datosEmp = [
+      emp.direccion,
+      [emp.telefono && 'Tel. ' + emp.telefono, emp.correo, emp.web].filter(Boolean).join(' · '),
+      emp.rnc && 'RNC: ' + emp.rnc,
+    ].filter(Boolean).join('<br>');
     $('#printArea').innerHTML = `
       <div class="p-head">
-        <img src="logo.png" class="p-logo" alt="SilverShine">
-        <div class="p-sub">Joyería · silvershine.com.do</div>
+        <img src="logo.png" class="p-logo" alt="${esc(emp.nombre)}">
+        ${datosEmp ? `<div class="p-empresa">${datosEmp}</div>` : ''}
       </div>
       <div class="p-meta">
         <div><b>COTIZACIÓN</b> COT-${esc(String(c.numero || ''))}<br>
@@ -278,7 +284,7 @@ const Cotizaciones = (() => {
       </table>
       <div class="p-total"><span>TOTAL</span><span>${fmtMoneda(c.total, t)}</span></div>
       <div class="p-nota">Esta cotización no es una factura. Precios sujetos a cambio después de la fecha de validez.</div>
-      <div class="p-pie">Gracias por preferir SilverShine ✦ Instagram @silvershine.rd</div>
+      ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}
     `;
     window.print();
   }

@@ -8,7 +8,9 @@
 const Sync = (() => {
   const K_CFG = 'sscrm_sync_cfg';
   const K_COLA = 'sscrm_sync_cola';
-  const TABLAS = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas'];
+  const TABLAS = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas', 'config'];
+  // 'config' puede no existir aún en Supabase (tabla nueva): sus errores no rompen el sync
+  const OPCIONALES = new Set(['config']);
 
   let cfg = null;
   try { cfg = JSON.parse(localStorage.getItem(K_CFG)); } catch { cfg = null; }
@@ -88,18 +90,24 @@ const Sync = (() => {
   /* ── Subir / bajar todo ── */
   async function subirTodo() {
     for (const tabla of TABLAS) {
-      const lista = await DB[tabla].list();
-      for (let i = 0; i < lista.length; i += 400) {
-        const lote = lista.slice(i, i + 400).map(o => ({ id: o.id, data: o }));
-        if (lote.length) await rest('POST', tabla, lote, 'resolution=merge-duplicates');
+      try {
+        const lista = await DB[tabla].list();
+        for (let i = 0; i < lista.length; i += 400) {
+          const lote = lista.slice(i, i + 400).map(o => ({ id: o.id, data: o }));
+          if (lote.length) await rest('POST', tabla, lote, 'resolution=merge-duplicates');
+        }
+        estadoUI(`Subiendo… ${tabla} (${lista.length})`);
+      } catch (e) {
+        if (OPCIONALES.has(tabla)) { console.warn(`Tabla opcional ${tabla} sin subir:`, e.message); continue; }
+        throw e;
       }
-      estadoUI(`Subiendo… ${tabla} (${lista.length})`);
     }
   }
 
   async function bajarTodo() {
     const PAGINA = 1000, MAX_PAGINAS = 100;
     for (const tabla of TABLAS) {
+      try {
       const porId = new Map();               // dedupe por id: doble seguro
       for (let p = 0; p < MAX_PAGINAS; p++) {
         const t = await token();
@@ -115,6 +123,10 @@ const Sync = (() => {
       }
       await DB.reemplazar(tabla, [...porId.values()]);
       estadoUI(`Descargando… ${tabla} (${porId.size})`);
+      } catch (e) {
+        if (OPCIONALES.has(tabla)) { console.warn(`Tabla opcional ${tabla} sin bajar:`, e.message); continue; }
+        throw e;
+      }
     }
   }
 
@@ -127,7 +139,8 @@ const Sync = (() => {
   async function repararNube() {
     for (const tabla of TABLAS) {
       estadoUI(`Limpiando nube… ${tabla}`);
-      await rest('DELETE', `${tabla}?id=neq.__nunca__`);
+      try { await rest('DELETE', `${tabla}?id=neq.__nunca__`); }
+      catch (e) { if (!OPCIONALES.has(tabla)) throw e; }
     }
     cola.guardar([]);          // lo pendiente ya no aplica
     await subirTodo();
@@ -148,10 +161,16 @@ const Sync = (() => {
       let arr = cola.leer();
       while (arr.length) {
         const it = arr[0];
-        if (it.op === 'upsert') {
-          await rest('POST', it.tabla, [{ id: it.id, data: it.data }], 'resolution=merge-duplicates');
-        } else if (it.op === 'remove') {
-          await rest('DELETE', `${it.tabla}?id=eq.${encodeURIComponent(it.id)}`);
+        try {
+          if (it.op === 'upsert') {
+            await rest('POST', it.tabla, [{ id: it.id, data: it.data }], 'resolution=merge-duplicates');
+          } else if (it.op === 'remove') {
+            await rest('DELETE', `${it.tabla}?id=eq.${encodeURIComponent(it.id)}`);
+          }
+        } catch (e) {
+          // un cambio de una tabla opcional que falla no debe atascar la cola
+          if (!OPCIONALES.has(it.tabla)) throw e;
+          console.warn(`Cambio de ${it.tabla} descartado:`, e.message);
         }
         arr.shift();
         cola.guardar(arr);

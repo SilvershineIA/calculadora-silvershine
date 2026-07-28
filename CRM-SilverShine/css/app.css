@@ -321,6 +321,11 @@ button:hover{filter:brightness(1.12)}
   #printArea .p-head{text-align:center;border-bottom:3px double #CF9B90;padding-bottom:16px;margin-bottom:22px}
   #printArea .p-logo{width:260px;max-width:70%;height:auto;margin:0 auto 6px;display:block}
   #printArea .p-sub{font-size:.85rem;color:#555;letter-spacing:3px;text-transform:uppercase}
+  #printArea .p-empresa{font-size:.8rem;color:#666;margin-top:8px;line-height:1.6}
+  #printArea .p-garantia{
+    margin-top:22px;font-size:.72rem;color:#666;line-height:1.5;
+    border:1px solid #ddd;border-radius:4px;padding:10px 12px;text-align:justify;
+  }
   #printArea .p-meta{display:flex;justify-content:space-between;font-size:.95rem;margin-bottom:20px;color:#333;line-height:1.6}
   #printArea .p-tabla{width:100%;border-collapse:collapse;font-size:.95rem}
   #printArea .p-tabla th{border-bottom:2px solid #333;text-align:left;padding:6px 4px;font-size:.8rem;text-transform:uppercase;letter-spacing:1px}
