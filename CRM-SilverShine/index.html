@@ -126,6 +126,25 @@
     <section class="view" data-view="ajustes">
       <h1 class="view-title">Ajustes</h1>
       <div class="card">
+        <h2>☁️ Nube (Supabase)</h2>
+        <div id="nubeEstado" class="muted" style="margin-bottom:12px"></div>
+        <form id="formNube" autocomplete="off">
+          <div class="row">
+            <div><label>URL del proyecto</label><input name="url" placeholder="https://xxxx.supabase.co"></div>
+            <div><label>Clave anon / public</label><input name="anonKey" placeholder="eyJhbGciOi…"></div>
+          </div>
+          <div class="row">
+            <div><label>Correo</label><input name="email" type="email" autocomplete="off"></div>
+            <div><label>Clave de usuario</label><input name="password" type="password" autocomplete="new-password"></div>
+          </div>
+          <div class="row">
+            <button type="submit" class="btn-gold">🔗 Conectar</button>
+            <button type="button" class="btn-danger" id="btnDesconectar" hidden>Desconectar</button>
+          </div>
+        </form>
+        <p class="muted" style="margin-top:10px">Guía completa en <b>SETUP-SUPABASE.md</b> (en la carpeta de la app).</p>
+      </div>
+      <div class="card">
         <h2>Datos</h2>
         <p class="muted" style="margin-bottom:12px">Por ahora los datos se guardan en este dispositivo. En la fase de nube se sincronizarán entre PC y celular.</p>
         <div class="row">
@@ -165,6 +184,7 @@
 <div id="printArea"></div>
 
 <script src="js/db.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/clientes.js"></script>
 <script src="js/catalogo.js"></script>

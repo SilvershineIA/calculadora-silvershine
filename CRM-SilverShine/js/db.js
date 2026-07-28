@@ -22,6 +22,11 @@ const DB = (() => {
   const uid  = () => (crypto.randomUUID ? crypto.randomUUID()
                     : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
+  // Avisar a la nube (si está configurada) después de cada cambio local
+  const avisar = (key, op, obj) => {
+    if (typeof Sync !== 'undefined') Sync.notificar(key.replace('sscrm_', ''), op, obj);
+  };
+
   // CRUD genérico sobre una colección
   const coll = key => ({
     async list() {
@@ -42,10 +47,12 @@ const DB = (() => {
         else arr.unshift(obj);
       }
       save(key, arr);
+      avisar(key, 'upsert', obj);
       return obj;
     },
     async remove(id) {
       save(key, load(key).filter(x => x.id !== id));
+      avisar(key, 'remove', id);
     },
   });
 

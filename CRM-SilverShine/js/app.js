@@ -92,11 +92,73 @@
       const data = JSON.parse(await file.text());
       const n = await DB.importar(data);
       toast(`Respaldo importado (${n} registros)`);
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nube…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('panel');
     } catch {
       toast('El archivo no es un respaldo válido');
     }
     e.target.value = '';
+  });
+
+  /* ── Nube (Supabase) ── */
+  function pintarEstadoNube(msj) {
+    const el = $('#nubeEstado');
+    const info = Sync.info();
+    if (msj) { el.innerHTML = `⏳ ${msj}`; return; }
+    if (Sync.conectado()) {
+      const pend = Sync.pendientes();
+      el.innerHTML = `🟢 Conectado como <b>${info.email}</b>` +
+        (pend ? ` · ${pend} cambio(s) esperando internet` : ' · todo sincronizado');
+      $('#btnDesconectar').hidden = false;
+      $('#formNube').querySelectorAll('input').forEach(i => i.disabled = true);
+    } else {
+      el.innerHTML = info
+        ? '🟠 Sesión cerrada — vuelve a poner tu clave y presiona Conectar.'
+        : '⚪ Sin conectar. Los datos solo viven en este dispositivo.';
+      $('#btnDesconectar').hidden = !info;
+      $('#formNube').querySelectorAll('input').forEach(i => i.disabled = false);
+      if (info) { $('#formNube').url.value = info.url; $('#formNube').email.value = info.email; }
+    }
+  }
+  Sync.setEstadoUI(pintarEstadoNube);
+
+  $('#formNube').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const url = fd.get('url').trim().replace(/\/+$/, '');
+    const anonKey = fd.get('anonKey').trim();
+    const email = fd.get('email').trim();
+    const password = fd.get('password');
+    if (!url || !anonKey || !email || !password) { toast('Completa los cuatro campos'); return; }
+    try {
+      pintarEstadoNube('Conectando…');
+      await Sync.login(url, anonKey, email, password);
+      const nubeConDatos = await Sync.nubeTieneDatos();
+      const localConDatos = (await DB.clientes.list()).length > 0;
+      if (!nubeConDatos && localConDatos) {
+        pintarEstadoNube('Primera subida de datos…');
+        await Sync.subirTodo();
+        toast('☁️ Datos subidos a la nube');
+      } else if (nubeConDatos) {
+        if (!localConDatos || confirm('La nube ya tiene datos. ¿Descargarlos y usar esos aquí? (Recomendado)')) {
+          await Sync.bajarTodo();
+          toast('☁️ Datos descargados de la nube');
+        }
+      }
+      e.target.password.value = '';
+      pintarEstadoNube();
+      renderPanel();
+    } catch (err) {
+      pintarEstadoNube();
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
+    }
+  });
+
+  $('#btnDesconectar').addEventListener('click', () => {
+    if (!confirm('¿Desconectar de la nube? Los datos locales se conservan; solo se detiene la sincronización.')) return;
+    Sync.desconectar();
+    pintarEstadoNube();
+    toast('Desconectado de la nube');
   });
 
   /* ── Cargar histórico de QuickBooks ── */
@@ -105,6 +167,7 @@
     try {
       const n = await DB.cargarQuickBooks();
       toast(`Cargado: ${n.clientes} clientes, ${n.facturas} facturas, ${n.pagos} pagos, ${n.cotizaciones} cotizaciones`);
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nube…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('panel');
     } catch (err) {
       toast('No se pudo cargar: ' + err.message);
@@ -118,6 +181,10 @@
   Cotizaciones.init();
   Tareas.init();
   renderPanel();
+  pintarEstadoNube();
+
+  // Al abrir: vaciar cambios pendientes y bajar lo último de la nube
+  Sync.alAbrir().then(ok => { if (ok) { renderPanel(); pintarEstadoNube(); } });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
