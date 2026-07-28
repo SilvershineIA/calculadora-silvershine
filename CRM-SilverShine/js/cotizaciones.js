@@ -120,14 +120,16 @@ const Cotizaciones = (() => {
     });
 
     on('#cImprimir', () => imprimir(c, cliente));
-    on('#cWhatsApp', () => {
+    on('#cWhatsApp', async () => {
+      const emp = await UI.getEmpresa();
       const tel = cliente.telefono.replace(/\D/g, '');
       const num = tel.length === 10 ? '1' + tel : tel;
-      const msg = `Hola ${c.clienteNombre}, le saluda SilverShine ✨\nSu cotización COT-${c.numero}:\n` +
-        c.lineas.map(l => `· ${l.descripcion}: ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n') +
-        `\nTotal: ${fmtMoneda(c.total, t)}` +
-        (c.vence ? `\nVálida hasta el ${fmtFecha(c.vence)}.` : '') +
-        `\n¿Le gustaría proceder?`;
+      const msg = `Hola ${c.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
+        `Le compartimos su cotización *COT-${c.numero}*:\n\n` +
+        c.lineas.map(l => `▪ ${l.descripcion}${l.cantidad > 1 ? ` ×${l.cantidad}` : ''} — ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n') +
+        `\n\n💰 *Total: ${fmtMoneda(c.total, t)}*` +
+        (c.vence ? `\n📅 Válida hasta el ${fmtFecha(c.vence)}` : '') +
+        `\n\nTómese su tiempo para revisarla con calma. Si tiene alguna duda o le gustaría ajustar algo de la pieza, estamos a la orden para ayudarle con gusto. 💎`;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
     });
     on('#cEditar', () => formulario(c));
@@ -299,5 +301,5 @@ const Cotizaciones = (() => {
     });
   }
 
-  return { init, render, detalle };
+  return { init, render, detalle, formulario };
 })();

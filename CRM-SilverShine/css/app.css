@@ -254,6 +254,40 @@ button:hover{filter:brightness(1.12)}
 .sug:last-child{border-bottom:none}
 .sug:hover{background:var(--rose-soft)}
 
+/* ── Calculadora ── */
+.estado-linea{font-size:.8rem;margin-top:8px}
+.ok{color:var(--green)} .err{color:var(--red)} .info{color:var(--muted)}
+.kilates{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.kt{
+  background:var(--panel2);border:1px solid var(--border);border-radius:10px;
+  padding:12px 8px;text-align:center;cursor:pointer;transition:.15s;
+}
+.kt.active{border-color:var(--gold);background:var(--rose-soft);box-shadow:0 0 0 1px var(--gold)}
+.kt .k{font-weight:700;color:var(--gold-bright);font-size:1rem}
+.kt .p{font-size:.72rem;color:var(--muted);margin:2px 0}
+.kt .g{font-size:.9rem;font-weight:600;margin-top:4px}
+.tabla-calc{width:100%;border-collapse:collapse;font-size:.9rem}
+.tabla-calc th{color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;font-size:.76rem;text-transform:uppercase;letter-spacing:.5px}
+.tabla-calc td{padding:6px 8px;border-top:1px solid var(--border)}
+.tabla-calc td input,.tabla-calc td select{padding:7px 9px;font-size:.9rem}
+.tabla-calc .num{text-align:right;white-space:nowrap}
+.resultado-calc{background:linear-gradient(160deg,#FFFFFF,var(--rose-soft));border:1px solid var(--gold)}
+.resultado-calc .lines{margin-bottom:14px}
+.resultado-calc .line{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:.95rem}
+.resultado-calc .line span:first-child{color:var(--muted)}
+.total-calc{display:flex;justify-content:space-between;align-items:center;padding-top:14px;font-size:1.05rem;font-weight:700}
+.total-calc .amount{font-size:1.7rem;color:var(--gold-bright)}
+.total-calc.eq{padding-top:6px}
+.total-calc.eq span:first-child{font-size:.85rem;color:var(--muted)}
+.total-calc.eq .amount{font-size:1.15rem}
+.ganancia-box{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-top:14px;padding:12px 14px;border-radius:10px;
+  background:var(--rose-soft);border:1px dashed var(--gold);
+  font-weight:600;font-size:.9rem;color:var(--gold-bright);
+}
+.ganancia-box .g-amount{font-size:1.25rem;font-weight:700}
+
 /* ── Tareas ── */
 .check{
   flex:0 0 auto;width:30px;height:30px;border-radius:50%;
@@ -301,6 +335,14 @@ button:hover{filter:brightness(1.12)}
   .filter-row select{width:100%}
   .prod-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .modal{max-height:84vh}
+  .kilates{grid-template-columns:repeat(2,1fr)}
+  /* Tabla de piedras → tarjetas apiladas en el celular */
+  .tabla-calc.apilable thead{display:none}
+  .tabla-calc.apilable,.tabla-calc.apilable tbody,.tabla-calc.apilable tr,.tabla-calc.apilable td{display:block;width:100%}
+  .tabla-calc.apilable tr{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--panel2)}
+  .tabla-calc.apilable td{border:none;padding:5px 0;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tabla-calc.apilable td::before{content:attr(data-label);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .tabla-calc.apilable td input,.tabla-calc.apilable td select{width:55%}
   .stat-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .stat{padding:12px 8px;min-width:0}
   .item{flex-wrap:wrap}

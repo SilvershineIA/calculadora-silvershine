@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=16">
+<link rel="stylesheet" href="css/app.css?v=18">
 </head>
 <body>
 
@@ -25,6 +25,7 @@
     <button class="nav-btn active" data-view="panel"><span class="nav-ico">◇</span><span>Panel</span></button>
     <button class="nav-btn" data-view="clientes"><span class="nav-ico">👤</span><span>Clientes</span></button>
     <button class="nav-btn" data-view="catalogo"><span class="nav-ico">💍</span><span>Catálogo</span></button>
+    <button class="nav-btn" data-view="calculadora"><span class="nav-ico">🧮</span><span>Calculadora</span></button>
     <button class="nav-btn" data-view="facturas"><span class="nav-ico">🧾</span><span>Facturas</span></button>
     <button class="nav-btn" data-view="cotizaciones"><span class="nav-ico">📋</span><span>Cotizaciones</span></button>
     <button class="nav-btn" data-view="cobros"><span class="nav-ico">💰</span><span>Cobros</span></button>
@@ -69,6 +70,110 @@
         <select id="filtroCategoria"><option value="">Todas las categorías</option></select>
       </div>
       <div id="listaProductos" class="prod-grid"></div>
+    </section>
+
+    <!-- ══════════ CALCULADORA ══════════ -->
+    <section class="view" data-view="calculadora">
+      <h1 class="view-title">Calculadora de piezas</h1>
+
+      <div class="card">
+        <h2>🪙 Precios del metal</h2>
+        <div class="row">
+          <div><label>Oro (USD por onza troy)</label><input type="number" id="spot" step="0.01" min="0"></div>
+          <div><label>Plata (USD por onza troy)</label><input type="number" id="spotPlata" step="0.01" min="0"></div>
+          <div style="flex:0 0 auto;display:flex;align-items:flex-end">
+            <button class="btn-gold btn-sm" id="btnFetch">Actualizar en línea</button>
+          </div>
+        </div>
+        <div id="spotStatus" class="estado-linea info">Cargando precios…</div>
+        <div class="kilates" id="kilates"></div>
+        <div class="row" style="margin-top:16px"><div>
+          <label>Ajuste al precio del metal (% merma / manufactura)</label>
+          <input type="number" id="ajusteOro" step="0.5" value="0">
+        </div></div>
+        <div style="border-top:1px dashed var(--border);margin:16px 0 14px"></div>
+        <h2>💱 Moneda y tasa de cambio</h2>
+        <div class="row">
+          <div><label>Moneda de la calculadora</label>
+            <select id="monedaVista">
+              <option value="PESOS">Pesos</option>
+              <option value="USD">Dólares (USD)</option>
+            </select></div>
+          <div><label>Tipo de peso</label>
+            <select id="moneda">
+              <option value="DOP">Peso dominicano (DOP)</option>
+              <option value="MXN">Peso mexicano (MXN)</option>
+              <option value="COP">Peso colombiano (COP)</option>
+              <option value="ARS">Peso argentino (ARS)</option>
+              <option value="CLP">Peso chileno (CLP)</option>
+              <option value="UYU">Peso uruguayo (UYU)</option>
+              <option value="PEN">Sol peruano (PEN)</option>
+            </select></div>
+        </div>
+        <div class="row">
+          <div><label>Tasa (pesos por 1 USD)</label><input type="number" id="tasa" step="0.01" min="0"></div>
+          <div style="flex:0 0 auto;display:flex;align-items:flex-end">
+            <button class="btn-gold btn-sm" id="btnFetchTasa">Actualizar en línea</button>
+          </div>
+        </div>
+        <div id="tasaStatus" class="estado-linea info">Cargando tasa…</div>
+      </div>
+
+      <div class="card">
+        <h2>💍 Datos de la pieza</h2>
+        <div class="row"><div>
+          <label>Peso (gramos)</label>
+          <input type="number" id="peso" step="0.01" min="0" placeholder="Ej: 5.2">
+        </div></div>
+        <div class="row">
+          <div><label>Mano de obra (<span class="lblMon">DOP</span>)</label><input type="number" id="manoObra" step="1" value="0" min="0"></div>
+          <div><label>Margen de ganancia (%)</label><input type="number" id="margen" step="1" value="0" min="0"></div>
+          <div><label>Descuento (<span class="lblMon">DOP</span>)</label><input type="number" id="descuento" step="1" value="0" min="0"></div>
+        </div>
+        <p class="muted">El margen se aplica sobre el costo total (metal + piedras + mano de obra).</p>
+      </div>
+
+      <div class="card">
+        <h2>💎 Precios estándar de piedras (por quilate)</h2>
+        <table class="tabla-calc" id="tblPrecios">
+          <thead><tr><th>Piedra</th><th style="width:180px">Precio/quilate (<span class="lblMon">DOP</span>)</th><th style="width:50px"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn-ghost btn-sm" id="btnAddTipo">➕ Agregar otra piedra</button>
+          <button class="btn-ghost btn-sm" id="btnResetPiedras">↩ Restaurar por defecto</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>✨ Piedras de esta pieza</h2>
+        <table class="tabla-calc apilable" id="tblPiedras">
+          <thead><tr><th>Tipo</th><th style="width:140px">Quilates (c/u)</th><th style="width:110px">Cantidad</th><th class="num">Subtotal</th><th style="width:50px"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div style="margin-top:12px">
+          <button class="btn-ghost btn-sm" id="btnAddPiedra">➕ Agregar piedra</button>
+        </div>
+      </div>
+
+      <div class="card resultado-calc">
+        <h2>🧾 Precio de la pieza</h2>
+        <div class="lines">
+          <div class="line"><span><span id="rMetalNombre">Oro</span> (<span id="rKt">14k</span> × <span id="rPeso">0</span> g × <span id="rGramo">0</span>/g)</span><span class="num" id="rOro">0.00</span></div>
+          <div class="line"><span>Piedras</span><span class="num" id="rPiedras">0.00</span></div>
+          <div class="line"><span>Mano de obra</span><span class="num" id="rMano">0.00</span></div>
+          <div class="line"><span>Costo total</span><span class="num" id="rCosto">0.00</span></div>
+          <div class="line"><span>Ganancia (<span id="rMargenPct">0</span>%)</span><span class="num" id="rGanancia">0.00</span></div>
+          <div class="line" id="lineaDescuento" style="display:none"><span>Descuento</span><span class="num rojo" id="rDescuento">0.00</span></div>
+        </div>
+        <div class="total-calc"><span>PRECIO DE VENTA</span><span class="amount" id="rTotal">0.00</span></div>
+        <div class="total-calc eq"><span>EQUIVALENTE (<span id="rEqLabel">USD</span>)</span><span class="amount" id="rTotalEq">0.00</span></div>
+        <div class="ganancia-box"><span>💰 TU GANANCIA (<span id="gPct">0</span>%)</span><span class="g-amount" id="gGanancia">0.00</span></div>
+        <div class="row" style="margin-top:16px">
+          <button class="btn-gold btn-block" id="btnPasarFactura">🧾 Pasar a factura</button>
+          <button class="btn-gold btn-block" id="btnPasarCot">📋 Pasar a cotización</button>
+        </div>
+      </div>
     </section>
 
     <!-- ══════════ MÓDULOS FUTUROS ══════════ -->
@@ -223,15 +328,16 @@
 <!-- Área de impresión de facturas -->
 <div id="printArea"></div>
 
-<script src="js/db.js?v=16"></script>
-<script src="js/sync.js?v=16"></script>
-<script src="js/ui.js?v=16"></script>
-<script src="js/clientes.js?v=16"></script>
-<script src="js/catalogo.js?v=16"></script>
-<script src="js/facturas.js?v=16"></script>
-<script src="js/cotizaciones.js?v=16"></script>
-<script src="js/cobros.js?v=16"></script>
-<script src="js/tareas.js?v=16"></script>
-<script src="js/app.js?v=16"></script>
+<script src="js/db.js?v=18"></script>
+<script src="js/sync.js?v=18"></script>
+<script src="js/ui.js?v=18"></script>
+<script src="js/clientes.js?v=18"></script>
+<script src="js/catalogo.js?v=18"></script>
+<script src="js/calculadora.js?v=18"></script>
+<script src="js/facturas.js?v=18"></script>
+<script src="js/cotizaciones.js?v=18"></script>
+<script src="js/cobros.js?v=18"></script>
+<script src="js/tareas.js?v=18"></script>
+<script src="js/app.js?v=18"></script>
 </body>
 </html>
