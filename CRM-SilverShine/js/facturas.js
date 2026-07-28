@@ -394,5 +394,5 @@ const Facturas = (() => {
     });
   }
 
-  return { init, render, detalle, siguienteNumero, formAbono };
+  return { init, render, detalle, siguienteNumero, formAbono, formulario };
 })();

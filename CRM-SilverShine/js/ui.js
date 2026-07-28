@@ -84,7 +84,7 @@ const UI = (() => {
     telefono: '829-956-6588',
     correo: 'Info@silvershinee.com',
     web: 'silvershine.com.do',
-    garantia: 'GARANTÍA SILVERSHINE — Piezas de oro sólido: garantía de por vida. Piezas de plata: garantía de 1 año. La garantía cubre defectos de fabricación (soldaduras, engastes, cierres y terminación). No cubre desgaste natural, golpes, maltrato ni contacto con químicos o perfumes. Cambios dentro de los primeros 90 días presentando esta factura, con la pieza en buen estado.',
+    garantia: 'GARANTÍA SILVERSHINE — Piezas de oro sólido: garantía de por vida. Piezas de plata: garantía de 1 año. La garantía cubre defectos de fabricación (soldaduras, engastes, cierres y terminación). No cubre desgaste natural, golpes, maltrato ni contacto con químicos o perfumes. Cambios dentro de los primeros 90 días presentando esta factura, con la pieza en buen estado. Incluye limpieza profesional GRATIS una vez al año para todas sus piezas.',
     pie: 'Gracias por preferir SilverShine ✦ silvershine.com.do · Instagram @silvershine.rd',
     cuentas: '🏦 Banco Popular — Cta. de Ahorros 810146357\nCandy Morillo · Céd. 001-1622375-1\n\n🏦 Banreservas — Cta. de Ahorros 9604648520\nGrupo Morillo Ciprian SRL · RNC 132-44210-5\n\n🏦 BHD León — Cta. de Ahorros 11777670031\nCindy Ciprian · Céd. 001-1873046-4',
   };

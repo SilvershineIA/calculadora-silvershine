@@ -8,6 +8,7 @@
   const vistas = {
     clientes:     () => Clientes.render(),
     catalogo:     () => Catalogo.render(),
+    calculadora:  () => Calculadora.abrir(),
     facturas:     () => Facturas.render(),
     cotizaciones: () => Cotizaciones.render(),
     cobros:       () => Cobros.render(),
@@ -281,6 +282,7 @@
   /* ── Arranque ── */
   Clientes.init();
   Catalogo.init();
+  Calculadora.init();
   Facturas.init();
   Cotizaciones.init();
   Tareas.init();
@@ -305,10 +307,14 @@
     } catch { /* enlace inválido: se ignora */ }
   }
 
-  // Si quedó guardado el texto de garantía provisional, actualizarlo al definitivo
+  // Si quedó guardada una versión anterior del texto de garantía, actualizarla
   async function actualizarGarantiaVieja() {
     const emp = await DB.config.get('empresa');
-    if (emp && emp.garantia && emp.garantia.includes('garantía de fabricación de 6 meses')) {
+    if (!emp || !emp.garantia) return;
+    const esVersionVieja =
+      emp.garantia.includes('garantía de fabricación de 6 meses') ||
+      (emp.garantia.includes('90 días') && !emp.garantia.includes('limpieza'));
+    if (esVersionVieja) {
       emp.garantia = UI.EMPRESA_DEFECTO.garantia;
       await DB.config.upsert(emp);
     }
