@@ -1,9 +1,9 @@
 /* Service worker — CRM SilverShine (cache-first con actualización en segundo plano) */
-const CACHE = 'sscrm-v9';
+const CACHE = 'sscrm-v10';
 const ARCHIVOS = [
   './',
   './index.html',
-  './css/app.css',
+  './css/app.css?v=10',
   './js/db.js',
   './js/sync.js',
   './js/ui.js',

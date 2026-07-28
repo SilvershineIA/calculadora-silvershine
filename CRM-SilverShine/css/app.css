@@ -94,8 +94,12 @@ body{
   background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;text-align:center;box-shadow:0 1px 4px rgba(52,61,72,.06);
 }
-.stat .n{font-size:1.7rem;font-weight:700;color:var(--gold-bright)}
-.stat .l{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.stat .n{
+  font-size:clamp(1rem,4.2vw,1.7rem);
+  font-weight:700;color:var(--gold-bright);
+  overflow-wrap:anywhere;line-height:1.25;
+}
+.stat .l{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
 
 /* ── Formularios ── */
 label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:5px}
@@ -297,6 +301,11 @@ button:hover{filter:brightness(1.12)}
   .filter-row select{width:100%}
   .prod-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .modal{max-height:84vh}
+  .stat-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .stat{padding:12px 8px;min-width:0}
+  .item{flex-wrap:wrap}
+  .item>b{max-width:100%;overflow-wrap:anywhere}
+  .item-info{flex:1 1 60%}
 }
 
 /* ── Impresión de facturas ── */
