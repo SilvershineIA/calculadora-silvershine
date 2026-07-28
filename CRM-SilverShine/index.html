@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CRM SilverShine</title>
+<meta name="theme-color" content="#FAF8F6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CRM SilverShine">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <img src="logo.png" alt="SilverShine" class="topbar-logo">
+  <span class="topbar-title">CRM</span>
+</header>
+
+<div class="layout">
+
+  <nav class="sidenav" id="mainNav">
+    <button class="nav-btn active" data-view="panel"><span class="nav-ico">◇</span><span>Panel</span></button>
+    <button class="nav-btn" data-view="clientes"><span class="nav-ico">👤</span><span>Clientes</span></button>
+    <button class="nav-btn" data-view="catalogo"><span class="nav-ico">💍</span><span>Catálogo</span></button>
+    <button class="nav-btn" data-view="facturas"><span class="nav-ico">🧾</span><span>Facturas</span></button>
+    <button class="nav-btn" data-view="cotizaciones"><span class="nav-ico">📋</span><span>Cotizaciones</span></button>
+    <button class="nav-btn" data-view="cobros"><span class="nav-ico">💰</span><span>Cobros</span></button>
+    <button class="nav-btn" data-view="tareas"><span class="nav-ico">✓</span><span>Tareas</span></button>
+    <button class="nav-btn" data-view="ajustes"><span class="nav-ico">⚙</span><span>Ajustes</span></button>
+  </nav>
+
+  <main class="content" id="content">
+
+    <!-- ══════════ PANEL ══════════ -->
+    <section class="view active" data-view="panel">
+      <h1 class="view-title">Panel</h1>
+      <div class="stat-grid" id="panelStats"></div>
+      <div class="card">
+        <h2>Próximamente aquí</h2>
+        <p class="muted">Cuando activemos facturación verás: cobros vencidos, facturas recientes y el total facturado del mes.</p>
+      </div>
+    </section>
+
+    <!-- ══════════ CLIENTES ══════════ -->
+    <section class="view" data-view="clientes">
+      <div class="view-head">
+        <h1 class="view-title">Clientes</h1>
+        <button class="btn-gold btn-sm" id="btnNuevoCliente">+ Nuevo cliente</button>
+      </div>
+      <input type="search" id="buscarCliente" class="search" placeholder="Buscar por nombre o teléfono…">
+      <div id="listaClientes" class="list"></div>
+    </section>
+
+    <!-- ══════════ CATÁLOGO ══════════ -->
+    <section class="view" data-view="catalogo">
+      <div class="view-head">
+        <h1 class="view-title">Catálogo</h1>
+        <button class="btn-gold btn-sm" id="btnNuevoProducto">+ Nuevo producto</button>
+      </div>
+      <div class="filter-row">
+        <input type="search" id="buscarProducto" class="search" placeholder="Buscar producto…">
+        <select id="filtroCategoria"><option value="">Todas las categorías</option></select>
+      </div>
+      <div id="listaProductos" class="prod-grid"></div>
+    </section>
+
+    <!-- ══════════ MÓDULOS FUTUROS ══════════ -->
+    <section class="view" data-view="facturas">
+      <h1 class="view-title">Facturas</h1>
+      <div class="card pronto"><span>🧾</span><h2>Se activa en la Fase 2</h2><p class="muted">Facturación con abonos, NCF opcional y DOP/USD.</p></div>
+    </section>
+    <section class="view" data-view="cotizaciones">
+      <h1 class="view-title">Cotizaciones</h1>
+      <div class="card pronto"><span>📋</span><h2>Se activa en la Fase 3</h2><p class="muted">Cotizaciones con seguimiento y conversión a factura.</p></div>
+    </section>
+    <section class="view" data-view="cobros">
+      <h1 class="view-title">Cobros</h1>
+      <div class="card pronto"><span>💰</span><h2>Se activa en la Fase 3</h2><p class="muted">Cobros pendientes por urgencia y recordatorios por WhatsApp.</p></div>
+    </section>
+    <section class="view" data-view="tareas">
+      <h1 class="view-title">Tareas</h1>
+      <div class="card pronto"><span>✓</span><h2>Se activa en la Fase 3</h2><p class="muted">Recordatorios generales vinculados a clientes y facturas.</p></div>
+    </section>
+
+    <!-- ══════════ AJUSTES ══════════ -->
+    <section class="view" data-view="ajustes">
+      <h1 class="view-title">Ajustes</h1>
+      <div class="card">
+        <h2>Datos</h2>
+        <p class="muted" style="margin-bottom:12px">Por ahora los datos se guardan en este dispositivo. En la fase de nube se sincronizarán entre PC y celular.</p>
+        <div class="row">
+          <button class="btn-gold" id="btnExportar">⬇ Exportar respaldo</button>
+          <button class="btn-ghost" id="btnImportar">⬆ Importar respaldo</button>
+          <input type="file" id="fileImportar" accept=".json" hidden>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Acerca de</h2>
+        <p class="muted">CRM SilverShine · Fase 1<br>silvershine.com.do</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Modal genérico -->
+<div class="modal-bg" id="modalBg" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 id="modalTitle"></h2>
+      <button class="btn-x" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/db.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/clientes.js"></script>
+<script src="js/catalogo.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
