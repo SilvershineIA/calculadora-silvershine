@@ -43,7 +43,9 @@ const UI = (() => {
   };
   const fmtFecha = iso => {
     if (!iso) return '';
-    return new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
+    // 'YYYY-MM-DD' se interpreta como hora local (con solo fecha, JS asume UTC y resta un día)
+    const d = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
+    return d.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
   };
   const iniciales = nombre => (nombre || '?')
     .trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
@@ -82,13 +84,23 @@ const UI = (() => {
     telefono: '829-956-6588',
     correo: 'Info@silvershinee.com',
     web: 'silvershine.com.do',
-    garantia: 'GARANTÍA: Sus prendas cuentan con garantía de fabricación de 6 meses, que cubre defectos de manufactura (soldaduras, engastes, cierres y baño). No cubre desgaste natural, golpes, maltrato, contacto con químicos o perfumes, ni pérdida de piedras por uso. Cambios y ajustes de talla dentro de los primeros 30 días presentando esta factura, con la pieza sin uso y en su empaque. Las piezas personalizadas no tienen cambio.',
+    garantia: 'GARANTÍA SILVERSHINE — Piezas de oro sólido: garantía de por vida. Piezas de plata: garantía de 1 año. La garantía cubre defectos de fabricación (soldaduras, engastes, cierres y terminación). No cubre desgaste natural, golpes, maltrato ni contacto con químicos o perfumes. Cambios dentro de los primeros 90 días presentando esta factura, con la pieza en buen estado.',
     pie: 'Gracias por preferir SilverShine ✦ silvershine.com.do · Instagram @silvershine.rd',
+    cuentas: '🏦 Banco Popular — Cta. de Ahorros 810146357\nCandy Morillo · Céd. 001-1622375-1\n\n🏦 Banreservas — Cta. de Ahorros 9604648520\nGrupo Morillo Ciprian SRL · RNC 132-44210-5\n\n🏦 BHD León — Cta. de Ahorros 11777670031\nCindy Ciprian · Céd. 001-1873046-4',
   };
   async function getEmpresa() {
     const guardada = await DB.config.get('empresa');
     return { ...EMPRESA_DEFECTO, ...(guardada || {}) };
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO };
+  /* Imprimir el área de impresión esperando a que el logo cargue */
+  async function imprimirArea() {
+    const img = $('#printArea .p-logo');
+    if (img && !img.complete) {
+      await new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 1500); });
+    }
+    window.print();
+  }
+
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea };
 })();

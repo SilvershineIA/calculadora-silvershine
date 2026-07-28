@@ -105,7 +105,7 @@
   async function cargarFormEmpresa() {
     const emp = await UI.getEmpresa();
     const f = $('#formEmpresa');
-    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie']) {
+    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
       f[campo].value = emp[campo] || '';
     }
   }
@@ -113,7 +113,7 @@
     e.preventDefault();
     const fd = new FormData(e.target);
     const emp = { id: 'empresa' };
-    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie']) {
+    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
       emp[campo] = String(fd.get(campo) || '').trim();
     }
     await DB.config.upsert(emp);
@@ -305,9 +305,19 @@
     } catch { /* enlace inválido: se ignora */ }
   }
 
+  // Si quedó guardado el texto de garantía provisional, actualizarlo al definitivo
+  async function actualizarGarantiaVieja() {
+    const emp = await DB.config.get('empresa');
+    if (emp && emp.garantia && emp.garantia.includes('garantía de fabricación de 6 meses')) {
+      emp.garantia = UI.EMPRESA_DEFECTO.garantia;
+      await DB.config.upsert(emp);
+    }
+  }
+
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
+    await actualizarGarantiaVieja();
     if (ok) pintarEstadoNube();
     renderPanel();
   });
