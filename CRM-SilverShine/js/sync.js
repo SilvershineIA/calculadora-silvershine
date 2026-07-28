@@ -113,7 +113,7 @@ const Sync = (() => {
         filas.push(...pagina);
         if (pagina.length < 1000) break;
       }
-      localStorage.setItem('sscrm_' + tabla, JSON.stringify(filas.map(f => f.data)));
+      await DB.reemplazar(tabla, filas.map(f => f.data));
       estadoUI(`Descargando… ${tabla} (${filas.length})`);
     }
   }
