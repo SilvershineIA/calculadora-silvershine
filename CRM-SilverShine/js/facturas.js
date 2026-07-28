@@ -170,6 +170,7 @@ const Facturas = (() => {
         <button class="btn-ghost btn-block" id="fImprimir">🖨 Imprimir</button>
         ${cliente && cliente.telefono ? `<button class="btn-ghost btn-block" id="fWhatsApp">💬 WhatsApp</button>` : ''}
         ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="fCorreo">✉️ Correo</button>` : ''}
+        <button class="btn-ghost btn-block" id="fTarea">✓ Tarea</button>
       </div>
       <div class="row" style="margin-top:10px">
         ${f.estado === 'pendiente' && !(f.abonos || []).length && f.origen !== 'quickbooks' ? `<button class="btn-ghost btn-block" id="fEditar">✏️ Editar</button>` : ''}
@@ -180,6 +181,11 @@ const Facturas = (() => {
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
     on('#fAbonar', () => formAbono(f));
     on('#fImprimir', () => imprimir(f, cliente));
+    on('#fTarea', () => Tareas.formulario({
+      clienteId: f.clienteId,
+      clienteNombre: f.clienteNombre,
+      notas: `Factura ${rotulo(f)}${f.orden && f.numero ? ' · ' + f.numero : ''} — ${f.clienteNombre}`,
+    }));
 
     /* Mensaje de factura (WhatsApp usa *negritas*; el correo va sin asteriscos) */
     const mensajeFactura = emp => {
