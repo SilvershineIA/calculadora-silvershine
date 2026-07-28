@@ -11,6 +11,7 @@ const DB = (() => {
     facturas:     'sscrm_facturas',
     pagos:        'sscrm_pagos',
     cotizaciones: 'sscrm_cotizaciones',
+    tareas:       'sscrm_tareas',
   };
 
   const load = k => {
@@ -54,6 +55,7 @@ const DB = (() => {
     facturas:     coll(K.facturas),
     pagos:        coll(K.pagos),
     cotizaciones: coll(K.cotizaciones),
+    tareas:       coll(K.tareas),
 
     /* Carga inicial de los datos históricos de QuickBooks */
     async cargarQuickBooks() {

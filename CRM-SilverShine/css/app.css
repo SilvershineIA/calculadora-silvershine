@@ -247,6 +247,16 @@ button:hover{filter:brightness(1.12)}
 .sug:last-child{border-bottom:none}
 .sug:hover{background:var(--rose-soft)}
 
+/* ── Tareas ── */
+.check{
+  flex:0 0 auto;width:30px;height:30px;border-radius:50%;
+  border:2px solid var(--gold);background:transparent;
+  color:#fff;font-size:1rem;font-weight:700;line-height:1;
+  display:flex;align-items:center;justify-content:center;padding:0;
+}
+.check.on{background:var(--green);border-color:var(--green)}
+.tarea.hecha .item-name{text-decoration:line-through;color:var(--muted)}
+
 /* ── Toast ── */
 .toast{
   position:fixed;bottom:calc(var(--nav-h) + 20px);left:50%;transform:translateX(-50%);

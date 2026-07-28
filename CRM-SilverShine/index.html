@@ -39,8 +39,12 @@
       <h1 class="view-title">Panel</h1>
       <div class="stat-grid" id="panelStats"></div>
       <div class="card">
-        <h2>Cobros pendientes más antiguos</h2>
+        <h2>Cobros vencidos</h2>
         <div id="panelPendientes" class="list"></div>
+      </div>
+      <div class="card">
+        <h2>Tareas de hoy</h2>
+        <div id="panelTareas"></div>
       </div>
     </section>
 
@@ -86,16 +90,36 @@
       <div id="listaFacturas" class="list"></div>
     </section>
     <section class="view" data-view="cotizaciones">
-      <h1 class="view-title">Cotizaciones</h1>
-      <div class="card pronto"><span>📋</span><h2>Se activa en la Fase 3</h2><p class="muted">Cotizaciones con seguimiento y conversión a factura.</p></div>
+      <div class="view-head">
+        <h1 class="view-title">Cotizaciones</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaCot">+ Nueva cotización</button>
+      </div>
+      <div class="stat-grid" id="cotResumen"></div>
+      <div class="filter-row">
+        <input type="search" id="buscarCot" class="search" placeholder="Buscar por número o cliente…">
+        <select id="filtroEstadoCot">
+          <option value="">Todas</option>
+          <option value="enviada">Enviadas</option>
+          <option value="aceptada">Aceptadas</option>
+          <option value="rechazada">Rechazadas</option>
+          <option value="vencida">Vencidas</option>
+        </select>
+      </div>
+      <div id="listaCotizaciones" class="list"></div>
     </section>
+
     <section class="view" data-view="cobros">
       <h1 class="view-title">Cobros</h1>
-      <div class="card pronto"><span>💰</span><h2>Se activa en la Fase 3</h2><p class="muted">Cobros pendientes por urgencia y recordatorios por WhatsApp.</p></div>
+      <div class="stat-grid" id="cobrosResumen"></div>
+      <div id="listaCobros" class="list"></div>
     </section>
+
     <section class="view" data-view="tareas">
-      <h1 class="view-title">Tareas</h1>
-      <div class="card pronto"><span>✓</span><h2>Se activa en la Fase 3</h2><p class="muted">Recordatorios generales vinculados a clientes y facturas.</p></div>
+      <div class="view-head">
+        <h1 class="view-title">Tareas</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaTarea">+ Nueva tarea</button>
+      </div>
+      <div id="listaTareas" class="list"></div>
     </section>
 
     <!-- ══════════ AJUSTES ══════════ -->
@@ -145,6 +169,9 @@
 <script src="js/clientes.js"></script>
 <script src="js/catalogo.js"></script>
 <script src="js/facturas.js"></script>
+<script src="js/cotizaciones.js"></script>
+<script src="js/cobros.js"></script>
+<script src="js/tareas.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

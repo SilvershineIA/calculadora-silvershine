@@ -358,5 +358,5 @@ const Facturas = (() => {
     $('#filtroEstadoFact').addEventListener('change', e => { filtroEstado = e.target.value; render(); });
   }
 
-  return { init, render, detalle };
+  return { init, render, detalle, siguienteNumero, formAbono };
 })();

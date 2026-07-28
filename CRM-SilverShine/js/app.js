@@ -6,10 +6,13 @@
 
   /* ── Navegación entre vistas ── */
   const vistas = {
-    clientes: () => Clientes.render(),
-    catalogo: () => Catalogo.render(),
-    facturas: () => Facturas.render(),
-    panel:    () => renderPanel(),
+    clientes:     () => Clientes.render(),
+    catalogo:     () => Catalogo.render(),
+    facturas:     () => Facturas.render(),
+    cotizaciones: () => Cotizaciones.render(),
+    cobros:       () => Cobros.render(),
+    tareas:       () => Tareas.render(),
+    panel:        () => renderPanel(),
   };
 
   function irA(nombre) {
@@ -40,9 +43,10 @@
       <div class="stat"><div class="n">${clientes.length}</div><div class="l">Clientes</div></div>
     `;
 
-    // Facturas pendientes más antiguas primero (las que urgen)
-    const urgentes = [...pendientes].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 6);
-    $('#panelPendientes').innerHTML = urgentes.length ? urgentes.map(f => `
+    // Cobros vencidos primero (van directo al detalle de cobro)
+    const vencidos = pendientes.filter(f => Cobros.clasificar(f) === 'vencido')
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 6);
+    $('#panelPendientes').innerHTML = vencidos.length ? vencidos.map(f => `
       <div class="item" data-id="${f.id}">
         <div class="item-info">
           <div class="item-name">${UI.esc(f.clienteNombre)}</div>
@@ -50,9 +54,18 @@
         </div>
         <b class="rojo">${UI.fmtMoneda(f.saldo, f.moneda)}</b>
       </div>`).join('')
-      : '<p class="muted">🎉 No hay facturas pendientes de cobro.</p>';
+      : '<p class="muted">🎉 No hay cobros vencidos.</p>';
     $('#panelPendientes').querySelectorAll('.item').forEach(el =>
-      el.addEventListener('click', () => Facturas.detalle(el.dataset.id)));
+      el.addEventListener('click', () => Cobros.detalle(el.dataset.id)));
+
+    // Tareas de hoy y vencidas
+    const tareas = (await DB.tareas.list()).filter(t => !t.hecha);
+    const hoy = new Date().toISOString().slice(0, 10);
+    const deHoy = tareas.filter(t => t.fecha && t.fecha <= hoy)
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 5);
+    $('#panelTareas').innerHTML = deHoy.length ? deHoy.map(t => `
+      <div class="abono-row"><span>${t.fecha < hoy ? '🔴' : '📌'} ${UI.esc(t.titulo)}${t.clienteNombre ? ' · ' + UI.esc(t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(t.fecha)}</span></div>`).join('')
+      : '<p class="muted">Sin tareas para hoy.</p>';
   }
 
   /* ── Ajustes: respaldo ── */
@@ -102,6 +115,8 @@
   Clientes.init();
   Catalogo.init();
   Facturas.init();
+  Cotizaciones.init();
+  Tareas.init();
   renderPanel();
 
   if ('serviceWorker' in navigator) {
