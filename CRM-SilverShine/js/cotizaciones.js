@@ -124,12 +124,22 @@ const Cotizaciones = (() => {
       const emp = await UI.getEmpresa();
       const tel = cliente.telefono.replace(/\D/g, '');
       const num = tel.length === 10 ? '1' + tel : tel;
-      const msg = `Hola ${c.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
-        `Le compartimos su cotización *COT-${c.numero}*:\n\n` +
-        c.lineas.map(l => `▪ ${l.descripcion}${l.cantidad > 1 ? ` ×${l.cantidad}` : ''} — ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n') +
-        `\n\n💰 *Total: ${fmtMoneda(c.total, t)}*` +
-        (c.vence ? `\n📅 Válida hasta el ${fmtFecha(c.vence)}` : '') +
-        `\n\nTómese su tiempo para revisarla con calma. Si tiene alguna duda o le gustaría ajustar algo de la pieza, estamos a la orden para ayudarle con gusto. 💎`;
+      const fechaLarga = new Date().toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' });
+      const lineasTxt = c.lineas.map((l, i) =>
+        `${i === 0 ? '💍' : '💎'} ${l.cantidad > 1 ? l.cantidad + ' × ' : ''}${l.descripcion}`).join('\n');
+      let precioTxt = fmtMoneda(c.total, t);
+      const tasa = typeof Calculadora !== 'undefined' ? Calculadora.tasaActual() : 0;
+      if (t === 'DOP' && tasa > 0) {
+        const usd = (c.total / tasa).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        precioTxt += ` (≈ $${usd} USD)`;
+      }
+      const msg =
+        `✨ *${emp.nombre} — Cotización*\n📅 ${fechaLarga}\n\n` +
+        `Hola ${c.clienteNombre} 👋 Gracias por tu interés. Aquí tienes tu cotización:\n\n` +
+        `${lineasTxt}\n\n` +
+        `💰 *Precio: ${precioTxt}*\n\n` +
+        `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
+        `${emp.direccion ? '📍 ' + emp.direccion + '\n' : ''}📞 ${emp.telefono} · ${emp.web}`;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
     });
     on('#cEditar', () => formulario(c));

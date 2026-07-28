@@ -314,10 +314,10 @@
     const esVersionVieja =
       emp.garantia.includes('garantía de fabricación de 6 meses') ||
       (emp.garantia.includes('90 días') && !emp.garantia.includes('limpieza'));
-    if (esVersionVieja) {
-      emp.garantia = UI.EMPRESA_DEFECTO.garantia;
-      await DB.config.upsert(emp);
-    }
+    let cambio = false;
+    if (esVersionVieja) { emp.garantia = UI.EMPRESA_DEFECTO.garantia; cambio = true; }
+    if (!emp.direccion) { emp.direccion = UI.EMPRESA_DEFECTO.direccion; cambio = true; }
+    if (cambio) await DB.config.upsert(emp);
   }
 
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
