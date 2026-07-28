@@ -331,8 +331,10 @@ const Facturas = (() => {
         <div id="lineasCont"></div>
         <div class="row" style="margin-top:6px">
           <button type="button" class="btn-ghost btn-sm" id="addLinea">+ Línea libre</button>
-          ${productos.length ? `<select id="addProducto" style="flex:1"><option value="">+ Del catálogo…</option>${
-            productos.map(p => `<option value="${p.id}">${esc(p.nombre)} — ${fmtMoneda(p.precio, p.moneda)}</option>`).join('')}</select>` : ''}
+          <div style="flex:1;position:relative">
+            <input id="addProdBuscar" placeholder="🛍 Del catálogo…" autocomplete="off">
+            <div id="addProdSug" class="sugerencias" hidden></div>
+          </div>
         </div>
 
         <div class="fact-preview" id="factPreview"></div>
@@ -393,11 +395,18 @@ const Facturas = (() => {
       el.textContent = `${inicial > 0 ? 'Inicial de ' + fmtMoneda(inicial, m) + ' + ' : ''}${n} cuota(s) de ~${fmtMoneda(cuotas[0].monto, m)} · última el ${fmtFecha(cuotas[cuotas.length - 1].fecha)}`;
     }
     $('#addLinea').addEventListener('click', () => { lineas.push({ descripcion: '', cantidad: 1, precio: '' }); pintarLineas(); });
-    const selProd = $('#addProducto');
-    if (selProd) selProd.addEventListener('change', () => {
-      const p = productos.find(x => x.id === selProd.value);
-      if (p) { lineas.push({ descripcion: p.nombre, cantidad: 1, precio: p.precio }); pintarLineas(); }
-      selProd.value = '';
+    UI.buscadorCatalogo($('#addProdBuscar'), $('#addProdSug'), item => {
+      const m = $('#formFactura').moneda.value;
+      let precio = item.precio;
+      if (item.moneda && item.moneda !== m) {
+        const tasa = typeof Calculadora !== 'undefined' ? Calculadora.tasaActual() : 0;
+        if (tasa) {
+          precio = Math.round((m === 'DOP' ? precio * tasa : precio / tasa) * 100) / 100;
+          toast(`Convertido de ${item.moneda} a ${m} (tasa ${tasa})`);
+        }
+      }
+      lineas.push({ descripcion: item.descripcion, cantidad: 1, precio });
+      pintarLineas();
     });
     $('#formFactura').moneda.addEventListener('change', preview);
     $('#formFactura').itbis.addEventListener('change', preview);

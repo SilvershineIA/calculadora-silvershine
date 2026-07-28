@@ -44,8 +44,8 @@ const Catalogo = (() => {
           : `<div class="prod-foto placeholder">💍</div>`}
         <div class="prod-body">
           <div class="prod-name">${esc(p.nombre)}</div>
-          ${p.categoria ? `<div class="prod-cat">${esc(p.categoria)}</div>` : ''}
-          <div class="prod-precio">${fmtMoneda(p.precio, p.moneda)}</div>
+          ${p.categoria ? `<div class="prod-cat">${esc(p.categoria)}${(p.variantes || []).length ? ` · ${p.variantes.length} opciones` : ''}</div>` : ''}
+          <div class="prod-precio">${(p.variantes || []).length ? 'desde ' : ''}${fmtMoneda(p.precio, p.moneda)}</div>
         </div>
       </div>`).join('');
 
@@ -76,7 +76,7 @@ const Catalogo = (() => {
           <datalist id="listaCats"></datalist>
         </div></div>
         <div class="row">
-          <div><label>Precio *</label><input name="precio" type="number" step="0.01" min="0" required value="${p.precio ?? ''}"></div>
+          <div><label>Precio ${'*'} (si hay opciones, se usa el menor)</label><input name="precio" type="number" step="0.01" min="0" value="${p.precio ?? ''}"></div>
           <div><label>Moneda</label>
             <select name="moneda">
               <option value="DOP" ${p.moneda !== 'USD' ? 'selected' : ''}>RD$ (DOP)</option>
@@ -84,6 +84,9 @@ const Catalogo = (() => {
             </select>
           </div>
         </div>
+        <label>Opciones (formato · material · gema) — cada una con su precio</label>
+        <div id="varCont"></div>
+        <button type="button" class="btn-ghost btn-sm" id="addVar" style="margin-bottom:12px">➕ Agregar opción</button>
         <div class="row"><div>
           <label>Descripción</label>
           <textarea name="descripcion">${esc(p.descripcion || '')}</textarea>
@@ -98,6 +101,27 @@ const Catalogo = (() => {
       const cats = [...new Set(lista.map(x => x.categoria).filter(Boolean))];
       $('#listaCats').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
     });
+
+    // Editor de opciones (variantes)
+    let variantes = (p.variantes || []).map(v => ({ ...v }));
+    function pintarVars() {
+      const cont = $('#varCont');
+      cont.innerHTML = variantes.map((v, i) => `
+        <div class="linea-row var-row">
+          <input placeholder="Ej: Trío · Oro 14K" data-i="${i}" data-k="nombre" value="${esc(v.nombre)}">
+          <input type="number" min="0" step="0.01" placeholder="Precio" data-i="${i}" data-k="precio" value="${v.precio}">
+          <button type="button" class="btn-x" data-del="${i}">✕</button>
+        </div>`).join('');
+      cont.querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => {
+        variantes[inp.dataset.i][inp.dataset.k] = inp.dataset.k === 'precio' ? Number(inp.value) || 0 : inp.value;
+      }));
+      cont.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+        variantes.splice(Number(b.dataset.del), 1);
+        pintarVars();
+      }));
+    }
+    $('#addVar').addEventListener('click', () => { variantes.push({ nombre: '', precio: 0 }); pintarVars(); });
+    pintarVars();
 
     // Foto
     const drop = $('#fotoDrop');
@@ -118,13 +142,20 @@ const Catalogo = (() => {
     $('#formProducto').addEventListener('submit', async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const varsOk = variantes
+        .map(v => ({ nombre: String(v.nombre).trim(), precio: Number(v.precio) || 0 }))
+        .filter(v => v.nombre && v.precio > 0);
+      let precio = Number(fd.get('precio')) || 0;
+      if (varsOk.length) precio = Math.min(...varsOk.map(v => v.precio));
+      if (!precio) { toast('Pon un precio o al menos una opción con precio'); return; }
       await DB.productos.upsert({
         id: p.id,
         nombre:      fd.get('nombre').trim(),
         categoria:   fd.get('categoria').trim(),
-        precio:      Number(fd.get('precio')),
+        precio,
         moneda:      fd.get('moneda'),
         descripcion: fd.get('descripcion').trim(),
+        variantes:   varsOk,
         foto,
       });
       cerrarModal();

@@ -119,6 +119,21 @@ const DB = (() => {
       return n;
     },
 
+    /* Catálogo publicado en Shopify (silvershine.com.do), agrupado por diseño */
+    async cargarCatalogoShopify() {
+      const resp = await fetch('catalogo-shopify.json');
+      if (!resp.ok) throw new Error('No se encontró catalogo-shopify.json');
+      const d = await resp.json();
+      const slug = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-');
+      const productos = (d.productos || []).map(p => ({
+        id: 'prod-shop-' + slug(p.nombre),
+        creado: new Date().toISOString(),
+        ...p,
+      }));
+      await save('productos', productos);
+      return productos.length;
+    },
+
     /* Respaldo completo */
     async exportar() {
       const data = { version: 1, fecha: new Date().toISOString() };
