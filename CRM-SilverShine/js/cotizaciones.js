@@ -64,9 +64,6 @@ const Cotizaciones = (() => {
         </div>
         <span class="item-arrow">›</span>
       </div>`).join('');
-
-    cont.querySelectorAll('.item').forEach(el =>
-      el.addEventListener('click', () => detalle(el.dataset.id)));
   }
 
   /* ── Detalle ── */
@@ -290,6 +287,10 @@ const Cotizaciones = (() => {
     $('#btnNuevaCot').addEventListener('click', () => formulario());
     $('#buscarCot').addEventListener('input', e => { filtro = e.target.value.trim(); render(); });
     $('#filtroEstadoCot').addEventListener('change', e => { filtroEstado = e.target.value; render(); });
+    $('#listaCotizaciones').addEventListener('click', e => {
+      const item = e.target.closest('.item[data-id]');
+      if (item) detalle(item.dataset.id);
+    });
   }
 
   return { init, render, detalle };
