@@ -106,7 +106,7 @@
   async function cargarFormEmpresa() {
     const emp = await UI.getEmpresa();
     const f = $('#formEmpresa');
-    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
+    for (const campo of ['nombre', 'razon', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
       f[campo].value = emp[campo] || '';
     }
   }
@@ -114,7 +114,7 @@
     e.preventDefault();
     const fd = new FormData(e.target);
     const emp = { id: 'empresa' };
-    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
+    for (const campo of ['nombre', 'razon', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
       emp[campo] = String(fd.get(campo) || '').trim();
     }
     await DB.config.upsert(emp);
@@ -317,6 +317,9 @@
     let cambio = false;
     if (esVersionVieja) { emp.garantia = UI.EMPRESA_DEFECTO.garantia; cambio = true; }
     if (!emp.direccion) { emp.direccion = UI.EMPRESA_DEFECTO.direccion; cambio = true; }
+    if (!emp.razon) { emp.razon = UI.EMPRESA_DEFECTO.razon; cambio = true; }
+    if (!emp.rnc) { emp.rnc = UI.EMPRESA_DEFECTO.rnc; cambio = true; }
+    if (emp.pie && emp.pie.includes('@silvershine.rd')) { emp.pie = UI.EMPRESA_DEFECTO.pie; cambio = true; }
     if (cambio) await DB.config.upsert(emp);
   }
 

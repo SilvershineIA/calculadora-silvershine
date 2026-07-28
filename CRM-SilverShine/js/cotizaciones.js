@@ -274,9 +274,9 @@ const Cotizaciones = (() => {
     const t = c.moneda || 'DOP';
     const emp = await UI.getEmpresa();
     const datosEmp = [
+      [emp.razon, emp.rnc && 'RNC ' + emp.rnc].filter(Boolean).join(' · '),
       emp.direccion,
       [emp.telefono && 'Tel. ' + emp.telefono, emp.correo, emp.web].filter(Boolean).join(' · '),
-      emp.rnc && 'RNC: ' + emp.rnc,
     ].filter(Boolean).join('<br>');
     $('#printArea').innerHTML = `
       <div class="p-head">

@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=21">
+<link rel="stylesheet" href="css/app.css?v=22">
 </head>
 <body>
 
@@ -234,9 +234,12 @@
         <h2>🏢 Empresa y factura</h2>
         <form id="formEmpresa">
           <div class="row">
-            <div><label>Nombre</label><input name="nombre"></div>
-            <div><label>RNC</label><input name="rnc" placeholder="opcional"></div>
+            <div><label>Nombre comercial</label><input name="nombre"></div>
+            <div><label>Razón social (va en la factura)</label><input name="razon"></div>
           </div>
+          <div class="row"><div>
+            <label>RNC</label><input name="rnc">
+          </div></div>
           <div class="row"><div>
             <label>Dirección</label><input name="direccion" placeholder="Calle, sector, ciudad">
           </div></div>
@@ -328,16 +331,16 @@
 <!-- Área de impresión de facturas -->
 <div id="printArea"></div>
 
-<script src="js/db.js?v=21"></script>
-<script src="js/sync.js?v=21"></script>
-<script src="js/ui.js?v=21"></script>
-<script src="js/clientes.js?v=21"></script>
-<script src="js/catalogo.js?v=21"></script>
-<script src="js/calculadora.js?v=21"></script>
-<script src="js/facturas.js?v=21"></script>
-<script src="js/cotizaciones.js?v=21"></script>
-<script src="js/cobros.js?v=21"></script>
-<script src="js/tareas.js?v=21"></script>
-<script src="js/app.js?v=21"></script>
+<script src="js/db.js?v=22"></script>
+<script src="js/sync.js?v=22"></script>
+<script src="js/ui.js?v=22"></script>
+<script src="js/clientes.js?v=22"></script>
+<script src="js/catalogo.js?v=22"></script>
+<script src="js/calculadora.js?v=22"></script>
+<script src="js/facturas.js?v=22"></script>
+<script src="js/cotizaciones.js?v=22"></script>
+<script src="js/cobros.js?v=22"></script>
+<script src="js/tareas.js?v=22"></script>
+<script src="js/app.js?v=22"></script>
 </body>
 </html>
