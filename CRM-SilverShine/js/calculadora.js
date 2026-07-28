@@ -354,5 +354,5 @@ const Calculadora = (() => {
     if (!fetchHecho) { fetchHecho = true; fetchOro(); fetchTasa(); }
   }
 
-  return { init, abrir, render };
+  return { init, abrir, render, tasaActual: () => tasaNum() };
 })();

@@ -80,7 +80,7 @@ const UI = (() => {
     id: 'empresa',
     nombre: 'SilverShine',
     rnc: '',
-    direccion: '',
+    direccion: 'Plaza APH, 4to piso, local 25, Piantini, Santo Domingo',
     telefono: '829-956-6588',
     correo: 'Info@silvershinee.com',
     web: 'silvershine.com.do',
