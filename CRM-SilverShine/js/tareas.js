@@ -134,5 +134,5 @@ const Tareas = (() => {
     $('#btnNuevaTarea').addEventListener('click', () => formulario());
   }
 
-  return { init, render };
+  return { init, render, formulario };
 })();
