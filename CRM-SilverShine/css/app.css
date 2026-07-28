@@ -233,6 +233,11 @@ button:hover{filter:brightness(1.12)}
   padding:7px 2px;border-bottom:1px dashed var(--border);font-size:.9rem;
 }
 .abono-row span{color:var(--muted)}
+.nota-privada{
+  background:var(--panel2);border:1px dashed var(--muted);border-radius:9px;
+  padding:9px 12px;margin:10px 0;font-size:.85rem;color:var(--muted);
+  white-space:pre-wrap;
+}
 .deuda-banner{
   background:#FDF0EF;border:1px solid var(--red);color:var(--red);
   border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;
