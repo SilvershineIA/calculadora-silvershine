@@ -286,7 +286,7 @@ const Cotizaciones = (() => {
       <div class="p-nota">Esta cotización no es una factura. Precios sujetos a cambio después de la fecha de validez.</div>
       ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}
     `;
-    window.print();
+    await UI.imprimirArea();
   }
 
   function init() {

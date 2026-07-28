@@ -109,19 +109,24 @@ const Cobros = (() => {
     on('#coAbonar', () => Facturas.formAbono(f));
     on('#coVerFactura', () => Facturas.detalle(f.id));
 
-    const mensaje = () =>
-      `Hola ${f.clienteNombre}, le saluda SilverShine ✨\n` +
-      `Le recordamos con cariño su balance pendiente de ${fmtMoneda(f.saldo, t)} de la factura ${f.numero || ''}.` +
-      (f.proxCobro && f.proxCobro.monto ? `\nPróximo abono acordado: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}.` : '') +
-      `\nPuede pagar por transferencia, tarjeta o EasyPay. ¡Gracias!`;
+    const mensaje = emp =>
+      `Hola ${f.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
+      `Le recordamos con cariño su balance pendiente:\n` +
+      `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')}\n` +
+      `🔴 Pendiente: *${fmtMoneda(f.saldo, t)}*` +
+      (f.proxCobro && f.proxCobro.monto ? `\n📅 Próximo abono acordado: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}` : '') +
+      (emp.cuentas ? `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}` : '') +
+      `\n\nTambién puede pagar con tarjeta o EasyPay en la tienda. ¡Gracias!\n💎 ${emp.nombre} · ${emp.web}`;
 
-    on('#coWhatsApp', () => {
+    on('#coWhatsApp', async () => {
+      const emp = await UI.getEmpresa();
       const tel = cliente.telefono.replace(/\D/g, '');
       const num = tel.length === 10 ? '1' + tel : tel;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje())}`, '_blank');
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje(emp))}`, '_blank');
     });
-    on('#coCorreo', () => {
-      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent('Recordatorio de balance — SilverShine')}&body=${encodeURIComponent(mensaje())}`;
+    on('#coCorreo', async () => {
+      const emp = await UI.getEmpresa();
+      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(`Recordatorio de balance — ${emp.nombre}`)}&body=${encodeURIComponent(mensaje(emp).replace(/\*/g, ''))}`;
     });
 
     $('#formProx').addEventListener('submit', async e => {

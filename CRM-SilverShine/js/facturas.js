@@ -128,21 +128,35 @@ const Facturas = (() => {
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
     on('#fAbonar', () => formAbono(f));
     on('#fImprimir', () => imprimir(f, cliente));
-    on('#fWhatsApp', () => {
+
+    /* Mensaje de factura (WhatsApp usa *negritas*; el correo va sin asteriscos) */
+    const mensajeFactura = emp => {
+      const lineasTxt = f.lineas.map(l =>
+        `▪ ${l.descripcion}${l.cantidad > 1 ? ` ×${l.cantidad}` : ''} — ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n');
+      let msg = `Hola ${f.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
+        `🧾 *Factura ${f.orden ? '#' + f.orden : ''}*${f.ncf ? ` · NCF ${f.ncf}` : ''}\n` +
+        `📅 ${fmtFecha(f.fecha)}\n\n${lineasTxt}\n` +
+        (f.impuesto ? `▪ ITBIS — ${fmtMoneda(f.impuesto, t)}\n` : '') +
+        `\n💰 *Total: ${fmtMoneda(f.total, t)}*`;
+      if (f.saldo > 0.005) {
+        msg += `\n🔴 Balance pendiente: *${fmtMoneda(f.saldo, t)}*`;
+        if (emp.cuentas) msg += `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}`;
+      } else {
+        msg += `\n✅ Pagada — ¡gracias por su compra!`;
+      }
+      msg += `\n\n💎 ${emp.nombre} · ${emp.web}`;
+      return msg;
+    };
+    on('#fWhatsApp', async () => {
+      const emp = await UI.getEmpresa();
       const tel = cliente.telefono.replace(/\D/g, '');
       const num = tel.length === 10 ? '1' + tel : tel;
-      const msg = `Hola ${f.clienteNombre}, le saluda SilverShine ✨\nFactura ${f.numero}: ${fmtMoneda(f.total, t)}` +
-        (f.saldo > 0.005 ? `\nBalance pendiente: ${fmtMoneda(f.saldo, t)}` : '\n¡Gracias por su compra!');
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeFactura(emp))}`, '_blank');
     });
-    on('#fCorreo', () => {
-      const asunto = `Factura ${f.numero} — SilverShine`;
-      const cuerpo = `Hola ${f.clienteNombre},\n\nAdjuntamos el detalle de su factura ${f.numero} del ${fmtFecha(f.fecha)}.\n\n` +
-        f.lineas.map(l => `· ${l.descripcion}: ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n') +
-        `\n\nTotal: ${fmtMoneda(f.total, t)}` +
-        (f.saldo > 0.005 ? `\nBalance pendiente: ${fmtMoneda(f.saldo, t)}` : '') +
-        `\n\nGracias por preferirnos.\nSilverShine · silvershine.com.do`;
-      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+    on('#fCorreo', async () => {
+      const emp = await UI.getEmpresa();
+      const asunto = `Factura ${f.orden ? '#' + f.orden : f.numero} — ${emp.nombre}`;
+      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensajeFactura(emp).replace(/\*/g, ''))}`;
     });
     on('#fEditar', () => formulario(f));
     on('#fAnular', async () => {
@@ -366,7 +380,7 @@ const Facturas = (() => {
       ${emp.garantia ? `<div class="p-garantia">${esc(emp.garantia)}</div>` : ''}
       ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}
     `;
-    window.print();
+    await UI.imprimirArea();
   }
 
   /* ── Eventos de la vista ── */
