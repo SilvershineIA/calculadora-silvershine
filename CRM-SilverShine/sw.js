@@ -1,19 +1,19 @@
-/* Service worker — CRM SilverShine (cache-first con actualización en segundo plano) */
-const CACHE = 'sscrm-v11';
+﻿/* Service worker — CRM SilverShine (cache-first con actualización en segundo plano) */
+const CACHE = 'sscrm-v12';
 const ARCHIVOS = [
   './',
   './index.html',
-  './css/app.css?v=11',
-  './js/db.js?v=11',
-  './js/sync.js?v=11',
-  './js/ui.js?v=11',
-  './js/clientes.js?v=11',
-  './js/catalogo.js?v=11',
-  './js/facturas.js?v=11',
-  './js/cotizaciones.js?v=11',
-  './js/cobros.js?v=11',
-  './js/tareas.js?v=11',
-  './js/app.js?v=11',
+  './css/app.css?v=12',
+  './js/db.js?v=12',
+  './js/sync.js?v=12',
+  './js/ui.js?v=12',
+  './js/clientes.js?v=12',
+  './js/catalogo.js?v=12',
+  './js/facturas.js?v=12',
+  './js/cotizaciones.js?v=12',
+  './js/cobros.js?v=12',
+  './js/tareas.js?v=12',
+  './js/app.js?v=12',
   './manifest.json',
   './logo.png',
   './icon-192.png',
