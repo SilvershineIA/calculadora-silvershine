@@ -519,5 +519,5 @@ const Facturas = (() => {
     });
   }
 
-  return { init, render, detalle, siguienteNumero, formAbono, formulario };
+  return { init, render, detalle, siguienteNumero, formAbono, formulario, cuotasConEstado };
 })();
