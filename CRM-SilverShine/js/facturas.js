@@ -349,23 +349,9 @@ const Facturas = (() => {
       </form>
     `);
 
-    /* Selector de cliente */
+    /* Selector de cliente (con creación rápida en el mismo campo) */
     const inpCli = $('#cliBuscar'), sug = $('#cliSugerencias');
-    inpCli.addEventListener('input', async () => {
-      clienteSel = null;
-      const q = inpCli.value.trim().toLowerCase();
-      if (q.length < 2) { sug.hidden = true; return; }
-      const todos = await DB.clientes.list();
-      const res = todos.filter(c => c.nombre.toLowerCase().includes(q)).slice(0, 6);
-      sug.innerHTML = res.map(c => `<div class="sug" data-id="${c.id}">${esc(c.nombre)}<span class="muted"> ${esc(c.telefono || '')}</span></div>`).join('') ||
-        '<div class="sug muted">Sin resultados — créalo primero en Clientes</div>';
-      sug.hidden = false;
-      sug.querySelectorAll('.sug[data-id]').forEach(el => el.addEventListener('click', async () => {
-        clienteSel = await DB.clientes.get(el.dataset.id);
-        inpCli.value = clienteSel.nombre;
-        sug.hidden = true;
-      }));
-    });
+    UI.buscadorCliente(inpCli, sug, c => { clienteSel = c; });
 
     /* Líneas */
     function pintarLineas() {
