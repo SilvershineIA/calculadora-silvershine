@@ -73,9 +73,6 @@ const Facturas = (() => {
         <span class="item-arrow">›</span>
       </div>`).join('') +
       (lista.length > vista.length ? `<p class="muted" style="text-align:center;padding:10px">Mostrando 150 de ${lista.length} — usa la búsqueda para encontrar más.</p>` : '');
-
-    cont.querySelectorAll('.item').forEach(el =>
-      el.addEventListener('click', () => detalle(el.dataset.id)));
   }
 
   /* ── Detalle ── */
@@ -356,6 +353,10 @@ const Facturas = (() => {
     $('#btnNuevaFactura').addEventListener('click', () => formulario());
     $('#buscarFactura').addEventListener('input', e => { filtro = e.target.value.trim(); render(); });
     $('#filtroEstadoFact').addEventListener('change', e => { filtroEstado = e.target.value; render(); });
+    $('#listaFacturas').addEventListener('click', e => {
+      const item = e.target.closest('.item[data-id]');
+      if (item) detalle(item.dataset.id);
+    });
   }
 
   return { init, render, detalle, siguienteNumero, formAbono };
