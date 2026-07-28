@@ -26,6 +26,16 @@ const Facturas = (() => {
     return 'B02' + String(max + 1).padStart(8, '0');
   }
 
+  /* Número de orden estilo Shopify (#1825…), continúa la secuencia de la tienda */
+  async function siguienteOrden() {
+    const lista = await DB.facturas.list();
+    let max = 1824;                       // última orden de Shopify antes del CRM
+    for (const f of lista) max = Math.max(max, Number(f.orden) || 0);
+    return max + 1;
+  }
+
+  const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+
   const totalDe = (lineas, conItbis) => {
     const sub = lineas.reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precio) || 0), 0);
     const imp = conItbis ? sub * ITBIS : 0;
@@ -66,7 +76,7 @@ const Facturas = (() => {
       <div class="item" data-id="${f.id}">
         <div class="item-info">
           <div class="item-name">${esc(f.clienteNombre)} ${badge(f)}</div>
-          <div class="item-sub">${esc(f.numero || 's/n')} · ${fmtFecha(f.fecha)} · ${fmtMoneda(f.total, f.moneda)}${
+          <div class="item-sub">${f.orden ? '#' + f.orden + ' · ' : ''}${esc(f.numero || 's/n')} · ${fmtFecha(f.fecha)} · ${fmtMoneda(f.total, f.moneda)}${
             f.estado === 'pendiente' && f.saldo > 0 && f.saldo < f.total
               ? ` · <b class="rojo">debe ${fmtMoneda(f.saldo, f.moneda)}</b>` : ''}</div>
         </div>
@@ -83,10 +93,10 @@ const Facturas = (() => {
     const t = f.moneda || 'DOP';
     const abonado = f.total - f.saldo;
 
-    abrirModal(`Factura ${f.numero || 's/n'}`, `
+    abrirModal(`Factura ${rotulo(f)}`, `
       <div class="fact-head">
         <div><b>${esc(f.clienteNombre)}</b> ${badge(f)}<br>
-        <span class="muted">${fmtFecha(f.fecha)}${f.ncf ? ' · NCF: ' + esc(f.ncf) : ''}</span></div>
+        <span class="muted">${fmtFecha(f.fecha)}${f.orden && f.numero ? ' · ' + esc(f.numero) : ''}${f.ncf && !f.orden ? ' · NCF: ' + esc(f.ncf) : ''}</span></div>
       </div>
       <table class="fact-lineas">
         ${f.lineas.map(l => `<tr>
@@ -195,7 +205,10 @@ const Facturas = (() => {
           <div id="cliSugerencias" class="sugerencias" hidden></div>
         </div></div>
         <div class="row">
+          <div><label>Orden #</label><input name="orden" type="number" min="1" value="${f.orden || await siguienteOrden()}"></div>
           <div><label>Número (NCF)</label><input name="numero" value="${esc(numero)}"></div>
+        </div>
+        <div class="row">
           <div><label>Fecha</label><input name="fecha" type="date" value="${f.fecha || new Date().toISOString().slice(0, 10)}"></div>
         </div>
         <div class="row">
@@ -299,6 +312,7 @@ const Facturas = (() => {
       const numeroF = fd.get('numero').trim();
       await DB.facturas.upsert({
         id: f.id,
+        orden: Number(fd.get('orden')) || null,
         numero: numeroF,
         ncf: numeroF.startsWith('B') ? numeroF : '',
         clienteId: clienteSel.id,
@@ -320,17 +334,23 @@ const Facturas = (() => {
   }
 
   /* ── Imprimir ── */
-  function imprimir(f, cliente) {
+  async function imprimir(f, cliente) {
     const t = f.moneda || 'DOP';
     const abonado = f.total - f.saldo;
+    const emp = await UI.getEmpresa();
+    const datosEmp = [
+      emp.direccion,
+      [emp.telefono && 'Tel. ' + emp.telefono, emp.correo, emp.web].filter(Boolean).join(' · '),
+      emp.rnc && 'RNC: ' + emp.rnc,
+    ].filter(Boolean).join('<br>');
     $('#printArea').innerHTML = `
       <div class="p-head">
-        <img src="logo.png" class="p-logo" alt="SilverShine">
-        <div class="p-sub">Joyería · silvershine.com.do</div>
+        <img src="logo.png" class="p-logo" alt="${esc(emp.nombre)}">
+        ${datosEmp ? `<div class="p-empresa">${datosEmp}</div>` : ''}
       </div>
       <div class="p-meta">
-        <div><b>${f.estado === 'anulada' ? 'FACTURA ANULADA' : 'FACTURA'}</b> ${esc(f.numero || '')}<br>
-        ${f.ncf ? `NCF: ${esc(f.ncf)}<br>` : ''}Fecha: ${fmtFecha(f.fecha)}</div>
+        <div><b>${f.estado === 'anulada' ? 'FACTURA ANULADA' : 'FACTURA'} ${f.orden ? '#' + f.orden : ''}</b><br>
+        ${f.numero ? `${f.ncf ? 'NCF: ' : 'No.: '}${esc(f.numero)}<br>` : ''}Fecha: ${fmtFecha(f.fecha)}</div>
         <div style="text-align:right"><b>${esc(f.clienteNombre)}</b><br>
         ${cliente && cliente.telefono ? esc(cliente.telefono) + '<br>' : ''}${cliente && cliente.correo ? esc(cliente.correo) : ''}</div>
       </div>
@@ -343,7 +363,8 @@ const Facturas = (() => {
       <div class="p-total"><span>TOTAL</span><span>${fmtMoneda(f.total, t)}</span></div>
       ${abonado > 0.005 ? `<div class="p-saldo">Abonado: ${fmtMoneda(abonado, t)} · <b>Pendiente: ${fmtMoneda(f.saldo, t)}</b></div>` : ''}
       ${f.notas ? `<div class="p-nota">${esc(f.notas)}</div>` : ''}
-      <div class="p-pie">Gracias por preferir SilverShine ✦ Instagram @silvershine.rd</div>
+      ${emp.garantia ? `<div class="p-garantia">${esc(emp.garantia)}</div>` : ''}
+      ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}
     `;
     window.print();
   }

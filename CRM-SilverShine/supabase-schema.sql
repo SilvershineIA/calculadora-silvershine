@@ -9,6 +9,7 @@ create table if not exists facturas     (id text primary key, data jsonb not nul
 create table if not exists pagos        (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists cotizaciones (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists tareas       (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+create table if not exists config       (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 
 -- Mantener updated_at al día
 create or replace function touch_updated_at() returns trigger as $$

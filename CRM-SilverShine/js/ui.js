@@ -73,5 +73,22 @@ const UI = (() => {
     });
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto };
+  /* ── Datos de la empresa (editables en Ajustes, con valores por defecto) ── */
+  const EMPRESA_DEFECTO = {
+    id: 'empresa',
+    nombre: 'SilverShine',
+    rnc: '',
+    direccion: '',
+    telefono: '829-956-6588',
+    correo: 'Info@silvershinee.com',
+    web: 'silvershine.com.do',
+    garantia: 'GARANTÍA: Sus prendas cuentan con garantía de fabricación de 6 meses, que cubre defectos de manufactura (soldaduras, engastes, cierres y baño). No cubre desgaste natural, golpes, maltrato, contacto con químicos o perfumes, ni pérdida de piedras por uso. Cambios y ajustes de talla dentro de los primeros 30 días presentando esta factura, con la pieza sin uso y en su empaque. Las piezas personalizadas no tienen cambio.',
+    pie: 'Gracias por preferir SilverShine ✦ silvershine.com.do · Instagram @silvershine.rd',
+  };
+  async function getEmpresa() {
+    const guardada = await DB.config.get('empresa');
+    return { ...EMPRESA_DEFECTO, ...(guardada || {}) };
+  }
+
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO };
 })();

@@ -13,7 +13,7 @@
     cobros:       () => Cobros.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
-    ajustes:      () => pintarEstadoNube(),
+    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); },
   };
 
   function irA(nombre) {
@@ -100,6 +100,44 @@
     }
     e.target.value = '';
   });
+
+  /* ── Empresa y factura ── */
+  async function cargarFormEmpresa() {
+    const emp = await UI.getEmpresa();
+    const f = $('#formEmpresa');
+    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie']) {
+      f[campo].value = emp[campo] || '';
+    }
+  }
+  $('#formEmpresa').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const emp = { id: 'empresa' };
+    for (const campo of ['nombre', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie']) {
+      emp[campo] = String(fd.get(campo) || '').trim();
+    }
+    await DB.config.upsert(emp);
+    toast('Datos de empresa guardados');
+  });
+
+  /* ── Migración única: asignar orden #1825…#1839 a las facturas
+        posteriores al corte de Shopify (#1824, 16 jul 2026) ── */
+  async function migrarOrdenes() {
+    // Idempotente: verifica el rango histórico completo y corrige lo que falte.
+    // Solo toca facturas importadas de QuickBooks entre el corte de Shopify
+    // (#1824, 16 jul) y el fin de la importación (27 jul); nunca las nuevas.
+    const facts = await DB.facturas.list();
+    const objetivo = facts
+      .filter(f => f.origen === 'quickbooks' && f.estado !== 'anulada' &&
+                   (f.fecha || '') > '2026-07-16' && (f.fecha || '') <= '2026-07-27')
+      .sort((a, b) => ((a.fecha || '') + (a.numero || '')).localeCompare((b.fecha || '') + (b.numero || '')));
+    let n = 1825, corregidas = 0;
+    for (const f of objetivo) {
+      if (f.orden !== n) { f.orden = n; await DB.facturas.upsert(f); corregidas++; }
+      n++;
+    }
+    if (corregidas) console.info(`Órdenes corregidas: ${corregidas} (hasta #${n - 1})`);
+  }
 
   /* ── Nube (Supabase) ── */
   function pintarEstadoNube(msj) {
@@ -267,8 +305,12 @@
     } catch { /* enlace inválido: se ignora */ }
   }
 
-  // Al abrir: vaciar cambios pendientes y bajar lo último de la nube
-  Sync.alAbrir().then(ok => { if (ok) { renderPanel(); pintarEstadoNube(); } });
+  // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
+  Sync.alAbrir().then(async ok => {
+    await migrarOrdenes();
+    if (ok) pintarEstadoNube();
+    renderPanel();
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -5,7 +5,7 @@
    El mismo API async se conecta a Supabase vía sync.js.
    ═══════════════════════════════════════════════════════════ */
 const DB = (() => {
-  const NOMBRES = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas'];
+  const NOMBRES = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas', 'config'];
 
   /* ── IndexedDB: base 'sscrm' con un almacén 'col' (nombre → arreglo) ── */
   let _db = null;
