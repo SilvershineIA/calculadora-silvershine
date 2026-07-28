@@ -151,7 +151,8 @@ const Cotizaciones = (() => {
         `${lineasTxt}\n` +
         `${c.peso ? `⚖️ Peso aprox.: ${c.peso} g\n` : ''}\n` +
         `💰 *Precio: ${precioTxt}*\n\n` +
-        `Si lo prefiere, podemos ajustar el peso de la pieza para llevarla a su presupuesto — solo díganos 😊\n\n` +
+        `Si lo prefiere, podemos ajustar el peso de la pieza para llevarla a su presupuesto — solo díganos 😊\n` +
+        `⚠️ Tome en cuenta: reducir el peso puede restarle integridad estructural a la pieza y podría invalidar la garantía de por vida.\n\n` +
         `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
         `${emp.direccion ? '📍 ' + emp.direccion + '\n' : ''}📞 ${emp.telefono} · ${emp.web}`;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -216,7 +217,7 @@ const Cotizaciones = (() => {
     let lineas = c.lineas ? c.lineas.map(l => ({ ...l })) : [{ descripcion: '', cantidad: 1, precio: '' }];
     let clienteSel = c.clienteId ? await DB.clientes.get(c.clienteId) : null;
 
-    const en14dias = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+    const en5dias = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
 
     abrirModal(esNueva ? 'Nueva cotización' : `Editar COT-${c.numero}`, `
       <form id="formCot">
@@ -230,7 +231,7 @@ const Cotizaciones = (() => {
           <div><label>Fecha</label><input name="fecha" type="date" value="${c.fecha || new Date().toISOString().slice(0, 10)}"></div>
         </div>
         <div class="row">
-          <div><label>Válida hasta</label><input name="vence" type="date" value="${c.vence || en14dias}"></div>
+          <div><label>Válida hasta</label><input name="vence" type="date" value="${c.vence || en5dias}"></div>
           <div><label>Moneda</label>
             <select name="moneda">
               <option value="DOP" ${c.moneda !== 'USD' ? 'selected' : ''}>RD$ (DOP)</option>
