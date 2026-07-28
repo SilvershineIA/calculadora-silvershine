@@ -34,15 +34,32 @@ const Cobros = (() => {
     const lista = await pendientes();
 
     const total = lista.reduce((s, f) => s + f.saldo, 0);
+    const easy = lista.filter(f => f.planPago);
+    const resto = lista.filter(f => !f.planPago);
+
+    // Métricas globales (incluyen EasyPay)
+    const vencidosTotal = lista.filter(f => clasificar(f) === 'vencido').length;
+    const proximosTotal = lista.filter(f => clasificar(f) === 'proximo').length;
+
+    // Secciones generales solo con las facturas sin plan
     const grupos = { vencido: [], proximo: [], despues: [] };
-    for (const f of lista) grupos[clasificar(f)].push(f);
-    const ordenar = arr => arr.sort((a, b) =>
-      ((a.proxCobro && a.proxCobro.fecha) || a.fecha || '').localeCompare((b.proxCobro && b.proxCobro.fecha) || b.fecha || ''));
+    for (const f of resto) grupos[clasificar(f)].push(f);
+    const fechaDe = f => (f.proxCobro && f.proxCobro.fecha) || f.fecha || '';
+    const ordenar = arr => arr.sort((a, b) => fechaDe(a).localeCompare(fechaDe(b)));
     Object.values(grupos).forEach(ordenar);
 
+    // EasyPay: vencidos primero, luego por fecha de próxima cuota
+    easy.sort((a, b) => {
+      const va = clasificar(a) === 'vencido' ? 0 : 1;
+      const vb = clasificar(b) === 'vencido' ? 0 : 1;
+      return va - vb || fechaDe(a).localeCompare(fechaDe(b));
+    });
+    const easySaldo = easy.reduce((s, f) => s + f.saldo, 0);
+
     $('#cobrosResumen').innerHTML = `
-      <div class="stat"><div class="n rojo">${grupos.vencido.length}</div><div class="l">Vencidos</div></div>
-      <div class="stat"><div class="n">${grupos.proximo.length}</div><div class="l">Próximos 7 días</div></div>
+      <div class="stat"><div class="n rojo">${vencidosTotal}</div><div class="l">Vencidos</div></div>
+      <div class="stat"><div class="n">${proximosTotal}</div><div class="l">Próximos 7 días</div></div>
+      <div class="stat"><div class="n">${easy.length}</div><div class="l">Planes EasyPay</div></div>
       <div class="stat"><div class="n">${fmtMoneda(total)}</div><div class="l">Total en la calle</div></div>
     `;
 
@@ -51,20 +68,35 @@ const Cobros = (() => {
       return;
     }
 
+    const fila = (f, cls, extraSub) => `
+      <div class="item cobro" data-id="${f.id}">
+        <div class="item-info">
+          <div class="item-name">${esc(f.clienteNombre)}</div>
+          <div class="item-sub">${extraSub}</div>
+        </div>
+        <b class="${cls === 'rojo' ? 'rojo' : ''}">${fmtMoneda(f.saldo, f.moneda)}</b>
+      </div>`;
+
     const seccion = (titulo, arr, cls) => !arr.length ? '' : `
       <h3 class="sub-h ${cls}">${titulo} (${arr.length})</h3>
-      ${arr.map(f => `
-        <div class="item cobro" data-id="${f.id}">
-          <div class="item-info">
-            <div class="item-name">${esc(f.clienteNombre)}</div>
-            <div class="item-sub">${esc(f.numero || 's/n')} · factura del ${fmtFecha(f.fecha)}${
-              f.proxCobro && f.proxCobro.fecha ? ` · <b>cobrar ${fmtFecha(f.proxCobro.fecha)}${
-                f.proxCobro.monto ? ' (' + fmtMoneda(f.proxCobro.monto, f.moneda) + ')' : ''}</b>` : ''}</div>
-          </div>
-          <b class="${cls === 'rojo' ? 'rojo' : ''}">${fmtMoneda(f.saldo, f.moneda)}</b>
-        </div>`).join('')}`;
+      ${arr.map(f => fila(f, cls,
+        `${esc(f.numero || 's/n')} · factura del ${fmtFecha(f.fecha)}${
+          f.proxCobro && f.proxCobro.fecha ? ` · <b>cobrar ${fmtFecha(f.proxCobro.fecha)}${
+            f.proxCobro.monto ? ' (' + fmtMoneda(f.proxCobro.monto, f.moneda) + ')' : ''}</b>` : ''}`)).join('')}`;
+
+    const seccionEasy = !easy.length ? '' : `
+      <h3 class="sub-h">📅 Planes EasyPay (${easy.length}) · ${fmtMoneda(easySaldo)} por cobrar</h3>
+      ${easy.map(f => {
+        const cuotas = Facturas.cuotasConEstado(f);
+        const cubiertas = cuotas.filter(c => c.cubierta).length;
+        const vencido = clasificar(f) === 'vencido';
+        return fila(f, vencido ? 'rojo' : '',
+          `${vencido ? '🔴' : '🟢'} Cuota ${Math.min(cubiertas + 1, cuotas.length)}/${cuotas.length}${
+            f.proxCobro && f.proxCobro.fecha ? ` · <b>cobrar ${fmtFecha(f.proxCobro.fecha)} (${fmtMoneda(f.proxCobro.monto, f.moneda)})</b>` : ''} · ${esc(f.numero || 's/n')}`);
+      }).join('')}`;
 
     cont.innerHTML =
+      seccionEasy +
       seccion('🔴 Vencidos', grupos.vencido, 'rojo') +
       seccion('🟡 Próximos 7 días', grupos.proximo, '') +
       seccion('⚪ Más adelante', grupos.despues, '');
