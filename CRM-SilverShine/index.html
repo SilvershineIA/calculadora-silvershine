@@ -39,8 +39,8 @@
       <h1 class="view-title">Panel</h1>
       <div class="stat-grid" id="panelStats"></div>
       <div class="card">
-        <h2>Próximamente aquí</h2>
-        <p class="muted">Cuando activemos facturación verás: cobros vencidos, facturas recientes y el total facturado del mes.</p>
+        <h2>Cobros pendientes más antiguos</h2>
+        <div id="panelPendientes" class="list"></div>
       </div>
     </section>
 
@@ -69,8 +69,21 @@
 
     <!-- ══════════ MÓDULOS FUTUROS ══════════ -->
     <section class="view" data-view="facturas">
-      <h1 class="view-title">Facturas</h1>
-      <div class="card pronto"><span>🧾</span><h2>Se activa en la Fase 2</h2><p class="muted">Facturación con abonos, NCF opcional y DOP/USD.</p></div>
+      <div class="view-head">
+        <h1 class="view-title">Facturas</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaFactura">+ Nueva factura</button>
+      </div>
+      <div class="stat-grid" id="factResumen"></div>
+      <div class="filter-row">
+        <input type="search" id="buscarFactura" class="search" placeholder="Buscar por número o cliente…">
+        <select id="filtroEstadoFact">
+          <option value="">Todas</option>
+          <option value="pendiente">Pendientes</option>
+          <option value="pagada">Pagadas</option>
+          <option value="anulada">Anuladas</option>
+        </select>
+      </div>
+      <div id="listaFacturas" class="list"></div>
     </section>
     <section class="view" data-view="cotizaciones">
       <h1 class="view-title">Cotizaciones</h1>
@@ -98,6 +111,11 @@
         </div>
       </div>
       <div class="card">
+        <h2>QuickBooks</h2>
+        <p class="muted" style="margin-bottom:12px">Carga el histórico exportado de QuickBooks: clientes, facturas, pagos y cotizaciones. Reemplaza los datos actuales de este dispositivo.</p>
+        <button class="btn-gold" id="btnCargarQB">📥 Cargar datos de QuickBooks</button>
+      </div>
+      <div class="card">
         <h2>Acerca de</h2>
         <p class="muted">CRM SilverShine · Fase 1<br>silvershine.com.do</p>
       </div>
@@ -119,10 +137,14 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- Área de impresión de facturas -->
+<div id="printArea"></div>
+
 <script src="js/db.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/clientes.js"></script>
 <script src="js/catalogo.js"></script>
+<script src="js/facturas.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

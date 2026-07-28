@@ -6,8 +6,11 @@
    ═══════════════════════════════════════════════════════════ */
 const DB = (() => {
   const K = {
-    clientes:  'sscrm_clientes',
-    productos: 'sscrm_productos',
+    clientes:     'sscrm_clientes',
+    productos:    'sscrm_productos',
+    facturas:     'sscrm_facturas',
+    pagos:        'sscrm_pagos',
+    cotizaciones: 'sscrm_cotizaciones',
   };
 
   const load = k => {
@@ -46,8 +49,28 @@ const DB = (() => {
   });
 
   return {
-    clientes:  coll(K.clientes),
-    productos: coll(K.productos),
+    clientes:     coll(K.clientes),
+    productos:    coll(K.productos),
+    facturas:     coll(K.facturas),
+    pagos:        coll(K.pagos),
+    cotizaciones: coll(K.cotizaciones),
+
+    /* Carga inicial de los datos históricos de QuickBooks */
+    async cargarQuickBooks() {
+      const resp = await fetch('datos-quickbooks.json');
+      if (!resp.ok) throw new Error('No se encontró datos-quickbooks.json');
+      const d = await resp.json();
+      save(K.clientes, d.clientes || []);
+      save(K.facturas, d.facturas || []);
+      save(K.pagos, d.pagos || []);
+      save(K.cotizaciones, d.cotizaciones || []);
+      return {
+        clientes: (d.clientes || []).length,
+        facturas: (d.facturas || []).length,
+        pagos: (d.pagos || []).length,
+        cotizaciones: (d.cotizaciones || []).length,
+      };
+    },
 
     /* Respaldo completo */
     async exportar() {

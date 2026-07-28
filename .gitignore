@@ -1,2 +1,7 @@
 # Configuración local de Claude Code (específica de cada máquina)
 .claude/
+
+# Datos de clientes de SilverShine (privados, no publicar)
+CRM-SilverShine/*.xls
+CRM-SilverShine/*.xlsx
+CRM-SilverShine/datos-quickbooks.json

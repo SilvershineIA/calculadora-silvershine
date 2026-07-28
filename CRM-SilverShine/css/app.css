@@ -203,6 +203,50 @@ button:hover{filter:brightness(1.12)}
 }
 .foto-drop img{max-width:100%;max-height:160px;border-radius:8px;display:block;margin:0 auto 6px}
 
+/* ── Facturas ── */
+.badge{
+  display:inline-block;font-size:.68rem;font-weight:600;
+  padding:2px 9px;border-radius:100px;text-transform:uppercase;letter-spacing:.5px;
+  vertical-align:middle;margin-left:6px;
+}
+.b-pend{background:#FDF3E3;color:#9a6a00;border:1px solid #eBd5a8}
+.b-pag{background:#E8F3E9;color:var(--green);border:1px solid #bfdec2}
+.b-anu{background:#F3F3F3;color:var(--muted);border:1px solid var(--border)}
+.rojo{color:var(--red)}
+.verde{color:var(--green)}
+.dorado{color:var(--gold-bright)}
+.fact-head{margin-bottom:14px;line-height:1.5}
+.fact-lineas{width:100%;border-collapse:collapse;font-size:.93rem;margin-bottom:10px}
+.fact-lineas td{padding:7px 4px;border-top:1px solid var(--border)}
+.fact-lineas .num{text-align:right;white-space:nowrap}
+.fact-lineas .fact-total td{font-weight:700;border-top:2px solid var(--gold)}
+.sub-h{font-size:.85rem;color:var(--gold-bright);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px}
+.abono-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:7px 2px;border-bottom:1px dashed var(--border);font-size:.9rem;
+}
+.abono-row span{color:var(--muted)}
+.deuda-banner{
+  background:#FDF0EF;border:1px solid var(--red);color:var(--red);
+  border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;
+}
+.linea-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+.linea-row input:nth-child(1){flex:3}
+.linea-row input:nth-child(2){flex:0 0 62px;text-align:center}
+.linea-row input:nth-child(3){flex:0 0 105px;text-align:right}
+.fact-preview{
+  background:var(--rose-soft);border-radius:9px;padding:10px 14px;
+  font-size:.9rem;margin:10px 0 12px;text-align:right;
+}
+.sugerencias{
+  position:relative;background:var(--panel);border:1px solid var(--gold);
+  border-radius:9px;margin-top:4px;max-height:210px;overflow-y:auto;
+  box-shadow:0 4px 12px rgba(52,61,72,.12);
+}
+.sug{padding:9px 12px;cursor:pointer;font-size:.92rem;border-bottom:1px solid var(--border)}
+.sug:last-child{border-bottom:none}
+.sug:hover{background:var(--rose-soft)}
+
 /* ── Toast ── */
 .toast{
   position:fixed;bottom:calc(var(--nav-h) + 20px);left:50%;transform:translateX(-50%);
@@ -240,4 +284,32 @@ button:hover{filter:brightness(1.12)}
   .filter-row select{width:100%}
   .prod-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .modal{max-height:84vh}
+}
+
+/* ── Impresión de facturas ── */
+#printArea{display:none}
+@media print{
+  body>*{display:none !important}
+  body{background:#fff !important;padding:0}
+  #printArea{
+    display:block !important;color:#111;
+    font-family:Georgia,"Times New Roman",serif;
+    max-width:680px;margin:0 auto;padding:40px 30px;
+  }
+  #printArea .p-head{text-align:center;border-bottom:3px double #CF9B90;padding-bottom:16px;margin-bottom:22px}
+  #printArea .p-logo{width:260px;max-width:70%;height:auto;margin:0 auto 6px;display:block}
+  #printArea .p-sub{font-size:.85rem;color:#555;letter-spacing:3px;text-transform:uppercase}
+  #printArea .p-meta{display:flex;justify-content:space-between;font-size:.95rem;margin-bottom:20px;color:#333;line-height:1.6}
+  #printArea .p-tabla{width:100%;border-collapse:collapse;font-size:.95rem}
+  #printArea .p-tabla th{border-bottom:2px solid #333;text-align:left;padding:6px 4px;font-size:.8rem;text-transform:uppercase;letter-spacing:1px}
+  #printArea .p-tabla td{border-bottom:1px solid #ddd;padding:8px 4px}
+  #printArea .p-tabla .num{text-align:right;white-space:nowrap}
+  #printArea .p-total{
+    display:flex;justify-content:space-between;align-items:baseline;
+    margin-top:22px;padding:13px 12px;background:#F7ECE8;border:1px solid #CF9B90;
+    font-size:1.25rem;font-weight:bold;
+  }
+  #printArea .p-saldo{text-align:right;margin-top:10px;font-size:1rem;color:#bb171b}
+  #printArea .p-nota{margin-top:18px;font-size:.9rem;color:#555;font-style:italic}
+  #printArea .p-pie{margin-top:40px;text-align:center;font-size:.8rem;color:#777;border-top:1px solid #ddd;padding-top:12px}
 }

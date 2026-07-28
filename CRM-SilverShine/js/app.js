@@ -8,6 +8,7 @@
   const vistas = {
     clientes: () => Clientes.render(),
     catalogo: () => Catalogo.render(),
+    facturas: () => Facturas.render(),
     panel:    () => renderPanel(),
   };
 
@@ -22,14 +23,36 @@
 
   /* ── Panel ── */
   async function renderPanel() {
-    const clientes  = await DB.clientes.list();
-    const productos = await DB.productos.list();
+    const clientes = await DB.clientes.list();
+    const facturas = await DB.facturas.list();
+
+    const pendientes = facturas.filter(f => f.estado === 'pendiente' && f.saldo > 0);
+    const porCobrar = pendientes.reduce((s, f) => s + f.saldo, 0);
+    const mes = new Date().toISOString().slice(0, 7);
+    const facturadoMes = facturas
+      .filter(f => f.estado !== 'anulada' && (f.fecha || '').startsWith(mes))
+      .reduce((s, f) => s + f.total, 0);
+
     $('#panelStats').innerHTML = `
+      <div class="stat"><div class="n">${UI.fmtMoneda(porCobrar)}</div><div class="l">Por cobrar</div></div>
+      <div class="stat"><div class="n">${pendientes.length}</div><div class="l">Fact. pendientes</div></div>
+      <div class="stat"><div class="n">${UI.fmtMoneda(facturadoMes)}</div><div class="l">Facturado este mes</div></div>
       <div class="stat"><div class="n">${clientes.length}</div><div class="l">Clientes</div></div>
-      <div class="stat"><div class="n">${productos.length}</div><div class="l">Productos</div></div>
-      <div class="stat"><div class="n">—</div><div class="l">Por cobrar</div></div>
-      <div class="stat"><div class="n">—</div><div class="l">Mes facturado</div></div>
     `;
+
+    // Facturas pendientes más antiguas primero (las que urgen)
+    const urgentes = [...pendientes].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 6);
+    $('#panelPendientes').innerHTML = urgentes.length ? urgentes.map(f => `
+      <div class="item" data-id="${f.id}">
+        <div class="item-info">
+          <div class="item-name">${UI.esc(f.clienteNombre)}</div>
+          <div class="item-sub">${UI.esc(f.numero || 's/n')} · ${UI.fmtFecha(f.fecha)}</div>
+        </div>
+        <b class="rojo">${UI.fmtMoneda(f.saldo, f.moneda)}</b>
+      </div>`).join('')
+      : '<p class="muted">🎉 No hay facturas pendientes de cobro.</p>';
+    $('#panelPendientes').querySelectorAll('.item').forEach(el =>
+      el.addEventListener('click', () => Facturas.detalle(el.dataset.id)));
   }
 
   /* ── Ajustes: respaldo ── */
@@ -63,9 +86,22 @@
     e.target.value = '';
   });
 
+  /* ── Cargar histórico de QuickBooks ── */
+  $('#btnCargarQB').addEventListener('click', async () => {
+    if (!confirm('Esto carga el histórico de QuickBooks y REEMPLAZA los clientes, facturas, pagos y cotizaciones actuales de este dispositivo. ¿Continuar?')) return;
+    try {
+      const n = await DB.cargarQuickBooks();
+      toast(`Cargado: ${n.clientes} clientes, ${n.facturas} facturas, ${n.pagos} pagos, ${n.cotizaciones} cotizaciones`);
+      irA('panel');
+    } catch (err) {
+      toast('No se pudo cargar: ' + err.message);
+    }
+  });
+
   /* ── Arranque ── */
   Clientes.init();
   Catalogo.init();
+  Facturas.init();
   renderPanel();
 
   if ('serviceWorker' in navigator) {
