@@ -208,7 +208,9 @@ const Facturas = (() => {
     on('#fCorreo', async () => {
       const emp = await UI.getEmpresa();
       const asunto = `Factura ${f.orden ? '#' + f.orden : f.numero} — ${emp.nombre}`;
-      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensajeFactura(emp).replace(/\*/g, ''))}`;
+      toast('Generando el PDF de la factura…');
+      const modo = await PDFDoc.enviarPorCorreo('factura', f, cliente, mensajeFactura(emp).replace(/\*/g, ''), asunto);
+      if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
     });
     on('#fEditar', () => formulario(f));
     on('#fAnular', async () => {

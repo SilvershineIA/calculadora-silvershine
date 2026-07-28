@@ -91,6 +91,7 @@ const Cotizaciones = (() => {
       <div class="row" style="margin-top:10px">
         <button class="btn-ghost btn-block" id="cImprimir">🖨 Imprimir</button>
         ${cliente && cliente.telefono ? `<button class="btn-ghost btn-block" id="cWhatsApp">💬 WhatsApp</button>` : ''}
+        ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="cCorreo">✉️ Correo</button>` : ''}
       </div>
       ${abierta ? `
       <div class="row" style="margin-top:10px">
@@ -141,6 +142,17 @@ const Cotizaciones = (() => {
         `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
         `${emp.direccion ? '📍 ' + emp.direccion + '\n' : ''}📞 ${emp.telefono} · ${emp.web}`;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
+    });
+    on('#cCorreo', async () => {
+      const emp = await UI.getEmpresa();
+      const asunto = `Cotización COT-${c.numero} — ${emp.nombre}`;
+      const cuerpo = `Hola ${c.clienteNombre},\n\nGracias por su interés. Le adjuntamos su cotización COT-${c.numero}` +
+        `${c.vence ? `, válida hasta el ${fmtFecha(c.vence)}` : ''}.\n\n` +
+        `Si tiene alguna duda o le gustaría ajustar algo de la pieza, estamos a la orden para ayudarle con gusto.\n\n` +
+        `${emp.nombre} · ${emp.web}\n${emp.direccion || ''}\nTel. ${emp.telefono}`;
+      toast('Generando el PDF de la cotización…');
+      const modo = await PDFDoc.enviarPorCorreo('cotizacion', c, cliente, cuerpo, asunto);
+      if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
     });
     on('#cEditar', () => formulario(c));
     on('#cRechazar', async () => {
