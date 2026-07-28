@@ -13,6 +13,7 @@
     cobros:       () => Cobros.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
+    ajustes:      () => pintarEstadoNube(),
   };
 
   function irA(nombre) {
@@ -110,8 +111,10 @@
       el.innerHTML = `🟢 Conectado como <b>${info.email}</b>` +
         (pend ? ` · ${pend} cambio(s) esperando internet` : ' · todo sincronizado');
       $('#btnDesconectar').hidden = false;
+      $('#zonaReparar').hidden = false;
       $('#formNube').querySelectorAll('input').forEach(i => i.disabled = true);
     } else {
+      $('#zonaReparar').hidden = true;
       el.innerHTML = info
         ? '🟠 Sesión cerrada — vuelve a poner tu clave y presiona Conectar.'
         : '⚪ Sin conectar. Los datos solo viven en este dispositivo.';
@@ -140,13 +143,36 @@
         await Sync.subirTodo();
         toast('☁️ Datos subidos a la nube');
       } else if (nubeConDatos) {
-        if (!localConDatos || confirm('La nube ya tiene datos. ¿Descargarlos y usar esos aquí? (Recomendado)')) {
+        if (!localConDatos || confirm(
+          'La nube Y este dispositivo tienen datos distintos.\n\n' +
+          '· ACEPTAR: usar los de la NUBE (borra lo que ves en esta app).\n' +
+          '· CANCELAR: conservar los de ESTE dispositivo (luego usa "Reparar nube" en Ajustes para subirlos).')) {
           await Sync.bajarTodo();
           toast('☁️ Datos descargados de la nube');
+        } else if (confirm('¿Subir AHORA los datos de este dispositivo a la nube? (Reemplaza lo que hay allá — recomendado para que no se pierdan al reabrir la app.)')) {
+          pintarEstadoNube('Reparando la nube…');
+          await Sync.repararNube();
+          toast('☁️ Nube reparada con los datos de este dispositivo');
         }
       }
       e.target.password.value = '';
       pintarEstadoNube();
+      renderPanel();
+    } catch (err) {
+      pintarEstadoNube();
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
+    }
+  });
+
+  $('#btnRepararNube').addEventListener('click', async () => {
+    const clientes = (await DB.clientes.list()).length;
+    const facturas = (await DB.facturas.list()).length;
+    if (!confirm(`Esto BORRA todo lo que hay en la nube y sube lo de este dispositivo (${clientes} clientes, ${facturas} facturas).\n\n¿Continuar?`)) return;
+    try {
+      pintarEstadoNube('Reparando la nube…');
+      await Sync.repararNube();
+      pintarEstadoNube();
+      toast('☁️ Nube reparada');
       renderPanel();
     } catch (err) {
       pintarEstadoNube();

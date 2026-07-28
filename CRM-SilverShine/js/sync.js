@@ -123,6 +123,16 @@ const Sync = (() => {
     return Array.isArray(filas) && filas.length > 0;
   }
 
+  /* Reparación: borra TODO en la nube y sube lo de este dispositivo */
+  async function repararNube() {
+    for (const tabla of TABLAS) {
+      estadoUI(`Limpiando nube… ${tabla}`);
+      await rest('DELETE', `${tabla}?id=neq.__nunca__`);
+    }
+    cola.guardar([]);          // lo pendiente ya no aplica
+    await subirTodo();
+  }
+
   /* ── Cambios individuales (write-through) ── */
   function notificar(tabla, op, obj) {
     if (!cfg || !cfg.url) return;                 // nube no configurada
@@ -177,7 +187,7 @@ const Sync = (() => {
   }
 
   return {
-    login, conectado, subirTodo, bajarTodo, nubeTieneDatos,
+    login, conectado, subirTodo, bajarTodo, nubeTieneDatos, repararNube,
     notificar, vaciarCola, alAbrir, desconectar,
     pendientes: () => cola.leer().length,
     info: () => cfg ? { url: cfg.url, email: cfg.email } : null,
