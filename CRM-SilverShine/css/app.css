@@ -258,6 +258,10 @@ button:hover{filter:brightness(1.12)}
 .sug{padding:9px 12px;cursor:pointer;font-size:.92rem;border-bottom:1px solid var(--border)}
 .sug:last-child{border-bottom:none}
 .sug:hover{background:var(--rose-soft)}
+.sug-nuevo{color:var(--gold-bright);font-weight:600}
+.sug-form{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.sug-form input{font-size:.9rem}
+.sug-form button{align-self:flex-start}
 
 /* ── Calculadora ── */
 .estado-linea{font-size:.8rem;margin-top:8px}

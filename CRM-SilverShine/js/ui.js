@@ -94,6 +94,53 @@ const UI = (() => {
     return { ...EMPRESA_DEFECTO, ...(guardada || {}) };
   }
 
+  /* ── Buscador de clientes con creación rápida en el mismo campo ──
+     Escribe → sugiere; si no existe → "➕ Crear cliente" abre un
+     mini-formulario en el propio desplegable, lo crea y lo selecciona. */
+  function buscadorCliente(inp, sug, alElegir) {
+    const elegir = c => {
+      inp.value = c.nombre;
+      sug.hidden = true;
+      alElegir(c);
+    };
+
+    const miniForm = nombre => {
+      sug.innerHTML = `
+        <div class="sug-form">
+          <input data-campo="nombre" placeholder="Nombre *" value="${esc(nombre)}">
+          <input data-campo="telefono" type="tel" placeholder="Teléfono (para WhatsApp)">
+          <input data-campo="correo" type="email" placeholder="Correo (opcional)">
+          <button type="button" class="btn-gold btn-sm" data-crear>➕ Crear y usar</button>
+        </div>`;
+      sug.querySelector('[data-campo="telefono"]').focus();
+      sug.querySelector('[data-crear]').addEventListener('click', async () => {
+        const v = campo => sug.querySelector(`[data-campo="${campo}"]`).value.trim();
+        if (!v('nombre')) { toast('Ponle el nombre al cliente'); return; }
+        const nuevo = await DB.clientes.upsert({
+          nombre: v('nombre'), telefono: v('telefono'), correo: v('correo'),
+          direccion: '', notas: '',
+        });
+        toast(`👤 Cliente "${nuevo.nombre}" creado`);
+        elegir(nuevo);
+      });
+    };
+
+    inp.addEventListener('input', async () => {
+      alElegir(null);
+      const q = inp.value.trim();
+      if (q.length < 2) { sug.hidden = true; return; }
+      const todos = await DB.clientes.list();
+      const res = todos.filter(c => c.nombre.toLowerCase().includes(q.toLowerCase())).slice(0, 6);
+      sug.innerHTML =
+        res.map(c => `<div class="sug" data-id="${c.id}">${esc(c.nombre)}<span class="muted"> ${esc(c.telefono || '')}</span></div>`).join('') +
+        `<div class="sug sug-nuevo" data-nuevo>➕ Crear cliente "${esc(q)}"</div>`;
+      sug.hidden = false;
+      sug.querySelectorAll('.sug[data-id]').forEach(el =>
+        el.addEventListener('click', async () => elegir(await DB.clientes.get(el.dataset.id))));
+      sug.querySelector('[data-nuevo]').addEventListener('click', () => miniForm(q));
+    });
+  }
+
   /* Imprimir el área de impresión esperando a que el logo cargue */
   async function imprimirArea() {
     const img = $('#printArea .p-logo');
@@ -103,5 +150,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente };
 })();
