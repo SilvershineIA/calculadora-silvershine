@@ -83,6 +83,7 @@ const Cobros = (() => {
     abrirModal(`Cobro — ${f.clienteNombre}`, `
       <div class="deuda-banner">Debe <b>${fmtMoneda(f.saldo, t)}</b> de ${fmtMoneda(f.total, t)} · ${esc(f.numero || 's/n')}</div>
       <p class="muted" style="margin-bottom:12px">Factura del ${fmtFecha(f.fecha)}.
+        ${f.planPago ? '📅 <b>Plan EasyPay</b> (' + esc(f.planPago.frecuencia) + '). ' : ''}
         ${f.proxCobro && f.proxCobro.fecha ? `Próximo cobro: <b>${fmtFecha(f.proxCobro.fecha)}</b>${f.proxCobro.monto ? ' por ' + fmtMoneda(f.proxCobro.monto, t) : ''}.` : 'Sin próximo cobro programado.'}</p>
 
       <button class="btn-gold btn-block" id="coAbonar">💵 Registrar abono</button>
@@ -114,7 +115,7 @@ const Cobros = (() => {
       `Le recordamos con cariño su balance pendiente:\n` +
       `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')}\n` +
       `🔴 Pendiente: *${fmtMoneda(f.saldo, t)}*` +
-      (f.proxCobro && f.proxCobro.monto ? `\n📅 Próximo abono acordado: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}` : '') +
+      (f.proxCobro && f.proxCobro.monto ? `\n📅 ${f.planPago ? 'Su cuota EasyPay' : 'Próximo abono acordado'}: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}` : '') +
       (emp.cuentas ? `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}` : '') +
       `\n\nTambién puede pagar con tarjeta o EasyPay en la tienda. ¡Gracias!\n💎 ${emp.nombre} · ${emp.web}`;
 

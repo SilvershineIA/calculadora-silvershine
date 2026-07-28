@@ -36,6 +36,51 @@ const Facturas = (() => {
 
   const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
 
+  /* ── Plan EasyPay: cuotas programadas ── */
+  function generarCuotas(total, inicial, n, frecuencia, primerFecha) {
+    const resto = Math.round((total - inicial) * 100) / 100;
+    const base = Math.floor(resto / n * 100) / 100;
+    const cuotas = [];
+    const fecha = new Date(primerFecha + 'T00:00:00');
+    let acum = 0;
+    for (let i = 0; i < n; i++) {
+      const monto = i === n - 1 ? Math.round((resto - acum) * 100) / 100 : base;
+      acum = Math.round((acum + monto) * 100) / 100;
+      cuotas.push({ fecha: fecha.toISOString().slice(0, 10), monto });
+      if (frecuencia === 'semanal') fecha.setDate(fecha.getDate() + 7);
+      else if (frecuencia === 'quincenal') fecha.setDate(fecha.getDate() + 15);
+      else fecha.setMonth(fecha.getMonth() + 1);
+    }
+    return cuotas;
+  }
+
+  /* Poner proxCobro en la siguiente cuota no cubierta (según lo abonado) */
+  function actualizarProxCobro(f) {
+    if (!f.planPago || !f.planPago.cuotas) return;
+    const pagado = Math.round((f.total - f.saldo) * 100) / 100;
+    let acum = Number(f.planPago.inicial) || 0;
+    for (const c of f.planPago.cuotas) {
+      acum = Math.round((acum + c.monto) * 100) / 100;
+      if (acum > pagado + 0.005) {
+        f.proxCobro = { fecha: c.fecha, monto: Math.round((acum - pagado) * 100) / 100 };
+        return;
+      }
+    }
+    delete f.proxCobro;
+  }
+
+  /* Estado visual de cada cuota del plan */
+  function cuotasConEstado(f) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const pagado = Math.round((f.total - f.saldo) * 100) / 100;
+    let acum = Number(f.planPago.inicial) || 0;
+    return f.planPago.cuotas.map((c, i) => {
+      acum = Math.round((acum + c.monto) * 100) / 100;
+      const cubierta = acum <= pagado + 0.005;
+      return { ...c, num: i + 1, cubierta, vencida: !cubierta && c.fecha < hoy };
+    });
+  }
+
   const totalDe = (lineas, conItbis) => {
     const sub = lineas.reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precio) || 0), 0);
     const imp = conItbis ? sub * ITBIS : 0;
@@ -107,6 +152,13 @@ const Facturas = (() => {
         ${abonado > 0.005 ? `<tr><td class="verde">Abonado</td><td class="num verde">−${fmtMoneda(abonado, t)}</td></tr>` : ''}
         ${f.saldo > 0.005 ? `<tr class="fact-total"><td class="rojo">Pendiente</td><td class="num rojo">${fmtMoneda(f.saldo, t)}</td></tr>` : ''}
       </table>
+
+      ${f.planPago ? `
+        <h3 class="sub-h">📅 Plan EasyPay (${esc(f.planPago.frecuencia)})</h3>
+        ${f.planPago.inicial > 0 ? `<div class="abono-row"><span>Inicial</span><b class="verde">${fmtMoneda(f.planPago.inicial, t)} ✓</b></div>` : ''}
+        ${cuotasConEstado(f).map(c => `<div class="abono-row">
+          <span>${c.vencida ? '🔴' : c.cubierta ? '✅' : '•'} Cuota ${c.num} · ${fmtFecha(c.fecha)}</span>
+          <b class="${c.vencida ? 'rojo' : c.cubierta ? 'verde' : ''}">${fmtMoneda(c.monto, t)}</b></div>`).join('')}` : ''}
 
       ${f.abonos && f.abonos.length ? `
         <h3 class="sub-h">Abonos registrados</h3>
@@ -192,7 +244,8 @@ const Facturas = (() => {
       f.abonos = f.abonos || [];
       f.abonos.push({ fecha: fd.get('fecha'), monto, metodo: fd.get('metodo') });
       f.saldo = Math.round((f.saldo - monto) * 100) / 100;
-      if (f.saldo <= 0.005) { f.saldo = 0; f.estado = 'pagada'; }
+      if (f.saldo <= 0.005) { f.saldo = 0; f.estado = 'pagada'; delete f.proxCobro; }
+      else actualizarProxCobro(f);      // el plan EasyPay avanza a la siguiente cuota
       await DB.facturas.upsert(f);
       await DB.pagos.upsert({ clienteId: f.clienteId, clienteNombre: f.clienteNombre,
         fecha: fd.get('fecha'), monto, metodo: fd.get('metodo'), facturaId: f.id });
@@ -236,6 +289,31 @@ const Facturas = (() => {
               <option value="no" ${!f.impuesto ? 'selected' : ''}>Sin ITBIS</option>
               <option value="si" ${f.impuesto ? 'selected' : ''}>Agregar ITBIS</option>
             </select></div>
+        </div>
+
+        <div class="row"><div>
+          <label>Forma de pago</label>
+          <select name="formaPago" id="fpSelect">
+            <option value="inmediato" ${!f.planPago ? 'selected' : ''}>💵 Pago inmediato</option>
+            <option value="easypay" ${f.planPago ? 'selected' : ''}>📅 EasyPay — pagos programados</option>
+          </select>
+        </div></div>
+        <div id="easypayCampos" ${f.planPago ? '' : 'hidden'} style="background:var(--rose-soft);border-radius:10px;padding:12px;margin-bottom:12px">
+          <div class="row">
+            <div><label>Inicial</label><input name="epInicial" type="number" min="0" step="0.01" value="${f.planPago ? f.planPago.inicial : 0}"></div>
+            <div><label>Cuotas</label><input name="epCuotas" type="number" min="1" max="36" step="1" value="${f.planPago ? f.planPago.cuotas.length : 4}"></div>
+          </div>
+          <div class="row">
+            <div><label>Frecuencia</label>
+              <select name="epFrecuencia">
+                <option value="quincenal" ${!f.planPago || f.planPago.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal</option>
+                <option value="semanal" ${f.planPago && f.planPago.frecuencia === 'semanal' ? 'selected' : ''}>Semanal</option>
+                <option value="mensual" ${f.planPago && f.planPago.frecuencia === 'mensual' ? 'selected' : ''}>Mensual</option>
+              </select></div>
+            <div><label>Primer cobro</label><input name="epPrimera" type="date" value="${
+              f.planPago && f.planPago.cuotas[0] ? f.planPago.cuotas[0].fecha : new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10)}"></div>
+          </div>
+          <p class="muted" id="epPreview" style="margin-top:4px"></p>
         </div>
 
         <label style="margin-top:4px">Líneas</label>
@@ -301,6 +379,17 @@ const Facturas = (() => {
       const m = form.moneda.value;
       $('#factPreview').innerHTML =
         `Subtotal: <b>${fmtMoneda(sub, m)}</b>${imp ? ` · ITBIS: <b>${fmtMoneda(imp, m)}</b>` : ''} · Total: <b class="dorado">${fmtMoneda(total, m)}</b>`;
+      previewEasyPay(total, m);
+    }
+    function previewEasyPay(total, m) {
+      const form = $('#formFactura');
+      const el = $('#epPreview');
+      if (!el || form.formaPago.value !== 'easypay') return;
+      const inicial = Number(form.epInicial.value) || 0;
+      const n = Math.max(1, Math.round(Number(form.epCuotas.value) || 1));
+      if (total <= inicial) { el.textContent = 'La inicial cubre el total — no harían falta cuotas.'; return; }
+      const cuotas = generarCuotas(total, inicial, n, form.epFrecuencia.value, form.epPrimera.value);
+      el.textContent = `${inicial > 0 ? 'Inicial de ' + fmtMoneda(inicial, m) + ' + ' : ''}${n} cuota(s) de ~${fmtMoneda(cuotas[0].monto, m)} · última el ${fmtFecha(cuotas[cuotas.length - 1].fecha)}`;
     }
     $('#addLinea').addEventListener('click', () => { lineas.push({ descripcion: '', cantidad: 1, precio: '' }); pintarLineas(); });
     const selProd = $('#addProducto');
@@ -311,6 +400,12 @@ const Facturas = (() => {
     });
     $('#formFactura').moneda.addEventListener('change', preview);
     $('#formFactura').itbis.addEventListener('change', preview);
+    $('#fpSelect').addEventListener('change', e => {
+      $('#easypayCampos').hidden = e.target.value !== 'easypay';
+      preview();
+    });
+    ['epInicial', 'epCuotas', 'epFrecuencia', 'epPrimera'].forEach(nm =>
+      $('#formFactura')[nm].addEventListener('input', preview));
     pintarLineas();
 
     /* Guardar */
@@ -323,8 +418,10 @@ const Facturas = (() => {
         .filter(l => l.descripcion && l.precio > 0);
       if (!lineasOk.length) { toast('Agrega al menos una línea con precio'); return; }
       const { imp, total } = totalDe(lineasOk, fd.get('itbis') === 'si');
+      const totalR = Math.round(total * 100) / 100;
       const numeroF = fd.get('numero').trim();
-      await DB.facturas.upsert({
+
+      const nueva = {
         id: f.id,
         orden: Number(fd.get('orden')) || null,
         numero: numeroF,
@@ -335,12 +432,40 @@ const Facturas = (() => {
         moneda: fd.get('moneda'),
         lineas: lineasOk,
         impuesto: Math.round(imp * 100) / 100,
-        total: Math.round(total * 100) / 100,
-        saldo: f.id ? Math.round((total - (f.total - f.saldo)) * 100) / 100 : Math.round(total * 100) / 100,
+        total: totalR,
+        saldo: f.id ? Math.round((totalR - (f.total - f.saldo)) * 100) / 100 : totalR,
         estado: f.estado || 'pendiente',
         notas: fd.get('notas').trim(),
         abonos: f.abonos || [],
-      });
+      };
+
+      /* Plan EasyPay */
+      if (fd.get('formaPago') === 'easypay') {
+        const inicial = Math.min(Number(fd.get('epInicial')) || 0, totalR);
+        const n = Math.max(1, Math.round(Number(fd.get('epCuotas')) || 1));
+        nueva.planPago = {
+          tipo: 'easypay',
+          inicial,
+          frecuencia: fd.get('epFrecuencia'),
+          cuotas: totalR > inicial ? generarCuotas(totalR, inicial, n, fd.get('epFrecuencia'), fd.get('epPrimera')) : [],
+        };
+        // La inicial se registra como primer abono (solo al crear la factura)
+        if (esNueva && inicial > 0) {
+          nueva.abonos = [{ fecha: nueva.fecha, monto: inicial, metodo: 'EasyPay (inicial)' }];
+          nueva.saldo = Math.round((nueva.saldo - inicial) * 100) / 100;
+          if (nueva.saldo <= 0.005) { nueva.saldo = 0; nueva.estado = 'pagada'; }
+        }
+        actualizarProxCobro(nueva);
+      } else {
+        delete f.planPago;
+        delete nueva.planPago;
+      }
+
+      const guardada = await DB.facturas.upsert(nueva);
+      if (esNueva && nueva.abonos.length) {
+        await DB.pagos.upsert({ clienteId: nueva.clienteId, clienteNombre: nueva.clienteNombre,
+          fecha: nueva.fecha, monto: nueva.abonos[0].monto, metodo: 'EasyPay (inicial)', facturaId: guardada.id });
+      }
       cerrarModal();
       toast(esNueva ? `Factura ${numeroF} creada` : 'Factura actualizada');
       render();
