@@ -163,8 +163,8 @@ const Facturas = (() => {
           <b class="${c.vencida ? 'rojo' : c.cubierta ? 'verde' : ''}">${fmtMoneda(c.monto, t)}</b></div>`).join('')}` : ''}
 
       ${f.abonos && f.abonos.length ? `
-        <h3 class="sub-h">Abonos registrados</h3>
-        ${f.abonos.map(a => `<div class="abono-row"><span>${fmtFecha(a.fecha)} · ${esc(a.metodo)}</span><b>${fmtMoneda(a.monto, t)}</b></div>`).join('')}` : ''}
+        <h3 class="sub-h">Abonos registrados <span class="muted" style="text-transform:none;letter-spacing:0">· toca uno para su recibo 🧾</span></h3>
+        ${f.abonos.map((a, i) => `<div class="abono-row abono-click" data-abono="${i}" style="cursor:pointer"><span>🧾 ${fmtFecha(a.fecha)} · ${esc(a.metodo)}</span><b>${fmtMoneda(a.monto, t)}</b></div>`).join('')}` : ''}
 
       ${f.estado === 'pendiente' && f.saldo > 0.005 ? `<button class="btn-gold btn-block" id="fAbonar" style="margin:14px 0 6px">💵 Registrar abono</button>` : ''}
 
@@ -181,6 +181,8 @@ const Facturas = (() => {
     `);
 
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+    UI.$$('[data-abono]').forEach(el =>
+      el.addEventListener('click', () => reciboOpciones(f, Number(el.dataset.abono))));
     on('#fAbonar', () => formAbono(f));
     on('#fImprimir', () => imprimir(f, cliente));
     on('#fTarea', () => Tareas.formulario({
@@ -230,6 +232,91 @@ const Facturas = (() => {
     });
   }
 
+  /* ── Recibo de pago ── */
+  async function reciboOpciones(f, i) {
+    const abono = f.abonos[i];
+    if (!abono) return;
+    const cliente = f.clienteId ? await DB.clientes.get(f.clienteId) : null;
+    const t = f.moneda || 'DOP';
+    const numRec = `REC-${f.orden || f.numero || 's-n'}-${i + 1}`;
+    const abonado = Math.round((f.total - f.saldo) * 100) / 100;
+
+    abrirModal(`Recibo ${numRec}`, `
+      <div class="deuda-banner" style="background:#E8F3E9;border-color:var(--green);color:var(--green)">
+        ✅ Pago recibido: <b>${fmtMoneda(abono.monto, t)}</b>
+      </div>
+      <p class="muted" style="margin-bottom:14px;line-height:1.8">
+        ${fmtFecha(abono.fecha)} · ${esc(abono.metodo || 'pago')}<br>
+        Factura ${rotulo(f)}${f.orden && f.numero ? ' · ' + esc(f.numero) : ''} — ${esc(f.clienteNombre)}<br>
+        ${f.saldo > 0.005 ? `Balance restante: <b class="rojo">${fmtMoneda(f.saldo, t)}</b>` : '<b class="verde">Factura saldada 🎉</b>'}
+      </p>
+      <div class="row">
+        <button class="btn-ghost btn-block" id="rImprimir">🖨 Imprimir</button>
+        ${cliente && cliente.telefono ? '<button class="btn-ghost btn-block" id="rWhatsApp">💬 WhatsApp</button>' : ''}
+        ${cliente && cliente.correo ? '<button class="btn-ghost btn-block" id="rCorreo">✉️ Correo (PDF)</button>' : ''}
+      </div>
+      <button class="btn-ghost btn-block" id="rVolver" style="margin-top:10px">← Ver la factura</button>
+    `);
+
+    const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+    const mensajeRecibo = emp =>
+      `✅ *${emp.nombre} — Recibo de pago*\n${numRec} · ${fmtFecha(abono.fecha)}\n\n` +
+      `Hola ${f.clienteNombre}, confirmamos su pago:\n\n` +
+      `💵 *${fmtMoneda(abono.monto, t)}* (${abono.metodo || 'pago'})\n` +
+      `🧾 Factura ${rotulo(f)}: total ${fmtMoneda(f.total, t)} · abonado ${fmtMoneda(abonado, t)}\n` +
+      (f.saldo > 0.005 ? `🔴 Balance restante: *${fmtMoneda(f.saldo, t)}*` : `🎉 *Factura saldada — ¡muchas gracias!*`) +
+      `\n\n💎 ${emp.nombre} · ${emp.web}`;
+
+    on('#rImprimir', () => imprimirRecibo(f, abono, numRec));
+    on('#rWhatsApp', async () => {
+      const emp = await UI.getEmpresa();
+      const tel = cliente.telefono.replace(/\D/g, '');
+      const num = tel.length === 10 ? '1' + tel : tel;
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeRecibo(emp))}`, '_blank');
+    });
+    on('#rCorreo', async () => {
+      const emp = await UI.getEmpresa();
+      toast('Generando el PDF del recibo…');
+      const doc = await PDFDoc.docRecibo(f, abono, cliente, emp, numRec);
+      const modo = await PDFDoc.compartirDoc(doc, `Recibo-${numRec}-SilverShine.pdf`, cliente,
+        mensajeRecibo(emp).replace(/\*/g, ''), `Recibo de pago ${numRec} — ${emp.nombre}`);
+      if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
+    });
+    on('#rVolver', () => detalle(f.id));
+  }
+
+  async function imprimirRecibo(f, abono, numRec) {
+    const emp = await UI.getEmpresa();
+    const t = f.moneda || 'DOP';
+    const abonado = Math.round((f.total - f.saldo) * 100) / 100;
+    const datosEmp = [
+      [emp.razon, emp.rnc && 'RNC ' + emp.rnc].filter(Boolean).join(' · '),
+      emp.direccion,
+      [emp.telefono && 'Tel. ' + emp.telefono, emp.correo, emp.web].filter(Boolean).join(' · '),
+    ].filter(Boolean).join('<br>');
+    $('#printArea').innerHTML = `
+      <div class="p-head">
+        <img src="logo.png" class="p-logo" alt="${esc(emp.nombre)}">
+        ${datosEmp ? `<div class="p-empresa">${datosEmp}</div>` : ''}
+      </div>
+      <div class="p-meta">
+        <div><b>RECIBO DE PAGO</b> ${esc(numRec)}<br>Fecha: ${fmtFecha(abono.fecha)}</div>
+        <div style="text-align:right"><b>${esc(f.clienteNombre)}</b></div>
+      </div>
+      <div class="p-total"><span>PAGO RECIBIDO</span><span>${fmtMoneda(abono.monto, t)}</span></div>
+      <table class="p-tabla" style="margin-top:18px">
+        <tr><td>Método de pago</td><td class="num">${esc(abono.metodo || '—')}</td></tr>
+        <tr><td>Aplicado a la factura</td><td class="num">${rotulo(f)}${f.numero ? ' · ' + esc(f.numero) : ''}</td></tr>
+        <tr><td>Total de la factura</td><td class="num">${fmtMoneda(f.total, t)}</td></tr>
+        <tr><td>Abonado a la fecha</td><td class="num">${fmtMoneda(abonado, t)}</td></tr>
+        <tr><td><b>${f.saldo > 0.005 ? 'Balance pendiente' : 'Estado'}</b></td>
+            <td class="num"><b>${f.saldo > 0.005 ? fmtMoneda(f.saldo, t) : 'SALDADA — ¡Gracias!'}</b></td></tr>
+      </table>
+      ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}
+    `;
+    await UI.imprimirArea();
+  }
+
   /* ── Registrar abono ── */
   function formAbono(f) {
     const t = f.moneda || 'DOP';
@@ -260,9 +347,9 @@ const Facturas = (() => {
       await DB.facturas.upsert(f);
       await DB.pagos.upsert({ clienteId: f.clienteId, clienteNombre: f.clienteNombre,
         fecha: fd.get('fecha'), monto, metodo: fd.get('metodo'), facturaId: f.id });
-      cerrarModal();
       toast(f.estado === 'pagada' ? '¡Factura saldada! 🎉' : 'Abono registrado');
       render();
+      reciboOpciones(f, f.abonos.length - 1);   // recibo listo para entregar
     });
   }
 
