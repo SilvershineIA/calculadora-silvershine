@@ -182,13 +182,95 @@ const PDFDoc = (() => {
     return doc;
   }
 
-  /* ── Enviar por correo con el PDF ── */
-  async function enviarPorCorreo(tipo, obj, cliente, cuerpo, asunto) {
-    const emp = await UI.getEmpresa();
-    const doc = tipo === 'factura'
-      ? await docFactura(obj, cliente, emp)
-      : await docCotizacion(obj, cliente, emp);
-    const nombre = `${tipo === 'factura' ? 'Factura' : 'Cotizacion'}-${obj.orden ? obj.orden : (obj.numero || 's-n')}-SilverShine.pdf`;
+  /* ── PDF de recibo de pago ── */
+  async function docRecibo(f, abono, cliente, emp, numRec) {
+    const doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4' });
+    const t = f.moneda || 'DOP';
+    let y = await cabecera(doc, emp);
+    y = meta(doc, y,
+      ['RECIBO DE PAGO ' + numRec, 'Fecha: ' + UI.fmtFecha(abono.fecha)],
+      [f.clienteNombre, cliente && cliente.telefono || '', cliente && cliente.correo || '']);
+    y = cajaTotal(doc, y, 'PAGO RECIBIDO', money(abono.monto, t));
+    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(...GRIS);
+    const abonado = Math.round((f.total - f.saldo) * 100) / 100;
+    const filas = [
+      ['Método de pago', abono.metodo || '—'],
+      ['Aplicado a la factura', `${f.orden ? '#' + f.orden : ''}${f.numero ? ' · ' + f.numero : ''}`],
+      ['Total de la factura', money(f.total, t)],
+      ['Abonado a la fecha', money(abonado, t)],
+    ];
+    for (const [k, v] of filas) {
+      doc.setTextColor(...GRIS).text(limpiar(k), MARGEN, y);
+      doc.setTextColor(...SLATE).text(limpiar(v), DERECHA, y, { align: 'right' });
+      y += 17;
+    }
+    doc.setFont('helvetica', 'bold');
+    if (f.saldo > 0.005) {
+      doc.setTextColor(...GRIS).text('Balance pendiente', MARGEN, y);
+      doc.setTextColor(...ROJO).text(money(f.saldo, t), DERECHA, y, { align: 'right' });
+    } else {
+      doc.setTextColor(...VERDE).text('FACTURA SALDADA — ¡Gracias por su pago!', MARGEN, y);
+    }
+    y += 24;
+    if (emp.pie) bloqueTexto(doc, Math.max(y, 790), emp.pie, { centro: true, tam: 8 });
+    return doc;
+  }
+
+  /* ── PDF de estado de cuenta ── */
+  async function docEstado(cliente, pendientes, pagos, emp) {
+    const doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4' });
+    let y = await cabecera(doc, emp);
+    y = meta(doc, y,
+      ['ESTADO DE CUENTA', 'Al ' + UI.fmtFecha(new Date().toISOString().slice(0, 10))],
+      [cliente.nombre, cliente.telefono || '', cliente.correo || '']);
+    const total = pendientes.reduce((s, f) => s + f.saldo, 0);
+    if (pendientes.length) {
+      doc.setFontSize(7.5).setFont('helvetica', 'bold').setTextColor(...GRIS);
+      doc.text('FACTURA', MARGEN, y);
+      doc.text('FECHA', 220, y);
+      doc.text('TOTAL', 370, y, { align: 'right' });
+      doc.text('ABONADO', 460, y, { align: 'right' });
+      doc.text('BALANCE', DERECHA, y, { align: 'right' });
+      y += 5;
+      doc.setDrawColor(...SLATE).setLineWidth(1).line(MARGEN, y, DERECHA, y);
+      y += 14;
+      doc.setFontSize(9.5).setFont('helvetica', 'normal');
+      for (const f of pendientes) {
+        const t = f.moneda || 'DOP';
+        doc.setTextColor(...SLATE);
+        doc.text(limpiar(`${f.orden ? '#' + f.orden : ''} ${f.numero || ''}`), MARGEN, y);
+        doc.text(UI.fmtFecha(f.fecha), 220, y);
+        doc.text(money(f.total, t), 370, y, { align: 'right' });
+        doc.text(money(f.total - f.saldo, t), 460, y, { align: 'right' });
+        doc.setTextColor(...ROJO).text(money(f.saldo, t), DERECHA, y, { align: 'right' });
+        y += 16;
+        doc.setDrawColor(221, 221, 221).setLineWidth(0.4).line(MARGEN, y - 11, DERECHA, y - 11);
+      }
+      y += 4;
+      y = cajaTotal(doc, y, 'BALANCE TOTAL', money(total, 'DOP'));
+    } else {
+      doc.setFontSize(11).setFont('helvetica', 'bold').setTextColor(...VERDE);
+      doc.text('Su cuenta está al día — ¡gracias por su confianza!', MARGEN, y);
+      y += 26;
+    }
+    if (pagos.length) {
+      doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...GRIS);
+      doc.text('SUS ÚLTIMOS PAGOS', MARGEN, y);
+      y += 14;
+      doc.setFont('helvetica', 'normal').setFontSize(9.5);
+      for (const p of pagos) {
+        doc.setTextColor(...SLATE).text(limpiar(`${UI.fmtFecha(p.fecha)}  ·  ${p.metodo || 'Pago'}`), MARGEN, y);
+        doc.setTextColor(...VERDE).text(money(p.monto, 'DOP'), DERECHA, y, { align: 'right' });
+        y += 15;
+      }
+    }
+    const emp2 = emp;
+    if (emp2.pie) bloqueTexto(doc, Math.max(y + 10, 790), emp2.pie, { centro: true, tam: 8 });
+    return doc;
+  }
+
+  /* ── Compartir un documento ya generado ── */
+  async function compartirDoc(doc, nombre, cliente, cuerpo, asunto) {
     const blob = doc.output('blob');
     const file = new File([blob], nombre, { type: 'application/pdf' });
 
@@ -220,5 +302,15 @@ const PDFDoc = (() => {
     return 'descargado';
   }
 
-  return { docFactura, docCotizacion, enviarPorCorreo };
+  /* ── Enviar factura/cotización por correo con su PDF ── */
+  async function enviarPorCorreo(tipo, obj, cliente, cuerpo, asunto) {
+    const emp = await UI.getEmpresa();
+    const doc = tipo === 'factura'
+      ? await docFactura(obj, cliente, emp)
+      : await docCotizacion(obj, cliente, emp);
+    const nombre = `${tipo === 'factura' ? 'Factura' : 'Cotizacion'}-${obj.orden ? obj.orden : (obj.numero || 's-n')}-SilverShine.pdf`;
+    return compartirDoc(doc, nombre, cliente, cuerpo, asunto);
+  }
+
+  return { docFactura, docCotizacion, docRecibo, docEstado, enviarPorCorreo, compartirDoc };
 })();
