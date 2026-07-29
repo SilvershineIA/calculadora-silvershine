@@ -12,6 +12,7 @@
     facturas:     () => Facturas.render(),
     cotizaciones: () => Cotizaciones.render(),
     cobros:       () => Cobros.render(),
+    inventario:   () => Inventario.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
     ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); },
@@ -285,6 +286,7 @@
   Calculadora.init();
   Facturas.init();
   Cotizaciones.init();
+  Inventario.init();
   Tareas.init();
   renderPanel();
   pintarEstadoNube();
