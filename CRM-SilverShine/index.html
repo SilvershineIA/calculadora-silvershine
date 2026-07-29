@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=39">
+<link rel="stylesheet" href="css/app.css?v=40">
 </head>
 <body>
 
@@ -29,6 +29,7 @@
     <button class="nav-btn" data-view="facturas"><span class="nav-ico">🧾</span><span>Facturas</span></button>
     <button class="nav-btn" data-view="cotizaciones"><span class="nav-ico">📋</span><span>Cotizaciones</span></button>
     <button class="nav-btn" data-view="cobros"><span class="nav-ico">💰</span><span>Cobros</span></button>
+    <button class="nav-btn" data-view="inventario"><span class="nav-ico">📦</span><span>Inventario</span></button>
     <button class="nav-btn" data-view="tareas"><span class="nav-ico">✓</span><span>Tareas</span></button>
     <button class="nav-btn" data-view="ajustes"><span class="nav-ico">⚙</span><span>Ajustes</span></button>
   </nav>
@@ -219,6 +220,20 @@
       <div id="listaCobros" class="list"></div>
     </section>
 
+    <!-- ══════════ INVENTARIO ══════════ -->
+    <section class="view" data-view="inventario">
+      <div class="view-head">
+        <h1 class="view-title">Inventario</h1>
+        <button class="btn-gold btn-sm" id="btnNuevoInv">+ Nuevo artículo</button>
+      </div>
+      <div class="stat-grid" id="invResumen"></div>
+      <div class="filter-row">
+        <input type="search" id="buscarInv" class="search" placeholder="Buscar artículo…">
+        <select id="filtroCatInv"><option value="">Todas las categorías</option></select>
+      </div>
+      <div id="listaInventario" class="list"></div>
+    </section>
+
     <section class="view" data-view="tareas">
       <div class="view-head">
         <h1 class="view-title">Tareas</h1>
@@ -337,17 +352,18 @@
 <div id="printArea"></div>
 
 <script src="js/jspdf.min.js"></script>
-<script src="js/pdf.js?v=39"></script>
-<script src="js/db.js?v=39"></script>
-<script src="js/sync.js?v=39"></script>
-<script src="js/ui.js?v=39"></script>
-<script src="js/clientes.js?v=39"></script>
-<script src="js/catalogo.js?v=39"></script>
-<script src="js/calculadora.js?v=39"></script>
-<script src="js/facturas.js?v=39"></script>
-<script src="js/cotizaciones.js?v=39"></script>
-<script src="js/cobros.js?v=39"></script>
-<script src="js/tareas.js?v=39"></script>
-<script src="js/app.js?v=39"></script>
+<script src="js/pdf.js?v=40"></script>
+<script src="js/db.js?v=40"></script>
+<script src="js/sync.js?v=40"></script>
+<script src="js/ui.js?v=40"></script>
+<script src="js/clientes.js?v=40"></script>
+<script src="js/catalogo.js?v=40"></script>
+<script src="js/calculadora.js?v=40"></script>
+<script src="js/facturas.js?v=40"></script>
+<script src="js/cotizaciones.js?v=40"></script>
+<script src="js/cobros.js?v=40"></script>
+<script src="js/inventario.js?v=40"></script>
+<script src="js/tareas.js?v=40"></script>
+<script src="js/app.js?v=40"></script>
 </body>
 </html>

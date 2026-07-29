@@ -299,6 +299,15 @@ button:hover{filter:brightness(1.12)}
 }
 .ganancia-box .g-amount{font-size:1.25rem;font-weight:700}
 
+/* ── Inventario ── */
+.inv-cant{
+  flex:0 0 auto;min-width:44px;height:44px;border-radius:10px;
+  background:var(--rose-soft);color:var(--gold-bright);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:1.05rem;padding:0 8px;
+}
+.inv-cant.agotado{background:#FDF0EF;color:var(--red)}
+
 /* ── Tareas ── */
 .check{
   flex:0 0 auto;width:30px;height:30px;border-radius:50%;

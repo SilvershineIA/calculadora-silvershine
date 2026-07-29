@@ -8,9 +8,9 @@
 const Sync = (() => {
   const K_CFG = 'sscrm_sync_cfg';
   const K_COLA = 'sscrm_sync_cola';
-  const TABLAS = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas', 'config'];
+  const TABLAS = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas', 'inventario', 'config'];
   // 'config' puede no existir aún en Supabase (tabla nueva): sus errores no rompen el sync
-  const OPCIONALES = new Set(['config']);
+  const OPCIONALES = new Set(['config', 'inventario']);
 
   let cfg = null;
   try { cfg = JSON.parse(localStorage.getItem(K_CFG)); } catch { cfg = null; }
