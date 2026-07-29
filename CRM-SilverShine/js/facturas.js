@@ -41,22 +41,29 @@ const Facturas = (() => {
     const resto = Math.round((total - inicial) * 100) / 100;
     const base = Math.floor(resto / n * 100) / 100;
     const cuotas = [];
-    const fecha = new Date(primerFecha + 'T00:00:00');
+    const inicio = new Date(primerFecha + 'T00:00:00');
+    const dia = inicio.getDate();
     let acum = 0;
     for (let i = 0; i < n; i++) {
+      let fecha;
+      if (frecuencia === 'semanal') fecha = new Date(inicio.getTime() + i * 7 * 864e5);
+      else if (frecuencia === 'quincenal') fecha = new Date(inicio.getTime() + i * 15 * 864e5);
+      else {
+        // mensual conservando el día (sin desborde: 31 ene + 1 mes = fin de feb)
+        fecha = new Date(inicio.getFullYear(), inicio.getMonth() + i, 1);
+        const ultimo = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate();
+        fecha.setDate(Math.min(dia, ultimo));
+      }
       const monto = i === n - 1 ? Math.round((resto - acum) * 100) / 100 : base;
       acum = Math.round((acum + monto) * 100) / 100;
       cuotas.push({ fecha: fecha.toISOString().slice(0, 10), monto });
-      if (frecuencia === 'semanal') fecha.setDate(fecha.getDate() + 7);
-      else if (frecuencia === 'quincenal') fecha.setDate(fecha.getDate() + 15);
-      else fecha.setMonth(fecha.getMonth() + 1);
     }
     return cuotas;
   }
 
   /* Poner proxCobro en la siguiente cuota no cubierta (según lo abonado) */
   function actualizarProxCobro(f) {
-    if (!f.planPago || !f.planPago.cuotas) return;
+    if (!f.planPago || !f.planPago.cuotas || !f.planPago.cuotas.length) return;   // plan sin cuotas: se programa a mano
     const pagado = Math.round((f.total - f.saldo) * 100) / 100;
     let acum = Number(f.planPago.inicial) || 0;
     for (const c of f.planPago.cuotas) {
@@ -156,11 +163,13 @@ const Facturas = (() => {
       ${f.notasInternas ? `<div class="nota-privada">🔒 <b>Nota privada:</b> ${esc(f.notasInternas)}</div>` : ''}
 
       ${f.planPago ? `
-        <h3 class="sub-h">📅 Plan EasyPay (${esc(f.planPago.frecuencia)})</h3>
-        ${f.planPago.inicial > 0 ? `<div class="abono-row"><span>Inicial</span><b class="verde">${fmtMoneda(f.planPago.inicial, t)} ✓</b></div>` : ''}
-        ${cuotasConEstado(f).map(c => `<div class="abono-row">
-          <span>${c.vencida ? '🔴' : c.cubierta ? '✅' : '•'} Cuota ${c.num} · ${fmtFecha(c.fecha)}</span>
-          <b class="${c.vencida ? 'rojo' : c.cubierta ? 'verde' : ''}">${fmtMoneda(c.monto, t)}</b></div>`).join('')}` : ''}
+        <h3 class="sub-h">📅 Plan EasyPay${f.planPago.cuotas.length ? ` (${esc(f.planPago.frecuencia)})` : ''}</h3>
+        ${f.planPago.inicial > 0 ? `<div class="abono-row"><span>Pagado antes del plan</span><b class="verde">${fmtMoneda(f.planPago.inicial, t)} ✓</b></div>` : ''}
+        ${f.planPago.cuotas.length
+          ? cuotasConEstado(f).map(c => `<div class="abono-row">
+              <span>${c.vencida ? '🔴' : c.cubierta ? '✅' : '•'} Cuota ${c.num} · ${fmtFecha(c.fecha)}</span>
+              <b class="${c.vencida ? 'rojo' : c.cubierta ? 'verde' : ''}">${fmtMoneda(c.monto, t)}</b></div>`).join('')
+          : '<p class="muted" style="margin:6px 0">🗓 Cuotas por programar — desde Cobros puedes fijar el próximo cobro.</p>'}` : ''}
 
       ${f.abonos && f.abonos.length ? `
         <h3 class="sub-h">Abonos registrados <span class="muted" style="text-transform:none;letter-spacing:0">· toca uno para su recibo 🧾</span></h3>

@@ -49,11 +49,22 @@ const DB = (() => {
     } catch (e) { console.warn('Migración localStorage → IndexedDB:', e); }
   })();
 
-  /* ── Caché en memoria para lecturas rápidas ── */
+  /* ── Caché en memoria para lecturas rápidas ──
+     La carga se memoiza como promesa: dos lecturas simultáneas de la
+     misma colección comparten una sola ida a IndexedDB. Sin esto, una
+     lectura lenta podía pisar el caché y perder la primera escritura. */
   const cache = new Map();
+  const cargando = new Map();
   async function load(n) {
     await listo;
-    if (!cache.has(n)) cache.set(n, (await idbGet(n)) || []);
+    if (cache.has(n)) return cache.get(n);
+    if (!cargando.has(n)) {
+      cargando.set(n, idbGet(n).then(v => {
+        if (!cache.has(n)) cache.set(n, v || []);
+        cargando.delete(n);
+      }));
+    }
+    await cargando.get(n);
     return cache.get(n);
   }
   async function save(n, arr) {

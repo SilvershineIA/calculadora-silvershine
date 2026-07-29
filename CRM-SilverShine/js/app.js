@@ -324,6 +324,64 @@
     if (cambio) await DB.config.upsert(emp);
   }
 
+  /* ── Migración única: clientes con plan EasyPay confirmados por el
+        usuario (28 jul 2026). Sus facturas pendientes pasan al módulo
+        EasyPay con las cuotas por programar. Idempotente. ── */
+  async function migrarPlanesEasyPay() {
+    const PLANES = [                                  // [clienteId, numero de factura]
+      ['cli-qb-01383', 'B0200001955'],                // Ruth Celeste Feliz
+      ['cli-qb-01129', 'B0200001656'],                // Miguel Iván Frias Jiménez
+      ['cli-qb-00011', 'B0200001931'],                // Adan Alexis Gómez Bocio
+      ['cli-qb-01039', 'B0200001843'],                // Marcos Guerrero
+      ['cli-qb-01145', 'B0200001796'],                // Milton Escalante
+      ['cli-qb-01203', 'B0200001946'],                // Nidia Carolina Núñez Martínez
+      ['cli-qb-00415', 'B020001865'],                 // Elisel David Salcie Arias
+      ['cli-qb-01359', 'B0200001498'],                // Ronnel Rodríguez Bido
+    ];
+    const facts = await DB.facturas.list();
+    const hoy = new Date();
+    let marcadas = 0;
+    for (const [cid, numero] of PLANES) {
+      const f = facts.find(x => x.clienteId === cid && x.numero === numero);
+      if (!f || f.estado !== 'pendiente' || !(f.saldo > 0)) continue;
+      if (f.planPago && f.planPago.cuotas && f.planPago.cuotas.length) continue;   // ya tiene plan con cuotas
+
+      // Pagos mensuales: el día de pago es el día de la factura.
+      // La cuota se estima del ritmo real: pagado ÷ meses transcurridos.
+      const fechaF = new Date(f.fecha + 'T00:00:00');
+      const pagado = Math.round((f.total - f.saldo) * 100) / 100;
+      const mesesTrans = Math.max(1, Math.round((hoy - fechaF) / (30.44 * 864e5)));
+      const ritmo = pagado / mesesTrans;
+      const n = ritmo > 0 ? Math.min(12, Math.max(1, Math.round(f.saldo / ritmo))) : 3;
+
+      // Aniversario mensual conservando el día de la factura
+      // (sin el desborde de JS: 30 ene + 1 mes NO es 2 mar, es el último día de feb)
+      const dia = fechaF.getDate();
+      const aniversario = k => {
+        const d = new Date(fechaF.getFullYear(), fechaF.getMonth() + k, 1);
+        const ultimo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        d.setDate(Math.min(dia, ultimo));
+        return d;
+      };
+      let k = 1;
+      while (aniversario(k) <= hoy) k++;
+
+      const base = Math.floor(f.saldo / n * 100) / 100;
+      const cuotas = [];
+      let acum = 0;
+      for (let i = 0; i < n; i++) {
+        const monto = i === n - 1 ? Math.round((f.saldo - acum) * 100) / 100 : base;
+        acum = Math.round((acum + monto) * 100) / 100;
+        cuotas.push({ fecha: aniversario(k + i).toISOString().slice(0, 10), monto });
+      }
+      f.planPago = { tipo: 'easypay', inicial: pagado, frecuencia: 'mensual', cuotas };
+      f.proxCobro = { fecha: cuotas[0].fecha, monto: cuotas[0].monto };
+      await DB.facturas.upsert(f);
+      marcadas++;
+    }
+    if (marcadas) console.info(`Planes EasyPay mensuales generados: ${marcadas}`);
+  }
+
   // Si el catálogo está vacío, cargar el de Shopify automáticamente
   async function cargarCatalogoSiVacio() {
     if ((await DB.productos.list()).length) return;
@@ -351,6 +409,7 @@
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
+    await migrarPlanesEasyPay();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();
