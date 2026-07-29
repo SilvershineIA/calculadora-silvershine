@@ -87,11 +87,14 @@ const Cobros = (() => {
     const seccionEasy = !easy.length ? '' : `
       <h3 class="sub-h">📅 Planes EasyPay (${easy.length}) · ${fmtMoneda(easySaldo)} por cobrar</h3>
       ${easy.map(f => {
-        const cuotas = Facturas.cuotasConEstado(f);
+        const cuotas = f.planPago.cuotas && f.planPago.cuotas.length ? Facturas.cuotasConEstado(f) : [];
         const cubiertas = cuotas.filter(c => c.cubierta).length;
         const vencido = clasificar(f) === 'vencido';
+        const progreso = cuotas.length
+          ? `Cuota ${Math.min(cubiertas + 1, cuotas.length)}/${cuotas.length}`
+          : '🗓 cuotas por programar';
         return fila(f, vencido ? 'rojo' : '',
-          `${vencido ? '🔴' : '🟢'} Cuota ${Math.min(cubiertas + 1, cuotas.length)}/${cuotas.length}${
+          `${vencido ? '🔴' : '🟢'} ${progreso}${
             f.proxCobro && f.proxCobro.fecha ? ` · <b>cobrar ${fmtFecha(f.proxCobro.fecha)} (${fmtMoneda(f.proxCobro.monto, f.moneda)})</b>` : ''} · ${esc(f.numero || 's/n')}`);
       }).join('')}`;
 
