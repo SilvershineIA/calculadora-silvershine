@@ -184,7 +184,7 @@ const Facturas = (() => {
         <button class="btn-ghost btn-block" id="fTarea">✓ Tarea</button>
       </div>
       <div class="row" style="margin-top:10px">
-        ${f.estado === 'pendiente' && !(f.abonos || []).length && f.origen !== 'quickbooks' ? `<button class="btn-ghost btn-block" id="fEditar">✏️ Editar</button>` : ''}
+        ${f.estado !== 'anulada' ? `<button class="btn-ghost btn-block" id="fEditar">✏️ Editar</button>` : ''}
         ${f.estado !== 'anulada' ? `<button class="btn-danger btn-block" id="fAnular">Anular</button>` : ''}
       </div>
     `);
@@ -527,6 +527,14 @@ const Facturas = (() => {
       const totalR = Math.round(total * 100) / 100;
       const numeroF = fd.get('numero').trim();
 
+      // Al editar se respeta lo ya abonado y el saldo se recalcula
+      const abonadoPrevio = f.id ? Math.round((f.total - f.saldo) * 100) / 100 : 0;
+      let saldoNuevo = f.id ? Math.round((totalR - abonadoPrevio) * 100) / 100 : totalR;
+      if (saldoNuevo < 0) {
+        saldoNuevo = 0;
+        toast(`Ojo: el nuevo total (${fmtMoneda(totalR, fd.get('moneda'))}) es menor que lo ya abonado (${fmtMoneda(abonadoPrevio, fd.get('moneda'))})`);
+      }
+
       const nueva = {
         id: f.id,
         orden: Number(fd.get('orden')) || null,
@@ -539,8 +547,8 @@ const Facturas = (() => {
         lineas: lineasOk,
         impuesto: Math.round(imp * 100) / 100,
         total: totalR,
-        saldo: f.id ? Math.round((totalR - (f.total - f.saldo)) * 100) / 100 : totalR,
-        estado: f.estado || 'pendiente',
+        saldo: saldoNuevo,
+        estado: saldoNuevo <= 0.005 && f.id ? 'pagada' : 'pendiente',
         notas: fd.get('notas').trim(),
         notasInternas: fd.get('notasInternas').trim(),
         abonos: f.abonos || [],
