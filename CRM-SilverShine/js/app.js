@@ -61,13 +61,16 @@
     $('#panelPendientes').querySelectorAll('.item').forEach(el =>
       el.addEventListener('click', () => Cobros.detalle(el.dataset.id)));
 
-    // Tareas de hoy y vencidas
+    // Tareas de hoy y vencidas (con pasos: manda el próximo paso pendiente)
     const tareas = (await DB.tareas.list()).filter(t => !t.hecha);
     const hoy = new Date().toISOString().slice(0, 10);
-    const deHoy = tareas.filter(t => t.fecha && t.fecha <= hoy)
-      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 5);
-    $('#panelTareas').innerHTML = deHoy.length ? deHoy.map(t => `
-      <div class="abono-row"><span>${t.fecha < hoy ? '🔴' : '📌'} ${UI.esc(t.titulo)}${t.clienteNombre ? ' · ' + UI.esc(t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(t.fecha)}</span></div>`).join('')
+    const deHoy = tareas
+      .map(t => ({ t, fecha: Tareas.fechaEfectiva(t), paso: Tareas.proximoPaso(t) }))
+      .filter(x => x.fecha && x.fecha <= hoy)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5);
+    $('#panelTareas').innerHTML = deHoy.length ? deHoy.map(x => `
+      <div class="abono-row"><span>${x.fecha < hoy ? '🔴' : '📌'} ${UI.esc(x.t.titulo)}${
+        x.paso ? ' → ' + UI.esc(x.paso.titulo) : ''}${x.t.clienteNombre ? ' · ' + UI.esc(x.t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(x.fecha)}</span></div>`).join('')
       : '<p class="muted">Sin tareas para hoy.</p>';
   }
 
