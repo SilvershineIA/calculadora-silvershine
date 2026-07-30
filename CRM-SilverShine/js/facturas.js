@@ -212,6 +212,15 @@ const Facturas = (() => {
         `\n💰 *Total: ${fmtMoneda(f.total, t)}*`;
       if (f.saldo > 0.005) {
         msg += `\n🔴 Balance pendiente: *${fmtMoneda(f.saldo, t)}*`;
+        if (f.planPago && f.planPago.cuotas && f.planPago.cuotas.length) {
+          const cuotas = cuotasConEstado(f);
+          msg += `\n\n📅 *Su plan de pagos:*` +
+            (f.planPago.inicial > 0 ? `\n▪ Reserva: ${fmtMoneda(f.planPago.inicial, t)}${
+              f.total - f.saldo >= f.planPago.inicial - 0.005 ? ' ✅' : ''}` : '') +
+            cuotas.map(q =>
+              `\n▪ Cuota ${q.num} · ${fmtFecha(q.fecha)}: ${fmtMoneda(q.monto, t)}${q.cubierta ? ' ✅' : ''}`).join('') +
+            `\n📦 Su pieza se entrega al saldar el plan por completo.`;
+        }
         if (emp.cuentas) msg += `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}`;
       } else {
         msg += `\n✅ Pagada — ¡gracias por su compra!`;
