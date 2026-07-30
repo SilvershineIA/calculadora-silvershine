@@ -35,6 +35,7 @@ const Facturas = (() => {
   }
 
   const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+  const FEE_DESC = 'Tarifa administrativa EasyPay';
 
   /* ── Plan EasyPay: cuotas programadas ── */
   function generarCuotas(total, inicial, n, frecuencia, primerFecha) {
@@ -409,19 +410,31 @@ const Facturas = (() => {
         </div></div>
         <div id="easypayCampos" ${f.planPago ? '' : 'hidden'} style="background:var(--rose-soft);border-radius:10px;padding:12px;margin-bottom:12px">
           <div class="row">
-            <div><label>Inicial</label><input name="epInicial" type="number" min="0" step="0.01" value="${f.planPago ? f.planPago.inicial : 0}"></div>
-            <div><label>Cuotas</label><input name="epCuotas" type="number" min="1" max="36" step="1" value="${f.planPago ? f.planPago.cuotas.length : 4}"></div>
+            <div><label>Plan (reglas oficiales EasyPay)</label>
+              <select name="epPlan">
+                <option value="4m" ${!f.planPago || f.planPago.plan === '4m' ? 'selected' : ''}>4 meses — 25% reserva · sin cargos</option>
+                <option value="6m" ${f.planPago && f.planPago.plan === '6m' ? 'selected' : ''}>6 meses — 20% + RD$300/cuota</option>
+                <option value="612m" ${f.planPago && f.planPago.plan === '612m' ? 'selected' : ''}>6 a 12 meses — 15% + RD$500/cuota</option>
+                <option value="custom" ${f.planPago && !f.planPago.plan ? 'selected' : ''}>Personalizado</option>
+              </select></div>
+            <div><label>Cuotas (meses)</label><input name="epCuotas" type="number" min="2" max="12" step="1" value="${f.planPago ? f.planPago.cuotas.length || 4 : 4}"></div>
           </div>
-          <div class="row">
+          <div class="row" id="epCustomCampos" ${f.planPago && !f.planPago.plan ? '' : 'hidden'}>
+            <div><label>Inicial</label><input name="epInicial" type="number" min="0" step="0.01" value="${f.planPago ? f.planPago.inicial : 0}"></div>
             <div><label>Frecuencia</label>
               <select name="epFrecuencia">
                 <option value="quincenal" ${!f.planPago || f.planPago.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal</option>
                 <option value="semanal" ${f.planPago && f.planPago.frecuencia === 'semanal' ? 'selected' : ''}>Semanal</option>
                 <option value="mensual" ${f.planPago && f.planPago.frecuencia === 'mensual' ? 'selected' : ''}>Mensual</option>
               </select></div>
-            <div><label>Primer cobro</label><input name="epPrimera" type="date" value="${
-              f.planPago && f.planPago.cuotas[0] ? f.planPago.cuotas[0].fecha : new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10)}"></div>
           </div>
+          <div class="row"><div><label>Primer cobro</label><input name="epPrimera" type="date" value="${
+            f.planPago && f.planPago.cuotas[0] ? f.planPago.cuotas[0].fecha : (() => {
+              const d = new Date(); const dia = d.getDate();
+              d.setDate(1); d.setMonth(d.getMonth() + 1);
+              d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+              return d.toISOString().slice(0, 10);
+            })()}"></div></div>
           <p class="muted" id="epPreview" style="margin-top:4px"></p>
         </div>
 
@@ -486,6 +499,17 @@ const Facturas = (() => {
       const form = $('#formFactura');
       const el = $('#epPreview');
       if (!el || form.formaPago.value !== 'easypay') return;
+      const planId = form.epPlan.value;
+      if (planId !== 'custom') {
+        // Reglas oficiales: base sin la línea de tarifa administrativa
+        const baseLineas = lineas.filter(l => !String(l.descripcion || '').startsWith(FEE_DESC));
+        const { total: totB } = totalDe(baseLineas, form.itbis.value === 'si');
+        const c = UI.calcularEasyPay(Math.round(totB * 100) / 100, planId, Number(form.epCuotas.value));
+        if (!c) { el.textContent = 'Agrega líneas con precio para calcular el plan.'; return; }
+        el.textContent = `Reserva hoy ${fmtMoneda(c.reserva, m)} (mín. RD$7,000) + ${c.meses} cuotas mensuales de ${fmtMoneda(c.cuota, m)}` +
+          `${c.fee ? ` — incluye RD$${c.fee} de tarifa admin. por cuota` : ' — sin cargos'} · total con tarifas ${fmtMoneda(c.totalConTarifas, m)}`;
+        return;
+      }
       const inicial = Number(form.epInicial.value) || 0;
       const n = Math.max(1, Math.round(Number(form.epCuotas.value) || 1));
       if (total <= inicial) { el.textContent = 'La inicial cubre el total — no harían falta cuotas.'; return; }
@@ -514,6 +538,20 @@ const Facturas = (() => {
     });
     ['epInicial', 'epCuotas', 'epFrecuencia', 'epPrimera'].forEach(nm =>
       $('#formFactura')[nm].addEventListener('input', preview));
+    const ajustarPlan = () => {
+      const form = $('#formFactura');
+      const planId = form.epPlan.value;
+      $('#epCustomCampos').hidden = planId !== 'custom';
+      if (planId !== 'custom') {
+        const p = UI.EASYPAY_PLANES[planId];
+        form.epCuotas.min = p.min; form.epCuotas.max = p.max;
+        form.epCuotas.value = Math.min(p.max, Math.max(p.min, Math.round(Number(form.epCuotas.value) || p.def)));
+      } else {
+        form.epCuotas.min = 1; form.epCuotas.max = 36;
+      }
+    };
+    $('#formFactura').epPlan.addEventListener('change', () => { ajustarPlan(); preview(); });
+    ajustarPlan();
     pintarLineas();
 
     /* Guardar */
@@ -558,19 +596,50 @@ const Facturas = (() => {
 
       /* Plan EasyPay */
       if (fd.get('formaPago') === 'easypay') {
-        const inicial = Math.min(Number(fd.get('epInicial')) || 0, totalR);
-        const n = Math.max(1, Math.round(Number(fd.get('epCuotas')) || 1));
-        nueva.planPago = {
-          tipo: 'easypay',
-          inicial,
-          frecuencia: fd.get('epFrecuencia'),
-          cuotas: totalR > inicial ? generarCuotas(totalR, inicial, n, fd.get('epFrecuencia'), fd.get('epPrimera')) : [],
-        };
-        // La inicial se registra como primer abono (solo al crear la factura)
-        if (esNueva && inicial > 0) {
-          nueva.abonos = [{ fecha: nueva.fecha, monto: inicial, metodo: 'EasyPay (inicial)' }];
-          nueva.saldo = Math.round((nueva.saldo - inicial) * 100) / 100;
-          if (nueva.saldo <= 0.005) { nueva.saldo = 0; nueva.estado = 'pagada'; }
+        const planId = fd.get('epPlan');
+        if (planId !== 'custom') {
+          // Reglas oficiales: reserva % (mín. RD$7,000) + cuotas mensuales
+          // iguales; la tarifa administrativa entra como línea de la factura.
+          const baseLineas = lineasOk.filter(l => !l.descripcion.startsWith(FEE_DESC));
+          const { imp: impB, total: totB } = totalDe(baseLineas, fd.get('itbis') === 'si');
+          const precioBase = Math.round(totB * 100) / 100;
+          const cep = UI.calcularEasyPay(precioBase, planId, Number(fd.get('epCuotas')));
+          if (!cep) { toast('Agrega líneas con precio para el plan EasyPay'); return; }
+          nueva.lineas = cep.fee
+            ? [...baseLineas, { descripcion: `${FEE_DESC} (${cep.meses} cuotas × RD$${cep.fee})`, cantidad: cep.meses, precio: cep.fee }]
+            : baseLineas;
+          nueva.impuesto = Math.round(impB * 100) / 100;
+          nueva.total = cep.totalConTarifas;
+          let s = f.id ? Math.round((cep.totalConTarifas - abonadoPrevio) * 100) / 100 : cep.totalConTarifas;
+          if (s < 0) s = 0;
+          nueva.saldo = s;
+          nueva.estado = s <= 0.005 && f.id ? 'pagada' : 'pendiente';
+          nueva.planPago = {
+            tipo: 'easypay', plan: planId, fee: cep.fee, inicial: cep.reserva, frecuencia: 'mensual',
+            cuotas: cep.totalConTarifas > cep.reserva
+              ? generarCuotas(cep.totalConTarifas, cep.reserva, cep.meses, 'mensual', fd.get('epPrimera'))
+              : [],
+          };
+          // La reserva se registra como primer abono (solo al crear la factura)
+          if (esNueva && cep.reserva > 0) {
+            nueva.abonos = [{ fecha: nueva.fecha, monto: cep.reserva, metodo: 'EasyPay (reserva)' }];
+            nueva.saldo = Math.round((nueva.saldo - cep.reserva) * 100) / 100;
+            if (nueva.saldo <= 0.005) { nueva.saldo = 0; nueva.estado = 'pagada'; }
+          }
+        } else {
+          const inicial = Math.min(Number(fd.get('epInicial')) || 0, totalR);
+          const n = Math.max(1, Math.round(Number(fd.get('epCuotas')) || 1));
+          nueva.planPago = {
+            tipo: 'easypay',
+            inicial,
+            frecuencia: fd.get('epFrecuencia'),
+            cuotas: totalR > inicial ? generarCuotas(totalR, inicial, n, fd.get('epFrecuencia'), fd.get('epPrimera')) : [],
+          };
+          if (esNueva && inicial > 0) {
+            nueva.abonos = [{ fecha: nueva.fecha, monto: inicial, metodo: 'EasyPay (inicial)' }];
+            nueva.saldo = Math.round((nueva.saldo - inicial) * 100) / 100;
+            if (nueva.saldo <= 0.005) { nueva.saldo = 0; nueva.estado = 'pagada'; }
+          }
         }
         actualizarProxCobro(nueva);
       } else {
@@ -581,7 +650,7 @@ const Facturas = (() => {
       const guardada = await DB.facturas.upsert(nueva);
       if (esNueva && nueva.abonos.length) {
         await DB.pagos.upsert({ clienteId: nueva.clienteId, clienteNombre: nueva.clienteNombre,
-          fecha: nueva.fecha, monto: nueva.abonos[0].monto, metodo: 'EasyPay (inicial)', facturaId: guardada.id });
+          fecha: nueva.fecha, monto: nueva.abonos[0].monto, metodo: nueva.abonos[0].metodo, facturaId: guardada.id });
       }
       cerrarModal();
       toast(esNueva ? `Factura ${numeroF} creada` : 'Factura actualizada');
@@ -636,5 +705,5 @@ const Facturas = (() => {
     });
   }
 
-  return { init, render, detalle, siguienteNumero, formAbono, formulario, cuotasConEstado };
+  return { init, render, detalle, siguienteNumero, siguienteOrden, formAbono, formulario, cuotasConEstado, generarCuotas, FEE_DESC };
 })();

@@ -141,6 +141,30 @@ const UI = (() => {
     });
   }
 
+  /* ── Reglas oficiales EasyPay (de silvershine.com.do/pages/easypay) ── */
+  const EASYPAY_PLANES = {
+    '4m':   { nombre: 'EasyPay 4 meses',      dep: 0.25, fee: 0,   min: 2, max: 4,  def: 4 },
+    '6m':   { nombre: 'EasyPay 6 meses',      dep: 0.20, fee: 300, min: 4, max: 6,  def: 6 },
+    '612m': { nombre: 'EasyPay 6 a 12 meses', dep: 0.15, fee: 500, min: 6, max: 12, def: 12 },
+  };
+  const EASYPAY_MIN = 7000;
+
+  /* Cálculo idéntico al simulador de la página:
+     reserva = max(precio × %, RD$7,000) topada al precio;
+     cuota = restante/meses + tarifa administrativa. */
+  function calcularEasyPay(precio, planId, meses) {
+    const p = EASYPAY_PLANES[planId];
+    if (!p || !(precio > 0)) return null;
+    const m = Math.min(p.max, Math.max(p.min, Math.round(meses || p.def)));
+    let reserva = Math.max(precio * p.dep, EASYPAY_MIN);
+    if (reserva > precio) reserva = precio;
+    reserva = Math.round(reserva * 100) / 100;
+    const financiado = Math.round((precio - reserva) * 100) / 100;
+    const cuota = m > 0 ? Math.round((financiado / m + p.fee) * 100) / 100 : 0;
+    return { plan: planId, nombre: p.nombre, meses: m, reserva, financiado, fee: p.fee, cuota,
+             totalConTarifas: Math.round((precio + p.fee * m) * 100) / 100 };
+  }
+
   /* ── Buscador del catálogo con opciones en un clic ──
      Clic o escribir → productos; un producto con opciones
      (formato · material · gema) las despliega; clic → línea lista. */
@@ -188,5 +212,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay };
 })();

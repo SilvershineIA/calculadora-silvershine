@@ -86,6 +86,10 @@ const Cotizaciones = (() => {
           <td class="num">${fmtMoneda(l.cantidad * l.precio, t)}</td></tr>`).join('')}
         <tr class="fact-total"><td>Total</td><td class="num">${fmtMoneda(c.total, t)}</td></tr>
       </table>
+      ${(() => {
+        const ep = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;
+        return ep ? `<p class="muted" style="margin-top:8px">💳 ${esc(ep.nombre)}: reserva ${fmtMoneda(ep.reserva, t)} + ${ep.meses} × ${fmtMoneda(ep.cuota, t)}/mes</p>` : '';
+      })()}
       ${c.facturaId ? `<p class="muted" style="margin-top:8px">✅ Convertida en factura.</p>` : ''}
 
       ${abierta ? `<button class="btn-gold btn-block" id="cConvertir" style="margin:14px 0 6px">🧾 Convertir en factura</button>` : ''}
@@ -114,20 +118,45 @@ const Cotizaciones = (() => {
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
 
     on('#cConvertir', async () => {
-      if (!confirm(`¿Convertir la cotización COT-${c.numero} en factura? Se creará con el próximo NCF.`)) return;
+      const epConv = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;
+      if (!confirm(`¿Convertir la cotización COT-${c.numero} en factura?${epConv ? ` Incluirá el plan ${epConv.nombre}.` : ''} Se creará con el próximo NCF.`)) return;
       const numero = await Facturas.siguienteNumero();
+      const orden = await Facturas.siguienteOrden();
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const lineasF = c.lineas.map(l => ({ ...l }));
+      if (epConv && epConv.fee) {
+        lineasF.push({ descripcion: `${Facturas.FEE_DESC} (${epConv.meses} cuotas × RD$${epConv.fee})`, cantidad: epConv.meses, precio: epConv.fee });
+      }
+      const totalF = epConv ? epConv.totalConTarifas : c.total;
+      let planPago = null, proxCobro = null;
+      if (epConv) {
+        // La reserva queda como primera cuota (hoy); luego las mensuales
+        const primeraMensual = (() => {
+          const d = new Date(); const dia = d.getDate();
+          d.setDate(1); d.setMonth(d.getMonth() + 1);
+          d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+          return d.toISOString().slice(0, 10);
+        })();
+        planPago = {
+          tipo: 'easypay', plan: epConv.plan, fee: epConv.fee, inicial: 0, frecuencia: 'mensual',
+          cuotas: [{ fecha: hoyIso, monto: epConv.reserva },
+                   ...Facturas.generarCuotas(totalF, epConv.reserva, epConv.meses, 'mensual', primeraMensual)],
+        };
+        proxCobro = { fecha: hoyIso, monto: epConv.reserva };
+      }
       const fact = await DB.facturas.upsert({
-        numero, ncf: numero,
+        numero, ncf: numero, orden,
         clienteId: c.clienteId, clienteNombre: c.clienteNombre,
-        fecha: new Date().toISOString().slice(0, 10),
-        moneda: t, lineas: c.lineas.map(l => ({ ...l })),
-        impuesto: 0, total: c.total, saldo: c.total,
+        fecha: hoyIso,
+        moneda: t, lineas: lineasF,
+        impuesto: 0, total: totalF, saldo: totalF,
         estado: 'pendiente', notas: `Según cotización COT-${c.numero}`, abonos: [],
+        ...(planPago ? { planPago, proxCobro } : {}),
       });
       c.estado = 'aceptada'; c.facturaId = fact.id;
       await DB.cotizaciones.upsert(c);
       cerrarModal();
-      toast(`Factura ${numero} creada desde la cotización`);
+      toast(`Factura #${orden} · ${numero} creada desde la cotización`);
       Facturas.detalle(fact.id);
     });
 
@@ -151,6 +180,13 @@ const Cotizaciones = (() => {
         `${lineasTxt}\n` +
         `${c.peso ? `⚖️ Peso aprox.: ${c.peso} g\n` : ''}\n` +
         `💰 *Precio: ${precioTxt}*\n\n` +
+        (() => {
+          const ep = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;
+          return ep
+            ? `💳 *Págalo con ${ep.nombre}*: resérvalo hoy con ${fmtMoneda(ep.reserva, t)} y págalo en ${ep.meses} cuotas mensuales de ${fmtMoneda(ep.cuota, t)} — sin intereses${
+                ep.fee ? ` (incluye RD$${ep.fee} de tarifa administrativa por cuota)` : ''}.\nLa pieza se entrega al saldarla por completo. Reserva mínima RD$7,000.\n\n`
+            : '';
+        })() +
         `Si lo prefiere, podemos ajustar el peso de la pieza para llevarla a su presupuesto — solo díganos 😊\n` +
         `⚠️ Tome en cuenta: reducir el peso puede restarle integridad estructural a la pieza y podría invalidar la garantía de por vida.\n\n` +
         `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
@@ -240,6 +276,16 @@ const Cotizaciones = (() => {
             </select></div>
           <div><label>Peso aprox. (g)</label><input name="peso" type="number" step="0.01" min="0" value="${c.peso ?? ''}" placeholder="opcional"></div>
         </div>
+        <div class="row">
+          <div><label>Plan EasyPay (opcional — va en el mensaje)</label>
+            <select name="cepPlan">
+              <option value="">Sin plan EasyPay</option>
+              <option value="4m" ${c.easypay && c.easypay.plan === '4m' ? 'selected' : ''}>4 meses — 25% reserva · sin cargos</option>
+              <option value="6m" ${c.easypay && c.easypay.plan === '6m' ? 'selected' : ''}>6 meses — 20% + RD$300/cuota</option>
+              <option value="612m" ${c.easypay && c.easypay.plan === '612m' ? 'selected' : ''}>6 a 12 meses — 15% + RD$500/cuota</option>
+            </select></div>
+          <div><label>Meses</label><input name="cepMeses" type="number" min="2" max="12" step="1" value="${c.easypay ? c.easypay.meses : 4}"></div>
+        </div>
         <label>Líneas</label>
         <div id="cotLineasCont"></div>
         <div class="row" style="margin-top:6px">
@@ -314,6 +360,9 @@ const Cotizaciones = (() => {
         vence: fd.get('vence'),
         moneda: fd.get('moneda'),
         peso: Number(fd.get('peso')) || null,
+        easypay: fd.get('cepPlan')
+          ? { plan: fd.get('cepPlan'), meses: Math.round(Number(fd.get('cepMeses')) || 4) }
+          : null,
         lineas: lineasOk,
         total: Math.round(total * 100) / 100,
         estado: c.estado && c.estado !== 'pendiente' ? c.estado : 'enviada',
