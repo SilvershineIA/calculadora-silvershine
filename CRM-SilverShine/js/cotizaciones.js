@@ -32,6 +32,17 @@ const Cotizaciones = (() => {
     const cont = $('#listaCotizaciones');
     let lista = await DB.cotizaciones.list();
 
+    // Abiertas con más de 90 días pasan a vencidas solas
+    // (si el usuario cambió el estado a mano, los 90 días corren desde ese día)
+    const corte = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    for (const c of lista) {
+      const base = c.estadoManual || c.fecha;
+      if (ABIERTAS.includes(estadoDe(c)) && base && base < corte) {
+        c.estado = 'vencida';
+        await DB.cotizaciones.upsert(c);
+      }
+    }
+
     const abiertas = lista.filter(c => ABIERTAS.includes(estadoDe(c)));
     const monto = abiertas.reduce((s, c) => s + (c.total || 0), 0);
     $('#cotResumen').innerHTML = `
@@ -40,6 +51,7 @@ const Cotizaciones = (() => {
     `;
 
     if (filtroEstado) lista = lista.filter(c => estadoDe(c) === filtroEstado);
+    else if (!filtro) lista = lista.filter(c => !['vencida', 'rechazada'].includes(estadoDe(c)));   // vencidas y rechazadas ocultas salvo búsqueda o filtro
     if (filtro) {
       const f = filtro.toLowerCase();
       lista = lista.filter(x =>
@@ -108,11 +120,14 @@ const Cotizaciones = (() => {
         ${cliente.telefono ? `<button class="btn-ghost btn-block" id="cSegWA">💬 WhatsApp</button>` : ''}
         ${cliente.correo ? `<button class="btn-ghost btn-block" id="cSegCorreo">✉️ Correo</button>` : ''}
       </div>` : ''}
-      ${abierta ? `
-      <div class="row" style="margin-top:10px">
-        <button class="btn-ghost btn-block" id="cEditar">✏️ Editar</button>
-        <button class="btn-danger btn-block" id="cRechazar">Marcar rechazada</button>
-      </div>` : ''}
+      <div class="row" style="margin-top:10px;align-items:flex-end">
+        <div style="flex:1"><label>Estado</label>
+          <select id="cEstado">
+            ${['borrador', 'enviada', 'aceptada', 'rechazada', 'vencida'].map(e =>
+              `<option value="${e}" ${estadoDe(c) === e ? 'selected' : ''}>${e.charAt(0).toUpperCase() + e.slice(1)}</option>`).join('')}
+          </select></div>
+        <button class="btn-ghost btn-block" id="cEditar" style="flex:1">✏️ Editar</button>
+      </div>
     `);
 
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
@@ -248,10 +263,13 @@ const Cotizaciones = (() => {
     });
 
     on('#cEditar', () => formulario(c));
-    on('#cRechazar', async () => {
-      c.estado = 'rechazada';
+    $('#cEstado').addEventListener('change', async e => {
+      c.estado = e.target.value;
+      c.estadoManual = new Date().toISOString().slice(0, 10);
       await DB.cotizaciones.upsert(c);
-      cerrarModal(); toast('Cotización marcada como rechazada'); render();
+      toast(`Estado cambiado a ${e.target.value}`);
+      render();
+      detalle(c.id);   // refresca el modal (botones según el nuevo estado)
     });
   }
 
