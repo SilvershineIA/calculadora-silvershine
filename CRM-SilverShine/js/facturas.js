@@ -205,7 +205,7 @@ const Facturas = (() => {
       const lineasTxt = f.lineas.map(l =>
         `▪ ${l.descripcion}${l.cantidad > 1 ? ` ×${l.cantidad}` : ''} — ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n');
       let msg = `Hola ${f.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
-        `🧾 *Factura ${f.orden ? '#' + f.orden : ''}*${f.ncf ? ` · NCF ${f.ncf}` : ''}\n` +
+        `🧾 *Factura ${rotulo(f)}*${f.orden && f.ncf ? ` · NCF ${f.ncf}` : ''}\n` +
         `📅 ${fmtFecha(f.fecha)}\n\n${lineasTxt}\n` +
         (f.impuesto ? `▪ ITBIS — ${fmtMoneda(f.impuesto, t)}\n` : '') +
         `\n💰 *Total: ${fmtMoneda(f.total, t)}*`;
@@ -215,6 +215,7 @@ const Facturas = (() => {
       } else {
         msg += `\n✅ Pagada — ¡gracias por su compra!`;
       }
+      msg += `\n\n📄 Si prefiere su factura en PDF por correo, con gusto se la enviamos — solo díganos.`;
       msg += `\n\n💎 ${emp.nombre} · ${emp.web}`;
       return msg;
     };
@@ -274,6 +275,7 @@ const Facturas = (() => {
       `💵 *${fmtMoneda(abono.monto, t)}* (${abono.metodo || 'pago'})\n` +
       `🧾 Factura ${rotulo(f)}: total ${fmtMoneda(f.total, t)} · abonado ${fmtMoneda(abonado, t)}\n` +
       (f.saldo > 0.005 ? `🔴 Balance restante: *${fmtMoneda(f.saldo, t)}*` : `🎉 *Factura saldada — ¡muchas gracias!*`) +
+      `\n\n📄 Si prefiere su recibo en PDF por correo, con gusto se lo enviamos — solo díganos.` +
       `\n\n💎 ${emp.nombre} · ${emp.web}`;
 
     on('#rImprimir', () => imprimirRecibo(f, abono, numRec));

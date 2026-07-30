@@ -146,7 +146,7 @@ const Cotizaciones = (() => {
         precioTxt += ` (≈ $${usd} USD)`;
       }
       const msg =
-        `✨ *${emp.nombre} — Cotización*\n📅 ${fechaLarga}\n\n` +
+        `✨ *${emp.nombre} — Cotización COT-${c.numero}*\n📅 ${fechaLarga}\n\n` +
         `Hola ${c.clienteNombre} 👋 Gracias por tu interés. Aquí tienes tu cotización:\n\n` +
         `${lineasTxt}\n` +
         `${c.peso ? `⚖️ Peso aprox.: ${c.peso} g\n` : ''}\n` +
@@ -154,6 +154,7 @@ const Cotizaciones = (() => {
         `Si lo prefiere, podemos ajustar el peso de la pieza para llevarla a su presupuesto — solo díganos 😊\n` +
         `⚠️ Tome en cuenta: reducir el peso puede restarle integridad estructural a la pieza y podría invalidar la garantía de por vida.\n\n` +
         `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
+        `📄 ¿Prefiere su cotización en PDF por correo? Con gusto se la enviamos — solo díganos.\n\n` +
         `${emp.direccion ? '📍 ' + emp.direccion + '\n' : ''}📞 ${emp.telefono} · ${emp.web}`;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
     });
@@ -172,7 +173,7 @@ const Cotizaciones = (() => {
     /* Seguimiento suave: saludo sin presión, se registra con fecha y vía */
     const mensajeSeguimiento = emp =>
       `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
-      `Solo pasamos a saludarle 😊 Hace unos días le compartimos la cotización de:\n` +
+      `Solo pasamos a saludarle 😊 Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
       `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
       `Sin ningún compromiso — si tiene alguna duda, quiere ajustar algo de la pieza o ver otras opciones, estamos a la orden con mucho gusto.\n\n` +
       `¡Que tenga un excelente día! 💎\n${emp.nombre} · ${emp.web}`;
