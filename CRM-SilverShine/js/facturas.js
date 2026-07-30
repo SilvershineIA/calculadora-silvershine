@@ -275,6 +275,10 @@ const Facturas = (() => {
         ${cliente && cliente.telefono ? '<button class="btn-ghost btn-block" id="rWhatsApp">💬 WhatsApp</button>' : ''}
         ${cliente && cliente.correo ? '<button class="btn-ghost btn-block" id="rCorreo">✉️ Correo (PDF)</button>' : ''}
       </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn-ghost btn-block" id="rCorregir">✏️ Corregir abono</button>
+        <button class="btn-danger btn-block" id="rEliminar">🗑 Eliminar abono</button>
+      </div>
       <button class="btn-ghost btn-block" id="rVolver" style="margin-top:10px">← Ver la factura</button>
     `);
 
@@ -304,6 +308,74 @@ const Facturas = (() => {
       if (modo === 'descargado') toast('📄 PDF descargado — adjúntalo al correo que se abrió');
     });
     on('#rVolver', () => detalle(f.id));
+    on('#rCorregir', () => formCorregirAbono(f, i));
+    on('#rEliminar', async () => {
+      if (!confirm(`¿Eliminar este abono de ${fmtMoneda(abono.monto, t)}? El balance de la factura vuelve a subir y el recibo desaparece.`)) return;
+      await eliminarAbono(f, i);
+      toast('Abono eliminado — balance restaurado');
+      render();
+      detalle(f.id);
+    });
+  }
+
+  /* Fila espejo del abono en la colección pagos */
+  async function pagoDeAbono(f, a) {
+    return (await DB.pagos.list()).find(p =>
+      p.facturaId === f.id && p.fecha === a.fecha && Math.abs((p.monto || 0) - a.monto) < 0.005);
+  }
+
+  /* Revertir un abono: sube el saldo, reabre la factura y borra la fila de pagos */
+  async function eliminarAbono(f, i) {
+    const a = f.abonos[i];
+    if (!a) return;
+    const pago = await pagoDeAbono(f, a);
+    f.abonos.splice(i, 1);
+    f.saldo = Math.round(Math.min(f.total, f.saldo + a.monto) * 100) / 100;
+    if (f.saldo > 0.005 && f.estado === 'pagada') f.estado = 'pendiente';
+    actualizarProxCobro(f);
+    await DB.facturas.upsert(f);
+    if (pago) await DB.pagos.remove(pago.id);
+  }
+
+  /* Corregir monto, fecha o método de un abono ya registrado */
+  function formCorregirAbono(f, i) {
+    const a = f.abonos[i];
+    if (!a) return;
+    const t = f.moneda || 'DOP';
+    const maxMonto = Math.round((f.saldo + a.monto) * 100) / 100;
+    abrirModal(`Corregir abono — ${rotulo(f)}`, `
+      <p class="muted" style="margin-bottom:14px">${esc(f.clienteNombre)} · este abono: <b>${fmtMoneda(a.monto, t)}</b> · máximo: ${fmtMoneda(maxMonto, t)}</p>
+      <form id="formCorregir">
+        <div class="row">
+          <div><label>Monto *</label><input name="monto" type="number" step="0.01" min="0.01" max="${maxMonto}" required value="${a.monto}"></div>
+          <div><label>Fecha</label><input name="fecha" type="date" value="${a.fecha}"></div>
+        </div>
+        <div class="row"><div>
+          <label>Método de pago</label>
+          <select name="metodo">${METODOS.map(m => `<option ${m === a.metodo ? 'selected' : ''}>${m}</option>`).join('')}${
+            METODOS.includes(a.metodo) ? '' : `<option selected>${esc(a.metodo || 'Otro')}</option>`}</select>
+        </div></div>
+        <button type="submit" class="btn-gold btn-block">Guardar corrección</button>
+      </form>
+    `);
+    $('#formCorregir').addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const monto = Math.min(Number(fd.get('monto')), maxMonto);
+      if (!(monto > 0)) return;
+      const pago = await pagoDeAbono(f, a);
+      f.saldo = Math.round((f.saldo + a.monto - monto) * 100) / 100;
+      a.monto = monto; a.fecha = fd.get('fecha'); a.metodo = fd.get('metodo');
+      if (f.saldo <= 0.005) { f.saldo = 0; f.estado = 'pagada'; delete f.proxCobro; }
+      else { if (f.estado === 'pagada') f.estado = 'pendiente'; actualizarProxCobro(f); }
+      await DB.facturas.upsert(f);
+      if (pago) {
+        await DB.pagos.upsert({ ...pago, fecha: a.fecha, monto: a.monto, metodo: a.metodo });
+      }
+      toast('Abono corregido');
+      render();
+      detalle(f.id);
+    });
   }
 
   async function imprimirRecibo(f, abono, numRec) {
