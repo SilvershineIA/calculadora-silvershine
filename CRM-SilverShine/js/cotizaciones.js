@@ -17,6 +17,16 @@ const Cotizaciones = (() => {
     return `<span class="badge ${cls}">${e}</span>`;
   };
 
+  /* Segunda etiqueta: ¿hubo gestión (creación o seguimiento) en los últimos 15 días? */
+  const badgeSeguimiento = c => {
+    if (!ABIERTAS.includes(estadoDe(c))) return '';
+    const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
+    const corte = new Date(Date.now() - 15 * 864e5).toISOString().slice(0, 10);
+    return ultima && ultima >= corte
+      ? '<span class="badge b-pag">🤝 al día</span>'
+      : '<span class="badge b-roja">🤝 sin seguimiento</span>';
+  };
+
   async function siguienteNumero() {
     const lista = await DB.cotizaciones.list();
     let max = 1000;
@@ -70,7 +80,7 @@ const Cotizaciones = (() => {
     cont.innerHTML = lista.slice(0, 100).map(c => `
       <div class="item" data-id="${c.id}">
         <div class="item-info">
-          <div class="item-name">${esc(c.clienteNombre)} ${badge(c)}</div>
+          <div class="item-name">${esc(c.clienteNombre)} ${badge(c)}${badgeSeguimiento(c)}</div>
           <div class="item-sub">COT-${esc(String(c.numero || 's/n'))} · ${fmtFecha(c.fecha)} · ${fmtMoneda(c.total, c.moneda)}${
             c.vence && ABIERTAS.includes(estadoDe(c)) ? ` · vence ${fmtFecha(c.vence)}` : ''}${
             (c.seguimientos || []).length ? ` · 🤝 ${fmtFecha(c.seguimientos[c.seguimientos.length - 1].fecha)}` : ''}</div>
@@ -89,7 +99,7 @@ const Cotizaciones = (() => {
 
     abrirModal(`Cotización COT-${c.numero || 's/n'}`, `
       <div class="fact-head">
-        <div><b>${esc(c.clienteNombre)}</b> ${badge(c)}<br>
+        <div><b>${esc(c.clienteNombre)}</b> ${badge(c)}${badgeSeguimiento(c)}<br>
         <span class="muted">${fmtFecha(c.fecha)}${c.vence ? ' · vence ' + fmtFecha(c.vence) : ''}</span></div>
       </div>
       <table class="fact-lineas">
