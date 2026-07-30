@@ -182,10 +182,20 @@ const Cotizaciones = (() => {
         `💰 *Precio: ${precioTxt}*\n\n` +
         (() => {
           const ep = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;
-          return ep
-            ? `💳 *Págalo con ${ep.nombre}*: resérvalo hoy con ${fmtMoneda(ep.reserva, t)} y págalo en ${ep.meses} cuotas mensuales de ${fmtMoneda(ep.cuota, t)} — sin intereses${
-                ep.fee ? ` (incluye RD$${ep.fee} de tarifa administrativa por cuota)` : ''}.\nLa pieza se entrega al saldarla por completo. Reserva mínima RD$7,000.\n\n`
-            : '';
+          if (!ep) return '';
+          const hoy = new Date();
+          const cuotasTxt = Array.from({ length: ep.meses }, (_, i) => {
+            const d = new Date(hoy.getFullYear(), hoy.getMonth() + i + 1, 1);
+            const mes = d.toLocaleDateString('es-DO', d.getFullYear() !== hoy.getFullYear()
+              ? { month: 'long', year: 'numeric' } : { month: 'long' });
+            return `▪ Cuota ${i + 1} · ${mes}: ${fmtMoneda(ep.cuota, t)}`;
+          }).join('\n');
+          return `💳 *Págalo con ${ep.nombre} — sin intereses*\n` +
+            `▪ Reserva hoy: *${fmtMoneda(ep.reserva, t)}*\n` +
+            `${cuotasTxt}\n` +
+            `💵 Total del plan: *${fmtMoneda(ep.totalConTarifas, t)}*` +
+            `${ep.fee ? ` (incluye RD$${ep.fee} de tarifa administrativa por cuota)` : ''}\n` +
+            `📦 Su pieza se entrega al saldar el plan por completo.\n\n`;
         })() +
         `Si lo prefiere, podemos ajustar el peso de la pieza para llevarla a su presupuesto — solo díganos 😊\n` +
         `⚠️ Tome en cuenta: reducir el peso puede restarle integridad estructural a la pieza y podría invalidar la garantía de por vida.\n\n` +
