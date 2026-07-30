@@ -219,6 +219,7 @@ button:hover{filter:brightness(1.12)}
 .b-pend{background:#FDF3E3;color:#9a6a00;border:1px solid #eBd5a8}
 .b-pag{background:#E8F3E9;color:var(--green);border:1px solid #bfdec2}
 .b-anu{background:#F3F3F3;color:var(--muted);border:1px solid var(--border)}
+.b-roja{background:#FBEAEA;color:var(--red);border:1px solid #eec5c5}
 .rojo{color:var(--red)}
 .verde{color:var(--green)}
 .dorado{color:var(--gold-bright)}
