@@ -106,7 +106,7 @@ const Finanzas = (() => {
           <div class="item-sub">${fmtFecha(f.fecha)} · ${fmtMoneda(f.total, t)}${
             gan !== null ? ` · <span class="${gan >= 0 ? 'verde' : 'rojo'}">ganó ${fmtMoneda(gan, t)}</span>` : ''}${
             f.estado === 'pendiente' && f.saldo > 0 ? ` · <span class="rojo">debe ${fmtMoneda(f.saldo, t)}</span>` : ''}
-            · costo <input class="fin-costo" data-fid="${f.id}" type="number" min="0" step="0.01" value="${f.costo ?? ''}" placeholder="0.00"></div>
+            · costo <input class="fin-costo" data-fid="${f.id}" type="text" inputmode="decimal" autocomplete="off" value="${f.costo ?? ''}" placeholder="5000+1200+300" title="Acepta sumas: 5000+1200+300"></div>
         </div>
         <span class="item-arrow">›</span>
       </div>`;
@@ -128,13 +128,25 @@ const Finanzas = (() => {
       const item = e.target.closest('.item[data-id]');
       if (item) Facturas.detalle(item.dataset.id);
     });
-    /* Guardar el costo directo desde la fila */
+    /* Guardar el costo directo desde la fila.
+       La celda acepta sumas y restas: "5000+1200+300" → 6,500. */
+    const evaluarCosto = txt => {
+      const limpio = String(txt).replace(/,/g, '').replace(/\s+/g, '');
+      if (!limpio) return null;                              // vacío = quitar costo
+      if (!/^[\d.+\-*/()]+$/.test(limpio)) return NaN;
+      try {
+        const v = Function(`"use strict";return(${limpio})`)();
+        return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : NaN;
+      } catch { return NaN; }
+    };
     $('#finLista').addEventListener('change', async e => {
       const inp = e.target.closest('.fin-costo');
       if (!inp) return;
+      const v = evaluarCosto(inp.value);
+      if (Number.isNaN(v)) { UI.toast('Costo no válido — usa números y + − × ÷, ej: 5000+1200'); render(); return; }
       const f = await DB.facturas.get(inp.dataset.fid);
       if (!f) return;
-      f.costo = Number(inp.value) || null;
+      f.costo = v || null;
       await DB.facturas.upsert(f);
       UI.toast(f.costo ? `Costo guardado: ${fmtMoneda(f.costo, f.moneda || 'DOP')}` : 'Costo quitado');
       render();
