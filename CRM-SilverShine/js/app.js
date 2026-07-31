@@ -371,18 +371,50 @@
       ['fac-qb-00485', 'B0200001538'],     // Ydalmis Jazmin 6,000
       ['fac-qb-00496', 'B0200001533'],     // Emmanuel Martinez 8,400
     ];
+    /* Facturas internas SIN NCF que se re-facturaron con comprobante (a veces
+       con el monto ajustado). QuickBooks no las cuenta como ventas; con ellas
+       anuladas el CRM cuadra con QuickBooks mes por mes al centavo
+       (confirmado por el usuario contra los balances de QB, 31 jul 2026). */
+    const INTERNAS_SIN_NCF = [               // [facturaId, NCF de la re-emisión]
+      ['fac-qb-00396', 'B0200001626'],       // Brahian Gómez 8,000
+      ['fac-qb-00393', 'B0200001629'],       // Edison Matos 9,000
+      ['fac-qb-00377', 'B0200001642'],       // Steven Nuñez 8,100
+      ['fac-qb-00361', 'B0200001657'],       // Javier Mendez 9,500
+      ['fac-qb-00343', 'B0200001671'],       // Abel Ferrer 8,925
+      ['fac-qb-00339', 'B0200001677'],       // Nestor Nouel 9,440
+      ['fac-qb-00328', 'B0200001686'],       // José Eduardo Gil 9,425
+      ['fac-qb-00283', 'B0200001724'],       // Yaisy Solís 3,500
+      ['fac-qb-00273', 'B0200001734'],       // Carlos Reyes 6,000
+      ['fac-qb-00260', 'B0200001745'],       // Cesar Israel Feliz 4,500
+      ['fac-qb-00245', 'B0200001756'],       // Juan Ramon Paulino 33,000
+      ['fac-qb-00244', 'B0200001763'],       // Marisol Salazar 8,100
+      ['fac-qb-00240', 'B0200001766'],       // Carlos Mansel 8,670
+      ['fac-qb-00222', 'B0200001780'],       // Kevyn Perez Cordero 36,500
+      ['fac-qb-00223', 'B0200001779'],       // Ezequiel Pérez Mota 8,925
+      ['fac-qb-00213', 'B0200001785'],       // Flerida Dominguez 3,800
+      ['fac-qb-00214', 'B0200001786'],       // Joel Diaz Suero 8,100
+      ['fac-qb-00190', 'B0200001807'],       // Jose Alberto Martinez 84,880
+      ['fac-qb-00158', 'B0100001836'],       // Kémil Cuesta #1691 7,500
+      ['fac-qb-00139', 'B0200001857'],       // Shanti Peña #1700 8,500
+      ['fac-qb-00092', ''],                  // Emmanuel Martinez #1738 500
+    ];
     let anuladas = 0;
-    for (const [fid, ncf] of DUPLICADAS) {
+    const anular = async (fid, nota) => {
       const f = await DB.facturas.get(fid);
-      if (!f || f.estado === 'anulada') continue;
-      if (f.saldo > 0 || (f.abonos || []).length) continue;   // por seguridad: solo saldadas sin abonos
+      if (!f || f.estado === 'anulada') return;
+      if (f.saldo > 0 || (f.abonos || []).length) return;   // por seguridad: solo saldadas sin abonos
       f.estado = 'anulada';
-      f.notas = [f.notas, `Duplicado del export de QuickBooks — la válida es ${ncf}. Anulada en la limpieza del 31 jul 2026.`]
-        .filter(Boolean).join('\n');
+      f.notas = [f.notas, nota].filter(Boolean).join('\n');
       await DB.facturas.upsert(f);
       anuladas++;
+    };
+    for (const [fid, ncf] of DUPLICADAS) {
+      await anular(fid, `Duplicado del export de QuickBooks — la válida es ${ncf}. Anulada en la limpieza del 31 jul 2026.`);
     }
-    if (anuladas) toast(`🧹 ${anuladas} facturas duplicadas de QuickBooks anuladas`);
+    for (const [fid, ncf] of INTERNAS_SIN_NCF) {
+      await anular(fid, `Factura interna sin NCF${ncf ? ` re-facturada como ${ncf}` : ''} — QuickBooks no la cuenta como venta. Anulada en el cuadre del 31 jul 2026.`);
+    }
+    if (anuladas) toast(`🧹 ${anuladas} facturas anuladas para cuadrar con QuickBooks`);
   }
 
   /* ── Migración única: ajustes confirmados por el usuario (31 jul 2026):

@@ -433,6 +433,13 @@ const Finanzas = (() => {
     'fac-qb-00282', 'fac-qb-00307', 'fac-qb-00316', 'fac-qb-00357', 'fac-qb-00362',
     'fac-qb-00468', 'fac-qb-00485', 'fac-qb-00496',
     'fac-qb-00045',                                  // duplicada de Samuel Tejeda
+    /* Internas sin NCF re-facturadas con comprobante (cuadre del 31 jul 2026,
+       confirmado mes por mes contra los balances de QuickBooks) */
+    'fac-qb-00396', 'fac-qb-00393', 'fac-qb-00377', 'fac-qb-00361', 'fac-qb-00343',
+    'fac-qb-00339', 'fac-qb-00328', 'fac-qb-00283', 'fac-qb-00273', 'fac-qb-00260',
+    'fac-qb-00245', 'fac-qb-00244', 'fac-qb-00240', 'fac-qb-00222', 'fac-qb-00223',
+    'fac-qb-00213', 'fac-qb-00214', 'fac-qb-00190', 'fac-qb-00158', 'fac-qb-00139',
+    'fac-qb-00092',
   ]);
 
   async function cuadreQB() {
@@ -483,7 +490,8 @@ const Finanzas = (() => {
     UI.abrirModal('🔍 Cuadre contra QuickBooks', `
       <p class="muted" style="margin-bottom:10px">
         Comparación de este dispositivo contra el export de QuickBooks
-        (corte <b>27 jul 2026</b>), descontando las ${DUP_CONOCIDAS.size} duplicadas ya confirmadas.
+        (corte <b>27 jul 2026</b>), descontando las ${DUP_CONOCIDAS.size} facturas confirmadas
+        como duplicadas o internas sin NCF (cuadradas contra QuickBooks el 31 jul 2026).
       </p>
       <table class="fact-lineas"><tbody>
         <tr><td>Ventas 2026 hasta el corte — <b>este dispositivo</b></td><td class="num"><b>${fmtMoneda(dispCorte)}</b></td></tr>
