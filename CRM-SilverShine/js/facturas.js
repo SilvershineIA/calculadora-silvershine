@@ -201,22 +201,42 @@ const Facturas = (() => {
     on('#fImprimir', () => imprimir(f, cliente));
     /* Tareas de taller con pasos preprogramados */
     const enDias = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-    const crearTareaTaller = async (titulo, pasos) => {
+    const crearTareaTaller = async (titulo, pasos, notasExtra) => {
       await DB.tareas.upsert({
         titulo: `${titulo} — Factura ${rotulo(f)}`,
         fecha: pasos[0].fecha,
-        notas: `Creada desde la factura ${rotulo(f)}${f.orden && f.numero ? ' · ' + f.numero : ''} — ${f.clienteNombre}`,
+        notas: [notasExtra, `Creada desde la factura ${rotulo(f)}${f.orden && f.numero ? ' · ' + f.numero : ''} — ${f.clienteNombre}`]
+          .filter(Boolean).join('\n'),
         clienteId: f.clienteId, clienteNombre: f.clienteNombre,
         pasos, hecha: false,
       });
       toast(`✓ Tarea "${titulo}" creada (${pasos.length} pasos)`);
       Tareas.render();
     };
-    on('#fTGrabado', () => crearTareaTaller('Grabado', [
-      { titulo: 'Enviar a Rubén', fecha: enDias(0), hecho: false },
-      { titulo: 'Seguimiento',    fecha: enDias(2), hecho: false },
-      { titulo: 'Envío',          fecha: enDias(3), hecho: false },
-    ]));
+    on('#fTGrabado', () => {
+      abrirModal(`Grabado — ${rotulo(f)}`, `
+        <form id="formGrabado">
+          <div class="row"><div>
+            <label>¿Qué se va a grabar? *</label>
+            <textarea name="texto" required placeholder='Ej: "Andrea & Luis 12-08-26" en el interior del anillo'></textarea>
+          </div></div>
+          <button type="submit" class="btn-gold btn-block">Crear tarea de grabado</button>
+          <button type="button" class="btn-ghost btn-block" id="grabVolver" style="margin-top:10px">← Volver a la factura</button>
+        </form>
+      `);
+      $('#formGrabado').addEventListener('submit', async e => {
+        e.preventDefault();
+        const texto = String(new FormData(e.target).get('texto')).trim();
+        if (!texto) return;
+        await crearTareaTaller('Grabado', [
+          { titulo: `Enviar a Rubén — «${texto}»`, fecha: enDias(0), hecho: false },
+          { titulo: 'Seguimiento',                  fecha: enDias(2), hecho: false },
+          { titulo: 'Envío',                        fecha: enDias(3), hecho: false },
+        ], `Grabar: «${texto}»`);
+        detalle(f.id);
+      });
+      $('#grabVolver').addEventListener('click', () => detalle(f.id));
+    });
     on('#fTConfeccion', () => {
       abrirModal(`Confección — ${rotulo(f)}`, `
         <p class="muted" style="margin-bottom:14px">¿Para cuándo está pactada la confección?</p>
