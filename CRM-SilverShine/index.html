@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=50">
+<link rel="stylesheet" href="css/app.css?v=51">
 </head>
 <body>
 
@@ -29,6 +29,7 @@
     <button class="nav-btn" data-view="facturas"><span class="nav-ico">🧾</span><span>Facturas</span></button>
     <button class="nav-btn" data-view="cotizaciones"><span class="nav-ico">📋</span><span>Cotizaciones</span></button>
     <button class="nav-btn" data-view="cobros"><span class="nav-ico">💰</span><span>Cobros</span></button>
+    <button class="nav-btn" data-view="finanzas"><span class="nav-ico">📈</span><span>Finanzas</span></button>
     <button class="nav-btn" data-view="inventario"><span class="nav-ico">📦</span><span>Inventario</span></button>
     <button class="nav-btn" data-view="tareas"><span class="nav-ico">✓</span><span>Tareas</span></button>
     <button class="nav-btn" data-view="ajustes"><span class="nav-ico">⚙</span><span>Ajustes</span></button>
@@ -220,6 +221,34 @@
       <div id="listaCobros" class="list"></div>
     </section>
 
+    <!-- ══════════ FINANZAS ══════════ -->
+    <section class="view" data-view="finanzas">
+      <h1 class="view-title">Finanzas</h1>
+      <div class="filter-row">
+        <select id="finPeriodo">
+          <option value="mes">Este mes</option>
+          <option value="mesPasado">Mes pasado</option>
+          <option value="trimestre">Este trimestre</option>
+          <option value="semestre">Este semestre</option>
+          <option value="ano">Este año</option>
+          <option value="anoPasado">Año pasado</option>
+          <option value="todo">Todo el histórico</option>
+          <option value="custom">Rango personalizado…</option>
+        </select>
+      </div>
+      <div class="row" id="finCustom" hidden>
+        <div><label>Desde</label><input type="date" id="finDesde"></div>
+        <div><label>Hasta</label><input type="date" id="finHasta"></div>
+      </div>
+      <div class="stat-grid" id="finStats"></div>
+      <p class="muted" id="finNota" style="margin-bottom:14px"></p>
+      <div class="card" id="finMeses"></div>
+      <div class="card">
+        <h2>Facturas del período</h2>
+        <div id="finLista" class="list"></div>
+      </div>
+    </section>
+
     <!-- ══════════ INVENTARIO ══════════ -->
     <section class="view" data-view="inventario">
       <div class="view-head">
@@ -352,18 +381,19 @@
 <div id="printArea"></div>
 
 <script src="js/jspdf.min.js"></script>
-<script src="js/pdf.js?v=50"></script>
-<script src="js/db.js?v=50"></script>
-<script src="js/sync.js?v=50"></script>
-<script src="js/ui.js?v=50"></script>
-<script src="js/clientes.js?v=50"></script>
-<script src="js/catalogo.js?v=50"></script>
-<script src="js/calculadora.js?v=50"></script>
-<script src="js/facturas.js?v=50"></script>
-<script src="js/cotizaciones.js?v=50"></script>
-<script src="js/cobros.js?v=50"></script>
-<script src="js/inventario.js?v=50"></script>
-<script src="js/tareas.js?v=50"></script>
-<script src="js/app.js?v=50"></script>
+<script src="js/pdf.js?v=51"></script>
+<script src="js/db.js?v=51"></script>
+<script src="js/sync.js?v=51"></script>
+<script src="js/ui.js?v=51"></script>
+<script src="js/clientes.js?v=51"></script>
+<script src="js/catalogo.js?v=51"></script>
+<script src="js/calculadora.js?v=51"></script>
+<script src="js/facturas.js?v=51"></script>
+<script src="js/cotizaciones.js?v=51"></script>
+<script src="js/cobros.js?v=51"></script>
+<script src="js/finanzas.js?v=51"></script>
+<script src="js/inventario.js?v=51"></script>
+<script src="js/tareas.js?v=51"></script>
+<script src="js/app.js?v=51"></script>
 </body>
 </html>

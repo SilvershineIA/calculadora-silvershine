@@ -162,6 +162,7 @@ const Facturas = (() => {
       </table>
 
       ${f.notasInternas ? `<div class="nota-privada">🔒 <b>Nota privada:</b> ${esc(f.notasInternas)}</div>` : ''}
+      ${f.costo > 0 ? `<div class="nota-privada">🔒 <b>Costo:</b> ${fmtMoneda(f.costo, t)} · <b>Ganancia:</b> <span class="${f.total - f.costo >= 0 ? 'verde' : 'rojo'}">${fmtMoneda(f.total - f.costo, t)}${f.total > 0 ? ` (${Math.round((f.total - f.costo) / f.total * 100)}%)` : ''}</span></div>` : ''}
 
       ${f.planPago ? `
         <h3 class="sub-h">📅 Plan EasyPay${f.planPago.cuotas.length ? ` (${esc(f.planPago.frecuencia)})` : ''}</h3>
@@ -596,6 +597,10 @@ const Facturas = (() => {
           <label>🔒 Nota privada (uso interno — nunca se imprime ni se envía)</label>
           <textarea name="notasInternas">${esc(f.notasInternas || '')}</textarea>
         </div></div>
+        <div class="row"><div>
+          <label>🔒 Costo de producción (privado — alimenta Finanzas)</label>
+          <input name="costo" type="number" step="0.01" min="0" value="${f.costo ?? ''}" placeholder="Materiales + mano de obra (opcional)">
+        </div></div>
         <button type="submit" class="btn-gold btn-block">${esNueva ? 'Crear factura' : 'Guardar cambios'}</button>
       </form>
     `);
@@ -729,6 +734,7 @@ const Facturas = (() => {
         estado: saldoNuevo <= 0.005 && f.id ? 'pagada' : 'pendiente',
         notas: fd.get('notas').trim(),
         notasInternas: fd.get('notasInternas').trim(),
+        costo: Number(fd.get('costo')) || null,
         abonos: f.abonos || [],
       };
 

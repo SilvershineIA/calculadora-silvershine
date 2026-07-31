@@ -12,6 +12,7 @@
     facturas:     () => Facturas.render(),
     cotizaciones: () => Cotizaciones.render(),
     cobros:       () => Cobros.render(),
+    finanzas:     () => Finanzas.render(),
     inventario:   () => Inventario.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
@@ -289,6 +290,7 @@
   Calculadora.init();
   Facturas.init();
   Cotizaciones.init();
+  Finanzas.init();
   Inventario.init();
   Tareas.init();
   renderPanel();

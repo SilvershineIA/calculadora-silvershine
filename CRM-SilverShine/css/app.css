@@ -220,6 +220,12 @@ button:hover{filter:brightness(1.12)}
 .b-pag{background:#E8F3E9;color:var(--green);border:1px solid #bfdec2}
 .b-anu{background:#F3F3F3;color:var(--muted);border:1px solid var(--border)}
 .b-roja{background:#FBEAEA;color:var(--red);border:1px solid #eec5c5}
+
+/* ── Finanzas: desglose mensual ── */
+.fin-mes{margin-bottom:12px}
+.fin-mes-cab{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:.9rem;margin-bottom:4px}
+.fin-barra{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.fin-barra div{height:100%;background:var(--gold);border-radius:4px}
 .rojo{color:var(--red)}
 .verde{color:var(--green)}
 .dorado{color:var(--gold-bright)}
