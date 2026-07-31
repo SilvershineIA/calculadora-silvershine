@@ -358,14 +358,16 @@ const Finanzas = (() => {
     cont.innerHTML = `
       <div class="card">
         <h2>${esDiario ? '📊 Ventas por día' : '📊 Ventas por mes'}</h2>
-        <div class="ch-plot">
-          <div class="ch-grid">
-            <div class="ch-gridline" style="top:0"><span>${compacto(tope)}</span></div>
-            <div class="ch-gridline" style="top:50%"><span>${compacto(tope / 2)}</span></div>
-            <div class="ch-gridline" style="bottom:0"></div>
+        <div class="ch-scroll">
+          <div class="ch-plot" style="min-width:${buckets.length * 14}px">
+            <div class="ch-grid">
+              <div class="ch-gridline" style="top:0"><span>${compacto(tope)}</span></div>
+              <div class="ch-gridline" style="top:50%"><span>${compacto(tope / 2)}</span></div>
+              <div class="ch-gridline" style="bottom:0"></div>
+            </div>
+            <div class="ch-cols">${columnas}</div>
+            <div class="ch-tip" hidden></div>
           </div>
-          <div class="ch-cols">${columnas}</div>
-          <div class="ch-tip" hidden></div>
         </div>
       </div>
       <div class="card">

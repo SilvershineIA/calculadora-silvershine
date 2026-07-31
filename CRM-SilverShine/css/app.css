@@ -246,10 +246,13 @@ button:hover{filter:brightness(1.12)}
 
 /* ── Finanzas: gráficos ── */
 .fin-charts{display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:16px}
-.fin-charts .card{margin-bottom:0}
+.fin-charts .card{margin-bottom:0;min-width:0;overflow:hidden}
 .fin-charts .empty{border:none;padding:30px 10px}
-/* Gráfico de columnas (HTML puro, sin librerías) */
-.ch-plot{position:relative;height:216px;margin-top:10px}
+/* Gráfico de columnas (HTML puro, sin librerías).
+   En pantallas angostas el gráfico se desplaza DENTRO de su tarjeta
+   (nunca desborda el marco): min-width por barra + scroll horizontal. */
+.ch-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px;padding-top:4px}
+.ch-plot{position:relative;height:216px}
 .ch-grid{position:absolute;inset:0 0 22px 0}
 .ch-gridline{position:absolute;left:0;right:0;border-top:1px solid #EFEAE5}
 .ch-gridline span{position:absolute;left:0;top:2px;font-size:.66rem;color:var(--muted)}
@@ -478,6 +481,8 @@ button:hover{filter:brightness(1.12)}
   .stat-hero .n.n-sm{font-size:1.1rem}
   .fin-charts{grid-template-columns:1fr}
   .ch-plot{height:180px}
+  .est-row{flex-wrap:wrap}
+  .est-row .est-monto{flex:1 1 100%;padding-left:26px}
   .item{flex-wrap:wrap}
   .item>b{max-width:100%;overflow-wrap:anywhere}
   .item-info{flex:1 1 60%}
