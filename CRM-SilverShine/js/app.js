@@ -331,6 +331,58 @@
     if (cambio) await DB.config.upsert(emp);
   }
 
+  /* ── Migración única: costos de producción 2026 entregados por el
+        usuario (31 jul 2026, lista "Órdenes/Confecciones en China").
+        Solo pone el costo si la factura aún no tiene; corre una vez
+        (bandera en config, sincronizada entre dispositivos). ── */
+  async function migrarCostos2026() {
+    if (await DB.config.get('costos2026')) return;
+    const COSTOS = [                       // [facturaId, costo]
+      ['fac-qb-00397', 18500],             // Saul Ogando Blanco ("Raul" en la lista)
+      ['fac-qb-00403', 23500],             // Alissa Batista
+      ['fac-qb-00356', 30000],             // Alfonso Fernandez
+      ['fac-qb-00341', 34000],             // Samson Ashley
+      ['fac-qb-00336', 25000],             // Julio César Núñez Mota
+      ['fac-qb-00291', 34000],             // Fernando A. Bordas
+      ['fac-qb-00182', 27218],             // Claudio Javier Adams
+      ['fac-qb-00174', 25048],             // Martin Arias
+      ['fac-qb-00359', 36000],             // Alexis Jose Diaz
+      ['fac-qb-00113', 22000],             // Yendy Valenzuela
+      ['fac-qb-00116', 25000],             // Eric Joel Paredes
+      ['fac-qb-00121', 54002],             // Miguel Severino
+      ['fac-qb-00111', 24800],             // Wilgrady Ferreira Morel
+      ['fac-qb-00082', 3000],              // Jesus Miguel Toribio
+      ['fac-qb-00090', 30000],             // Eddy Guzman
+      ['fac-qb-00073', 23280],             // Rafael Diplán Suazo
+      ['fac-qb-00070', 39480],             // Jonathan Perez
+      ['fac-qb-00056', 13320],             // Randy Lebrón Michel
+      ['fac-qb-00045', 22200],             // Samuel Tejeda
+      ['fac-qb-00041', 24840],             // Oliver Ramírez
+      ['fac-qb-00048', 15636],             // Jerson de oleo Perez
+      ['fac-qb-00030', 46860],             // Ruth Celeste Feliz
+      ['fac-qb-00028', 25000],             // Jean Carlos Osoria
+      ['fac-qb-00027', 26280],             // Angel Renville
+      ['fac-qb-00021', 32580],             // Elianna Fiallo
+      ['fac-qb-00018', 67980],             // Raymond Garcia
+      ['fac-qb-00017', 32400],             // Ernesto Agustin Garcia
+      ['fac-qb-00016', 58920],             // Josue Berroa
+      ['fac-qb-00012', 7680],              // Misael Sosa
+      ['fac-qb-00004', 20820],             // Junior Vega
+      ['fac-qb-00042', 39600],             // Fabrina Feliz Velazquez
+      ['fac-qb-00001', 32400],             // Yitty Jiron ("Yitti Jeron" en la lista)
+    ];
+    let puestos = 0;
+    for (const [fid, costo] of COSTOS) {
+      const f = await DB.facturas.get(fid);
+      if (!f || f.costo > 0) continue;
+      f.costo = costo;
+      await DB.facturas.upsert(f);
+      puestos++;
+    }
+    await DB.config.upsert({ id: 'costos2026', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
+    if (puestos) toast(`📈 Costos 2026 aplicados a ${puestos} facturas`);
+  }
+
   /* ── Migración única: clientes con plan EasyPay confirmados por el
         usuario (28 jul 2026). Sus facturas pendientes pasan al módulo
         EasyPay con las cuotas por programar. Idempotente. ── */
@@ -417,6 +469,7 @@
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
     await migrarPlanesEasyPay();
+    await migrarCostos2026();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();

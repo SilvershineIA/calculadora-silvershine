@@ -226,6 +226,8 @@ button:hover{filter:brightness(1.12)}
 .fin-mes-cab{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:.9rem;margin-bottom:4px}
 .fin-barra{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
 .fin-barra div{height:100%;background:var(--gold);border-radius:4px}
+.fin-costo{width:110px;padding:4px 8px;font-size:.85rem;display:inline-block;vertical-align:middle;
+  border:1px solid var(--border);border-radius:8px;background:var(--panel)}
 .rojo{color:var(--red)}
 .verde{color:var(--green)}
 .dorado{color:var(--gold-bright)}
