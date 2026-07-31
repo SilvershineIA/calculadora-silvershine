@@ -420,6 +420,98 @@ const Finanzas = (() => {
     document.querySelectorAll('.ch-tip').forEach(t => { t.hidden = true; });
   }
 
+  /* ═══════ Cuadre contra QuickBooks ═══════════════════════════
+     Compara las facturas de ESTE dispositivo con el export de
+     QuickBooks que viene con la app (corte 27 jul 2026) y muestra
+     exactamente qué está anulado, qué falta, qué cambió de monto y
+     qué es nuevo — para cuadrar contra los reportes de QuickBooks. */
+  const CORTE_QB = '2026-07-27';
+  const DUP_CONOCIDAS = new Set([
+    'fac-qb-00086', 'fac-qb-00089', 'fac-qb-00104', 'fac-qb-00105', 'fac-qb-00115',
+    'fac-qb-00120', 'fac-qb-00122', 'fac-qb-00145', 'fac-qb-00160', 'fac-qb-00175',
+    'fac-qb-00187', 'fac-qb-00199', 'fac-qb-00205', 'fac-qb-00229', 'fac-qb-00232',
+    'fac-qb-00282', 'fac-qb-00307', 'fac-qb-00316', 'fac-qb-00357', 'fac-qb-00362',
+    'fac-qb-00468', 'fac-qb-00485', 'fac-qb-00496',
+    'fac-qb-00045',                                  // duplicada de Samuel Tejeda
+  ]);
+
+  async function cuadreQB() {
+    let qb;
+    try { qb = (await (await fetch('datos-quickbooks.json')).json()).facturas || []; }
+    catch { UI.toast('No se pudo leer el export de QuickBooks (¿sin internet?)'); return; }
+
+    const locales = await DB.facturas.list();
+    const locPorId = new Map(locales.map(f => [f.id, f]));
+    const qbIds = new Set(qb.map(f => f.id));
+    const es2026 = f => (f.fecha || '').startsWith('2026');
+    /* Referencia = export SIN las duplicadas ya confirmadas (así el cuadre
+       marca solo lo inesperado) */
+    const refActiva = f => f.estado !== 'anulada' && !DUP_CONOCIDAS.has(f.id);
+
+    const anuladas = [], faltantes = [], distintas = [];
+    for (const f of qb) {
+      if (!es2026(f) || !refActiva(f)) continue;
+      const l = locPorId.get(f.id);
+      if (!l) { faltantes.push(f); continue; }
+      if (l.estado === 'anulada') { anuladas.push(l); continue; }
+      if (Math.abs((l.total || 0) - f.total) > 0.01) distintas.push({ f, l });
+    }
+    const nuevas = locales
+      .filter(l => !qbIds.has(l.id) && l.estado !== 'anulada' && es2026(l))
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+
+    /* Ventas por mes: dispositivo vs export limpio */
+    const porMes = new Map();
+    const add = (f, campo) => {
+      const clave = f.fecha.slice(0, 7);
+      const g = porMes.get(clave) || { disp: 0, qb: 0 };
+      g[campo] += Number(f.total) || 0;
+      porMes.set(clave, g);
+    };
+    for (const l of locales) if (es2026(l) && l.estado !== 'anulada') add(l, 'disp');
+    for (const f of qb) if (es2026(f) && refActiva(f)) add(f, 'qb');
+
+    const sum = (arr, sel) => arr.reduce((s, x) => s + (Number(sel ? sel(x) : x.total) || 0), 0);
+    const dispCorte = sum(locales.filter(l => l.estado !== 'anulada' && es2026(l) && l.fecha <= CORTE_QB));
+    const qbCorte = sum(qb.filter(f => es2026(f) && refActiva(f) && f.fecha <= CORTE_QB));
+
+    const filaF = f => `<tr><td>${esc(f.numero || f.orden || 's/n')} · ${esc(f.clienteNombre || '')} <span class="muted">${fmtFecha(f.fecha)}</span></td><td class="num">${fmtMoneda(f.total, f.moneda || 'DOP')}</td></tr>`;
+    const seccion = (titulo, filas, vacio) => `
+      <h3 class="sub-h">${titulo}</h3>
+      ${filas.length ? `<table class="fact-lineas"><tbody>${filas.join('')}</tbody></table>` : `<p class="muted">${vacio}</p>`}`;
+
+    UI.abrirModal('🔍 Cuadre contra QuickBooks', `
+      <p class="muted" style="margin-bottom:10px">
+        Comparación de este dispositivo contra el export de QuickBooks
+        (corte <b>27 jul 2026</b>), descontando las ${DUP_CONOCIDAS.size} duplicadas ya confirmadas.
+      </p>
+      <table class="fact-lineas"><tbody>
+        <tr><td>Ventas 2026 hasta el corte — <b>este dispositivo</b></td><td class="num"><b>${fmtMoneda(dispCorte)}</b></td></tr>
+        <tr><td>Ventas 2026 hasta el corte — <b>export limpio</b></td><td class="num"><b>${fmtMoneda(qbCorte)}</b></td></tr>
+        <tr><td>Diferencia</td><td class="num ${Math.abs(dispCorte - qbCorte) > 0.01 ? 'rojo' : 'verde'}"><b>${fmtMoneda(dispCorte - qbCorte)}</b></td></tr>
+      </tbody></table>
+
+      <h3 class="sub-h">Por mes (dispositivo vs export limpio)</h3>
+      <table class="fact-lineas"><tbody>
+        ${[...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([clave, g]) => {
+          const dif = g.disp - g.qb;
+          return `<tr><td>${MESES[Number(clave.slice(5)) - 1]} ${clave.slice(0, 4)}${clave === '2026-07' ? ' <span class="muted">(QB solo hasta el 27)</span>' : ''}</td>
+            <td class="num">${fmtMoneda(g.disp)} <span class="muted">vs</span> ${fmtMoneda(g.qb)}${Math.abs(dif) > 0.01 ? ` <b class="rojo">(${dif > 0 ? '+' : ''}${fmtDinero(dif)})</b>` : ' <span class="verde">✓</span>'}</td></tr>`;
+        }).join('')}
+      </tbody></table>
+
+      ${seccion(`⚠ Del export pero ANULADAS aquí (${anuladas.length}) — si QuickBooks las tiene válidas, hay que restaurarlas`,
+        anuladas.map(filaF), 'Ninguna — bien.')}
+      ${seccion(`⚠ Del export pero NO EXISTEN aquí (${faltantes.length})`,
+        faltantes.map(filaF), 'Ninguna — bien.')}
+      ${seccion(`⚠ Con TOTAL DIFERENTE al export (${distintas.length})`,
+        distintas.map(({ f, l }) => `<tr><td>${esc(f.numero || 's/n')} · ${esc(f.clienteNombre || '')}</td><td class="num">aquí ${fmtMoneda(l.total, l.moneda || 'DOP')} · export ${fmtMoneda(f.total)}</td></tr>`),
+        'Ninguna — bien.')}
+      ${seccion(`Nuevas en el CRM, no están en el export (${nuevas.length}) — suman ${fmtMoneda(sum(nuevas))}`,
+        nuevas.map(filaF), 'Ninguna.')}
+    `);
+  }
+
   function init() {
     $('#finPeriodo').addEventListener('change', e => {
       periodo = e.target.value;
@@ -433,6 +525,8 @@ const Finanzas = (() => {
     $('#finHasta').addEventListener('change', e => { hasta = e.target.value; usarCustom(); render(); });
     const btnEst = $('#btnEstimarCostos');
     if (btnEst) btnEst.addEventListener('click', estimarCostos);   // puede faltar si el HTML viene de un caché viejo
+    const btnCua = $('#btnCuadreQB');
+    if (btnCua) btnCua.addEventListener('click', cuadreQB);
 
     /* Tooltip de los gráficos: ratón y teclado */
     const charts = $('#finCharts');
