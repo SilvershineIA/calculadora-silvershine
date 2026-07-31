@@ -118,16 +118,16 @@ const Cotizaciones = (() => {
       <h3 class="sub-h" style="margin-top:14px">📤 Enviar cotización</h3>
       <div class="row">
         <button class="btn-ghost btn-block" id="cImprimir">🖨 Imprimir</button>
-        ${cliente && cliente.telefono ? `<button class="btn-ghost btn-block" id="cWhatsApp">💬 WhatsApp</button>` : ''}
+        ${UI.tieneWhatsApp(cliente) ? `<button class="btn-ghost btn-block" id="cWhatsApp">💬 WhatsApp</button>` : ''}
         ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="cCorreo">✉️ Correo</button>` : ''}
       </div>
-      ${abierta && cliente && (cliente.telefono || cliente.correo) ? `
+      ${abierta && cliente && (UI.tieneWhatsApp(cliente) || cliente.correo) ? `
       <h3 class="sub-h" style="margin-top:14px">🤝 Seguimiento (mensaje suave)${
         (c.seguimientos || []).length
           ? ` <span class="muted" style="text-transform:none;letter-spacing:0">· último: ${fmtFecha(c.seguimientos[c.seguimientos.length - 1].fecha)} por ${esc(c.seguimientos[c.seguimientos.length - 1].via)}</span>`
           : ''}</h3>
       <div class="row">
-        ${cliente.telefono ? `<button class="btn-ghost btn-block" id="cSegWA">💬 WhatsApp</button>` : ''}
+        ${UI.tieneWhatsApp(cliente) ? `<button class="btn-ghost btn-block" id="cSegWA">💬 WhatsApp</button>` : ''}
         ${cliente.correo ? `<button class="btn-ghost btn-block" id="cSegCorreo">✉️ Correo</button>` : ''}
       </div>` : ''}
       <div class="row" style="margin-top:10px;align-items:flex-end">
@@ -188,8 +188,6 @@ const Cotizaciones = (() => {
     on('#cImprimir', () => imprimir(c, cliente));
     on('#cWhatsApp', async () => {
       const emp = await UI.getEmpresa();
-      const tel = cliente.telefono.replace(/\D/g, '');
-      const num = tel.length === 10 ? '1' + tel : tel;
       const fechaLarga = new Date().toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' });
       const lineasTxt = c.lineas.map((l, i) =>
         `${i === 0 ? '💍' : '💎'} ${l.cantidad > 1 ? l.cantidad + ' × ' : ''}${l.descripcion}`).join('\n');
@@ -227,7 +225,7 @@ const Cotizaciones = (() => {
         `${c.vence ? `Cotización válida hasta el ${fmtFecha(c.vence)}. ` : ''}Precio sujeto a cambio según el precio internacional del oro.\n\n` +
         `📄 ¿Prefiere su cotización en PDF por correo? Con gusto se la enviamos — solo díganos.\n\n` +
         `${emp.direccion ? '📍 ' + emp.direccion + '\n' : ''}📞 ${emp.telefono} · ${emp.web}`;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
+      UI.abrirWhatsApp(cliente, msg);
     });
     on('#cCorreo', async () => {
       const emp = await UI.getEmpresa();
@@ -258,9 +256,7 @@ const Cotizaciones = (() => {
 
     on('#cSegWA', async () => {
       const emp = await UI.getEmpresa();
-      const tel = cliente.telefono.replace(/\D/g, '');
-      const num = tel.length === 10 ? '1' + tel : tel;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeSeguimiento(emp))}`, '_blank');
+      UI.abrirWhatsApp(cliente, mensajeSeguimiento(emp));
       await registrarSeguimiento('WhatsApp');
       detalle(c.id);
     });

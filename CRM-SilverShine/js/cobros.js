@@ -123,7 +123,7 @@ const Cobros = (() => {
 
       <button class="btn-gold btn-block" id="coAbonar">💵 Registrar abono</button>
       <div class="row" style="margin-top:10px">
-        ${cliente && cliente.telefono ? `<button class="btn-ghost btn-block" id="coWhatsApp">💬 Recordar por WhatsApp</button>` : ''}
+        ${UI.tieneWhatsApp(cliente) ? `<button class="btn-ghost btn-block" id="coWhatsApp">💬 Recordar por WhatsApp</button>` : ''}
         ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="coCorreo">✉️ Recordar por correo</button>` : ''}
       </div>
 
@@ -156,9 +156,7 @@ const Cobros = (() => {
 
     on('#coWhatsApp', async () => {
       const emp = await UI.getEmpresa();
-      const tel = cliente.telefono.replace(/\D/g, '');
-      const num = tel.length === 10 ? '1' + tel : tel;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje(emp))}`, '_blank');
+      UI.abrirWhatsApp(cliente, mensaje(emp));
     });
     on('#coCorreo', async () => {
       const emp = await UI.getEmpresa();

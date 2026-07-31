@@ -180,7 +180,7 @@ const Facturas = (() => {
 
       <div class="row" style="margin-top:12px">
         <button class="btn-ghost btn-block" id="fImprimir">🖨 Imprimir</button>
-        ${cliente && cliente.telefono ? `<button class="btn-ghost btn-block" id="fWhatsApp">💬 WhatsApp</button>` : ''}
+        ${UI.tieneWhatsApp(cliente) ? `<button class="btn-ghost btn-block" id="fWhatsApp">💬 WhatsApp</button>` : ''}
         ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="fCorreo">✉️ Correo</button>` : ''}
         <button class="btn-ghost btn-block" id="fTarea">✓ Tarea</button>
       </div>
@@ -231,9 +231,7 @@ const Facturas = (() => {
     };
     on('#fWhatsApp', async () => {
       const emp = await UI.getEmpresa();
-      const tel = cliente.telefono.replace(/\D/g, '');
-      const num = tel.length === 10 ? '1' + tel : tel;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeFactura(emp))}`, '_blank');
+      UI.abrirWhatsApp(cliente, mensajeFactura(emp));
     });
     on('#fCorreo', async () => {
       const emp = await UI.getEmpresa();
@@ -272,7 +270,7 @@ const Facturas = (() => {
       </p>
       <div class="row">
         <button class="btn-ghost btn-block" id="rImprimir">🖨 Imprimir</button>
-        ${cliente && cliente.telefono ? '<button class="btn-ghost btn-block" id="rWhatsApp">💬 WhatsApp</button>' : ''}
+        ${UI.tieneWhatsApp(cliente) ? '<button class="btn-ghost btn-block" id="rWhatsApp">💬 WhatsApp</button>' : ''}
         ${cliente && cliente.correo ? '<button class="btn-ghost btn-block" id="rCorreo">✉️ Correo (PDF)</button>' : ''}
       </div>
       <div class="row" style="margin-top:10px">
@@ -295,9 +293,7 @@ const Facturas = (() => {
     on('#rImprimir', () => imprimirRecibo(f, abono, numRec));
     on('#rWhatsApp', async () => {
       const emp = await UI.getEmpresa();
-      const tel = cliente.telefono.replace(/\D/g, '');
-      const num = tel.length === 10 ? '1' + tel : tel;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeRecibo(emp))}`, '_blank');
+      UI.abrirWhatsApp(cliente, mensajeRecibo(emp));
     });
     on('#rCorreo', async () => {
       const emp = await UI.getEmpresa();
