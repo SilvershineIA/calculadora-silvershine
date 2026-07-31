@@ -380,6 +380,30 @@
     if (anuladas) toast(`🧹 ${anuladas} facturas duplicadas de QuickBooks anuladas`);
   }
 
+  /* ── Migración única: ajustes confirmados por el usuario (31 jul 2026):
+        Samuel Tejeda tenía factura duplicada CON NCF (B0200001940, debía
+        18,000 fantasma) — se anula y su costo pasa a la válida B0200001941.
+        Jacier Cabral: costo de la lista ("Orden 307 - 4mm") en su NCF. ── */
+  async function ajustesConfirmados31Jul() {
+    if (await DB.config.get('ajustes0731')) return;
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún: no marcar hecho
+    const dup = await DB.facturas.get('fac-qb-00045');            // Samuel B0200001940
+    if (dup && dup.estado !== 'anulada') {
+      dup.estado = 'anulada';
+      delete dup.costo;
+      delete dup.proxCobro;
+      dup.notas = [dup.notas, 'Duplicado confirmado por el usuario — la válida es B0200001941. Anulada el 31 jul 2026.']
+        .filter(Boolean).join('\n');
+      await DB.facturas.upsert(dup);
+      toast('🧹 Duplicada de Samuel Tejeda anulada — su deuda fantasma de RD$18,000 desapareció');
+    }
+    const real = await DB.facturas.get('fac-qb-00044');           // Samuel B0200001941
+    if (real && !(real.costo > 0)) { real.costo = 22200; await DB.facturas.upsert(real); }
+    const j = await DB.facturas.get('fac-qb-00473');              // Jacier B0200001555
+    if (j && !(j.costo > 0)) { j.costo = 4000; await DB.facturas.upsert(j); }
+    await DB.config.upsert({ id: 'ajustes0731', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
+  }
+
   /* ── Migración única: costos de producción 2026 entregados por el
         usuario (31 jul 2026, lista "Órdenes/Confecciones en China").
         Solo pone el costo si la factura aún no tiene; corre una vez
@@ -521,6 +545,7 @@
     await migrarPlanesEasyPay();
     await limpiarDuplicadasQB();
     await migrarCostos2026();
+    await ajustesConfirmados31Jul();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();
