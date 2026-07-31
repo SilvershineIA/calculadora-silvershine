@@ -283,6 +283,13 @@
     }
   });
 
+  /* ── Versión visible: se lee del ?v= del propio HTML cargado, así
+        siempre refleja lo que este dispositivo está viendo de verdad ── */
+  {
+    const m = (($('link[rel="stylesheet"]') || {}).href || '').match(/v=(\d+)/);
+    if (m) $('.topbar-title').insertAdjacentHTML('beforeend', `<span class="topbar-ver">v${m[1]}</span>`);
+  }
+
   /* ── Arranque ──
      Cada init va protegido: si un módulo falla (p. ej. un HTML viejo en
      caché con JS nuevo durante una actualización), el resto de la app
@@ -335,8 +342,10 @@
         abonos: la deuda no cambia). Detectadas al inflarse las ventas
         de marzo. ── */
   async function limpiarDuplicadasQB() {
-    if (await DB.config.get('dupQB2026')) return;
-    if (!(await DB.facturas.list()).length) return;   // sin datos aún: no marcar hecho
+    /* Sin bandera de "ya corrió": verifica los datos reales en cada arranque
+       y repara lo que falte (un bug de la cola de sync llegó a perder estos
+       cambios en la nube). Es idempotente: solo toca lo que está mal. */
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún
     const DUPLICADAS = [                   // [facturaId sin NCF, NCF gemela]
       ['fac-qb-00086', 'B0200001898'],     // Ramón Moisés Ruiz 5,050
       ['fac-qb-00089', 'B0200001896'],     // Eddy Guzman 75,810
@@ -373,7 +382,6 @@
       await DB.facturas.upsert(f);
       anuladas++;
     }
-    await DB.config.upsert({ id: 'dupQB2026', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
     if (anuladas) toast(`🧹 ${anuladas} facturas duplicadas de QuickBooks anuladas`);
   }
 
@@ -382,8 +390,8 @@
         18,000 fantasma) — se anula y su costo pasa a la válida B0200001941.
         Jacier Cabral: costo de la lista ("Orden 307 - 4mm") en su NCF. ── */
   async function ajustesConfirmados31Jul() {
-    if (await DB.config.get('ajustes0731')) return;
-    if (!(await DB.facturas.list()).length) return;   // sin datos aún: no marcar hecho
+    /* Sin bandera: verifica y repara en cada arranque (idempotente). */
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún
     const dup = await DB.facturas.get('fac-qb-00045');            // Samuel B0200001940
     if (dup && dup.estado !== 'anulada') {
       dup.estado = 'anulada';
@@ -398,7 +406,6 @@
     if (real && !(real.costo > 0)) { real.costo = 22200; await DB.facturas.upsert(real); }
     const j = await DB.facturas.get('fac-qb-00473');              // Jacier B0200001555
     if (j && !(j.costo > 0)) { j.costo = 4000; await DB.facturas.upsert(j); }
-    await DB.config.upsert({ id: 'ajustes0731', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
   }
 
   /* ── Migración única: costos de producción 2026 entregados por el
@@ -406,8 +413,9 @@
         Solo pone el costo si la factura aún no tiene; corre una vez
         (bandera en config, sincronizada entre dispositivos). ── */
   async function migrarCostos2026() {
-    if (await DB.config.get('costos2026')) return;
-    if (!(await DB.facturas.list()).length) return;   // sin datos aún: no marcar hecho
+    /* Sin bandera: repara costos faltantes en cada arranque (nunca pisa
+       un costo ya puesto, así que una corrección manual queda intacta). */
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún
     const COSTOS = [                       // [facturaId, costo]
       ['fac-qb-00397', 18500],             // Saul Ogando Blanco ("Raul" en la lista)
       ['fac-qb-00403', 23500],             // Alissa Batista
@@ -450,7 +458,6 @@
       await DB.facturas.upsert(f);
       puestos++;
     }
-    await DB.config.upsert({ id: 'costos2026', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
     if (puestos) toast(`📈 Costos 2026 aplicados a ${puestos} facturas`);
   }
 

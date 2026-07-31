@@ -38,6 +38,12 @@ body{
   color:var(--gold-bright);text-transform:uppercase;
   border-left:1px solid var(--border);padding-left:10px;
 }
+.topbar-ver{
+  margin-left:8px;font-size:.68rem;letter-spacing:.5px;
+  color:var(--muted);text-transform:lowercase;font-weight:600;
+  background:var(--panel2);border:1px solid var(--border);
+  border-radius:100px;padding:1px 8px;vertical-align:middle;
+}
 
 /* ── Layout ── */
 .layout{display:flex;max-width:1180px;margin:0 auto;min-height:calc(100vh - 55px)}

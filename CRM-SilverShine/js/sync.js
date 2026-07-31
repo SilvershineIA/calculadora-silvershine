@@ -158,8 +158,14 @@ const Sync = (() => {
     if (vaciando || !conectado() || !navigator.onLine) return;
     vaciando = true;
     try {
-      let arr = cola.leer();
-      while (arr.length) {
+      /* CRÍTICO: releer la cola en CADA vuelta. Antes se tomaba una foto
+         al empezar y se reescribía tras cada envío — todo lo que se
+         encolaba mientras un envío estaba en el aire se PERDÍA (así se
+         esfumaron costos aplicados en lote). Como agregar() solo añade
+         al final, procesar siempre la cabeza releída es seguro. */
+      while (true) {
+        const arr = cola.leer();
+        if (!arr.length) break;
         const it = arr[0];
         try {
           if (it.op === 'upsert') {
@@ -172,8 +178,10 @@ const Sync = (() => {
           if (!OPCIONALES.has(it.tabla)) throw e;
           console.warn(`Cambio de ${it.tabla} descartado:`, e.message);
         }
-        arr.shift();
-        cola.guardar(arr);
+        /* Quitar SOLO el elemento procesado de la cola actual (no de la foto) */
+        const ahora = cola.leer();
+        if (ahora.length && ahora[0].ts === it.ts && ahora[0].id === it.id) ahora.shift();
+        cola.guardar(ahora);
       }
     } catch (e) {
       console.warn('Sync pendiente:', e.message);
