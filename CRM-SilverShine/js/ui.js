@@ -94,6 +94,29 @@ const UI = (() => {
     return { ...EMPRESA_DEFECTO, ...(guardada || {}) };
   }
 
+  /* ── WhatsApp: teléfono o @usuario ──
+     Los usernames de WhatsApp NO tienen enlace tipo wa.me (hay que buscar
+     el @usuario exacto dentro de la app), así que sin teléfono copiamos
+     el mensaje al portapapeles y avisamos a quién buscar. */
+  const normUsuarioWA = v => String(v || '').trim().replace(/^@+/, '').toLowerCase();
+  // Reglas oficiales: 3-35 caracteres, letras/números/punto/guion bajo,
+  // al menos una letra y sin empezar por "www." (WhatsApp valida el resto al reclamarlo)
+  const usuarioWAValido = u => /^[a-z0-9._]{3,35}$/.test(u) && /[a-z]/.test(u) && !u.startsWith('www.');
+  const tieneWhatsApp = c => !!(c && ((c.telefono || '').trim() || c.usuarioWA));
+
+  async function abrirWhatsApp(cliente, mensaje) {
+    const tel = (cliente.telefono || '').replace(/\D/g, '');
+    if (tel) {
+      const num = tel.length === 10 ? '1' + tel : tel;
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje)}`, '_blank');
+      return;
+    }
+    if (cliente.usuarioWA) {
+      try { await navigator.clipboard.writeText(mensaje); } catch { /* sin permiso: igual avisamos */ }
+      toast(`📋 Mensaje copiado — en WhatsApp busca a @${cliente.usuarioWA} y pégaselo`);
+    }
+  }
+
   /* ── Buscador de clientes con creación rápida en el mismo campo ──
      Escribe → sugiere; si no existe → "➕ Crear cliente" abre un
      mini-formulario en el propio desplegable, lo crea y lo selecciona. */
@@ -109,6 +132,7 @@ const UI = (() => {
         <div class="sug-form">
           <input data-campo="nombre" placeholder="Nombre *" value="${esc(nombre)}">
           <input data-campo="telefono" type="tel" placeholder="Teléfono (para WhatsApp)">
+          <input data-campo="usuarioWA" placeholder="@usuario de WhatsApp (opcional)">
           <input data-campo="correo" type="email" placeholder="Correo (opcional)">
           <button type="button" class="btn-gold btn-sm" data-crear>➕ Crear y usar</button>
         </div>`;
@@ -116,8 +140,12 @@ const UI = (() => {
       sug.querySelector('[data-crear]').addEventListener('click', async () => {
         const v = campo => sug.querySelector(`[data-campo="${campo}"]`).value.trim();
         if (!v('nombre')) { toast('Ponle el nombre al cliente'); return; }
+        const usuarioWA = normUsuarioWA(v('usuarioWA'));
+        if (usuarioWA && !usuarioWAValido(usuarioWA)) {
+          toast('Usuario de WhatsApp no válido (3-35 letras, números, . o _)'); return;
+        }
         const nuevo = await DB.clientes.upsert({
-          nombre: v('nombre'), telefono: v('telefono'), correo: v('correo'),
+          nombre: v('nombre'), telefono: v('telefono'), usuarioWA, correo: v('correo'),
           direccion: '', notas: '',
         });
         toast(`👤 Cliente "${nuevo.nombre}" creado`);
@@ -132,7 +160,7 @@ const UI = (() => {
       const todos = await DB.clientes.list();
       const res = todos.filter(c => c.nombre.toLowerCase().includes(q.toLowerCase())).slice(0, 6);
       sug.innerHTML =
-        res.map(c => `<div class="sug" data-id="${c.id}">${esc(c.nombre)}<span class="muted"> ${esc(c.telefono || '')}</span></div>`).join('') +
+        res.map(c => `<div class="sug" data-id="${c.id}">${esc(c.nombre)}<span class="muted"> ${esc(c.telefono || (c.usuarioWA ? '@' + c.usuarioWA : ''))}</span></div>`).join('') +
         `<div class="sug sug-nuevo" data-nuevo>➕ Crear cliente "${esc(q)}"</div>`;
       sug.hidden = false;
       sug.querySelectorAll('.sug[data-id]').forEach(el =>
@@ -212,5 +240,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
 })();
