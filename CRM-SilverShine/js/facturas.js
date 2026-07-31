@@ -185,6 +185,10 @@ const Facturas = (() => {
         <button class="btn-ghost btn-block" id="fTarea">✓ Tarea</button>
       </div>
       <div class="row" style="margin-top:10px">
+        <button class="btn-ghost btn-block" id="fTGrabado">🪶 Grabado</button>
+        <button class="btn-ghost btn-block" id="fTConfeccion">🧵 Confección</button>
+      </div>
+      <div class="row" style="margin-top:10px">
         ${f.estado !== 'anulada' ? `<button class="btn-ghost btn-block" id="fEditar">✏️ Editar</button>` : ''}
         ${f.estado !== 'anulada' ? `<button class="btn-danger btn-block" id="fAnular">Anular</button>` : ''}
       </div>
@@ -195,6 +199,43 @@ const Facturas = (() => {
       el.addEventListener('click', () => reciboOpciones(f, Number(el.dataset.abono))));
     on('#fAbonar', () => formAbono(f));
     on('#fImprimir', () => imprimir(f, cliente));
+    /* Tareas de taller con pasos preprogramados */
+    const enDias = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    const crearTareaTaller = async (titulo, pasos) => {
+      await DB.tareas.upsert({
+        titulo: `${titulo} — Factura ${rotulo(f)}`,
+        fecha: pasos[0].fecha,
+        notas: `Creada desde la factura ${rotulo(f)}${f.orden && f.numero ? ' · ' + f.numero : ''} — ${f.clienteNombre}`,
+        clienteId: f.clienteId, clienteNombre: f.clienteNombre,
+        pasos, hecha: false,
+      });
+      toast(`✓ Tarea "${titulo}" creada (${pasos.length} pasos)`);
+      Tareas.render();
+    };
+    on('#fTGrabado', () => crearTareaTaller('Grabado', [
+      { titulo: 'Enviar a Rubén', fecha: enDias(0), hecho: false },
+      { titulo: 'Seguimiento',    fecha: enDias(2), hecho: false },
+      { titulo: 'Envío',          fecha: enDias(3), hecho: false },
+    ]));
+    on('#fTConfeccion', () => {
+      abrirModal(`Confección — ${rotulo(f)}`, `
+        <p class="muted" style="margin-bottom:14px">¿Para cuándo está pactada la confección?</p>
+        <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
+        <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
+        <button class="btn-ghost btn-block" id="confVolver" style="margin-top:12px">← Volver a la factura</button>
+      `);
+      const crear = async dias => {
+        await crearTareaTaller(`Confección (${dias} días)`, [
+          { titulo: 'Enviar orden al taller', fecha: enDias(0),        hecho: false },
+          { titulo: 'Seguimiento',            fecha: enDias(dias),     hecho: false },
+          { titulo: 'Seguimiento final',      fecha: enDias(dias + 1), hecho: false },
+        ]);
+        detalle(f.id);
+      };
+      $('#conf5').addEventListener('click', () => crear(5));
+      $('#conf20').addEventListener('click', () => crear(20));
+      $('#confVolver').addEventListener('click', () => detalle(f.id));
+    });
     on('#fTarea', () => Tareas.formulario({
       clienteId: f.clienteId,
       clienteNombre: f.clienteNombre,
