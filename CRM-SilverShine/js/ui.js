@@ -47,6 +47,18 @@ const UI = (() => {
     const d = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
     return d.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
   };
+  /* Dinero para tarjetas de resumen: sin centavos, que los KPI no los necesitan */
+  const fmtDinero = (monto, moneda = 'DOP') =>
+    (moneda === 'USD' ? 'US$' : 'RD$') + Math.round(Number(monto) || 0).toLocaleString('es-DO');
+
+  /* Tarjeta de estadística: la letra baja de tamaño sola si el número es largo
+     (así nunca se parte en dos líneas) y el símbolo de moneda va más pequeño. */
+  const statTile = (valor, label, clase = '', tileClase = '') => {
+    const s = String(valor);
+    const tam = s.length >= 14 ? 'n-sm' : s.length >= 11 ? 'n-md' : '';
+    const html = esc(s).replace(/^(RD\$|US\$)/, '<span class="cur">$1</span>');
+    return `<div class="stat ${tileClase}"><div class="n ${clase} ${tam}">${html}</div><div class="l">${label}</div></div>`;
+  };
   const iniciales = nombre => (nombre || '?')
     .trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 
@@ -240,5 +252,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
 })();

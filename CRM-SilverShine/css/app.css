@@ -88,18 +88,29 @@ body{
 .card.pronto span{font-size:2.2rem;display:block;margin-bottom:10px}
 .muted{color:var(--muted);font-size:.92rem;line-height:1.5}
 
-/* ── Panel: estadísticas ── */
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+/* ── Panel: estadísticas ──
+   La etiqueta va arriba y el número abajo; el número NUNCA se parte:
+   statTile() le pone n-md / n-sm según el largo para que quepa entero. */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
 .stat{
   background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-  padding:16px;text-align:center;box-shadow:0 1px 4px rgba(52,61,72,.06);
+  padding:14px 16px;box-shadow:0 1px 4px rgba(52,61,72,.06);
+  display:flex;flex-direction:column-reverse;justify-content:flex-end;gap:3px;
 }
 .stat .n{
-  font-size:clamp(1rem,4.2vw,1.7rem);
-  font-weight:700;color:var(--gold-bright);
-  overflow-wrap:anywhere;line-height:1.25;
+  font-size:1.42rem;font-weight:700;color:var(--slate);
+  white-space:nowrap;line-height:1.2;letter-spacing:-.02em;
 }
-.stat .l{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.stat .n.n-md{font-size:1.2rem}
+.stat .n.n-sm{font-size:1.02rem}
+.stat .n .cur{font-size:.68em;font-weight:600;color:var(--muted);margin-right:1px}
+.stat .n.verde{color:var(--green)}
+.stat .n.rojo{color:var(--red)}
+.stat .l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.stat-hero{grid-column:span 2;border-color:var(--gold);background:linear-gradient(160deg,#FFFFFF,var(--rose-soft))}
+.stat-hero .n{font-size:1.8rem}
+.stat-hero .n.n-md{font-size:1.55rem}
+.stat-hero .n.n-sm{font-size:1.3rem}
 
 /* ── Formularios ── */
 label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:5px}
@@ -222,11 +233,58 @@ button:hover{filter:brightness(1.12)}
 .b-anu{background:#F3F3F3;color:var(--muted);border:1px solid var(--border)}
 .b-roja{background:#FBEAEA;color:var(--red);border:1px solid #eec5c5}
 
-/* ── Finanzas: desglose mensual ── */
-.fin-mes{margin-bottom:12px}
-.fin-mes-cab{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:.9rem;margin-bottom:4px}
-.fin-barra{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
-.fin-barra div{height:100%;background:var(--gold);border-radius:4px}
+/* ── Finanzas: medidor cobrado vs pendiente ── */
+.fin-meter-cab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:.9rem;margin-bottom:8px}
+.fin-meter-track{height:12px;border-radius:6px;background:#E8F3E9;overflow:hidden}
+.fin-meter-track>div{height:100%;background:var(--green);border-radius:6px;min-width:2px;transition:width .3s ease}
+
+/* ── Finanzas: gráficos ── */
+.fin-charts{display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:16px}
+.fin-charts .card{margin-bottom:0}
+.fin-charts .empty{border:none;padding:30px 10px}
+/* Gráfico de columnas (HTML puro, sin librerías) */
+.ch-plot{position:relative;height:216px;margin-top:10px}
+.ch-grid{position:absolute;inset:0 0 22px 0}
+.ch-gridline{position:absolute;left:0;right:0;border-top:1px solid #EFEAE5}
+.ch-gridline span{position:absolute;left:0;top:2px;font-size:.66rem;color:var(--muted)}
+.ch-cols{position:absolute;inset:0;display:flex;align-items:stretch;gap:2px}
+.ch-col{flex:1;min-width:0;display:flex;flex-direction:column;cursor:default;outline:none;border-radius:6px}
+.ch-col:focus-visible{box-shadow:0 0 0 2px var(--gold)}
+.ch-stack{flex:1;position:relative}
+.ch-bar{
+  position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:24px;min-height:2px;
+  background:var(--gold-bright);border-radius:4px 4px 0 0;
+  transition:filter .15s;
+}
+.ch-col:hover .ch-bar,.ch-col:focus-visible .ch-bar{filter:brightness(1.15)}
+.ch-val{
+  position:absolute;left:50%;transform:translateX(-50%);
+  font-size:.68rem;color:var(--muted);white-space:nowrap;
+}
+.ch-x{height:22px;display:flex;align-items:flex-end;justify-content:center;font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:visible}
+/* Tooltip del gráfico */
+.ch-tip{
+  position:absolute;z-index:5;pointer-events:none;
+  background:var(--slate);color:#FAF8F6;border-radius:9px;
+  padding:8px 12px;font-size:.8rem;line-height:1.5;white-space:nowrap;
+  box-shadow:0 4px 14px rgba(52,61,72,.3);
+}
+.ch-tip[hidden]{display:none}
+.ch-tip-t{font-weight:700;margin-bottom:2px}
+.ch-tip-fila{display:flex;justify-content:space-between;gap:14px}
+.ch-tip-fila span:first-child{opacity:.75}
+.ch-tip-fila b{font-weight:600}
+.ch-tip .verde{color:#A8DCB0}
+.ch-tip .rojo{color:#F2A9A9}
+/* Top clientes */
+.top-cli{display:flex;flex-direction:column;gap:11px;margin-top:10px}
+.top-cli-cab{display:flex;justify-content:space-between;gap:10px;font-size:.86rem;margin-bottom:3px}
+.top-cli-cab .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.top-cli-cab b{white-space:nowrap}
+.top-cli-track{height:10px;background:var(--panel2);border-radius:5px;overflow:hidden}
+.top-cli-track>div{height:100%;background:var(--gold-bright);border-radius:5px;min-width:2px}
+@media(max-width:900px){.fin-charts{grid-template-columns:1fr}}
 .fin-costo{width:110px;padding:4px 8px;font-size:.85rem;display:inline-block;vertical-align:middle;
   border:1px solid var(--border);border-radius:8px;background:var(--panel)}
 .rojo{color:var(--red)}
@@ -390,7 +448,15 @@ button:hover{filter:brightness(1.12)}
   .tabla-calc.apilable td::before{content:attr(data-label);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .tabla-calc.apilable td input,.tabla-calc.apilable td select{width:55%}
   .stat-grid{grid-template-columns:repeat(2,1fr);gap:10px}
-  .stat{padding:12px 8px;min-width:0}
+  .stat{padding:11px 12px;min-width:0}
+  .stat .n{font-size:1.22rem}
+  .stat .n.n-md{font-size:1.05rem}
+  .stat .n.n-sm{font-size:.92rem}
+  .stat-hero .n{font-size:1.5rem}
+  .stat-hero .n.n-md{font-size:1.3rem}
+  .stat-hero .n.n-sm{font-size:1.1rem}
+  .fin-charts{grid-template-columns:1fr}
+  .ch-plot{height:180px}
   .item{flex-wrap:wrap}
   .item>b{max-width:100%;overflow-wrap:anywhere}
   .item-info{flex:1 1 60%}

@@ -56,12 +56,11 @@ const Cobros = (() => {
     });
     const easySaldo = easy.reduce((s, f) => s + f.saldo, 0);
 
-    $('#cobrosResumen').innerHTML = `
-      <div class="stat"><div class="n rojo">${vencidosTotal}</div><div class="l">Vencidos</div></div>
-      <div class="stat"><div class="n">${proximosTotal}</div><div class="l">Próximos 7 días</div></div>
-      <div class="stat"><div class="n">${easy.length}</div><div class="l">Planes EasyPay</div></div>
-      <div class="stat"><div class="n">${fmtMoneda(total)}</div><div class="l">Total en la calle</div></div>
-    `;
+    $('#cobrosResumen').innerHTML =
+      UI.statTile(vencidosTotal, 'Vencidos', vencidosTotal > 0 ? 'rojo' : '') +
+      UI.statTile(proximosTotal, 'Próximos 7 días') +
+      UI.statTile(easy.length, 'Planes EasyPay') +
+      UI.statTile(UI.fmtDinero(total), 'Total en la calle');
 
     if (!lista.length) {
       cont.innerHTML = '<div class="empty"><span>🎉</span>No hay cobros pendientes. Todo al día.</div>';

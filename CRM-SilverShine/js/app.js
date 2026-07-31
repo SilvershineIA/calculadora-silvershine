@@ -40,12 +40,11 @@
       .filter(f => f.estado !== 'anulada' && (f.fecha || '').startsWith(mes))
       .reduce((s, f) => s + f.total, 0);
 
-    $('#panelStats').innerHTML = `
-      <div class="stat"><div class="n">${UI.fmtMoneda(porCobrar)}</div><div class="l">Por cobrar</div></div>
-      <div class="stat"><div class="n">${pendientes.length}</div><div class="l">Fact. pendientes</div></div>
-      <div class="stat"><div class="n">${UI.fmtMoneda(facturadoMes)}</div><div class="l">Facturado este mes</div></div>
-      <div class="stat"><div class="n">${clientes.length}</div><div class="l">Clientes</div></div>
-    `;
+    $('#panelStats').innerHTML =
+      UI.statTile(UI.fmtDinero(porCobrar), 'Por cobrar', porCobrar > 0 ? 'rojo' : '') +
+      UI.statTile(pendientes.length, 'Fact. pendientes') +
+      UI.statTile(UI.fmtDinero(facturadoMes), 'Facturado este mes') +
+      UI.statTile(clientes.length, 'Clientes');
 
     // Cobros vencidos primero (van directo al detalle de cobro)
     const vencidos = pendientes.filter(f => Cobros.clasificar(f) === 'vencido')

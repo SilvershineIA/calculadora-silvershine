@@ -55,10 +55,9 @@ const Cotizaciones = (() => {
 
     const abiertas = lista.filter(c => ABIERTAS.includes(estadoDe(c)));
     const monto = abiertas.reduce((s, c) => s + (c.total || 0), 0);
-    $('#cotResumen').innerHTML = `
-      <div class="stat"><div class="n">${abiertas.length}</div><div class="l">Abiertas</div></div>
-      <div class="stat"><div class="n">${fmtMoneda(monto)}</div><div class="l">Ventas en camino</div></div>
-    `;
+    $('#cotResumen').innerHTML =
+      UI.statTile(abiertas.length, 'Abiertas') +
+      UI.statTile(UI.fmtDinero(monto), 'Ventas en camino');
 
     if (filtroEstado) lista = lista.filter(c => estadoDe(c) === filtroEstado);
     else if (!filtro) lista = lista.filter(c => !['vencida', 'rechazada'].includes(estadoDe(c)));   // vencidas y rechazadas ocultas salvo búsqueda o filtro

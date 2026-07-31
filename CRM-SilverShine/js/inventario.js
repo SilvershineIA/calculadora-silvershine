@@ -18,12 +18,11 @@ const Inventario = (() => {
     const unidades = lista.reduce((s, i) => s + (Number(i.cantidad) || 0), 0);
     const valor = lista.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.costo) || 0), 0);
     const agotados = lista.filter(i => (Number(i.cantidad) || 0) <= 0).length;
-    $('#invResumen').innerHTML = `
-      <div class="stat"><div class="n">${lista.length}</div><div class="l">Artículos</div></div>
-      <div class="stat"><div class="n">${unidades}</div><div class="l">Unidades</div></div>
-      <div class="stat"><div class="n">${fmtMoneda(valor)}</div><div class="l">Valor al costo</div></div>
-      <div class="stat"><div class="n ${agotados ? 'rojo' : ''}">${agotados}</div><div class="l">Agotados</div></div>
-    `;
+    $('#invResumen').innerHTML =
+      UI.statTile(lista.length, 'Artículos') +
+      UI.statTile(unidades, 'Unidades') +
+      UI.statTile(UI.fmtDinero(valor), 'Valor al costo') +
+      UI.statTile(agotados, 'Agotados', agotados ? 'rojo' : '');
 
     // Filtro de categorías
     const cats = [...new Set(lista.map(i => i.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
@@ -72,9 +71,9 @@ const Inventario = (() => {
 
     abrirModal(i.nombre, `
       <div class="stat-grid" style="margin-bottom:14px">
-        <div class="stat"><div class="n ${cant <= 0 ? 'rojo' : ''}">${cant}</div><div class="l">En existencia</div></div>
-        <div class="stat"><div class="n">${fmtMoneda(Number(i.costo) || 0, i.moneda)}</div><div class="l">Costo c/u</div></div>
-        <div class="stat"><div class="n">${fmtMoneda(cant * (Number(i.costo) || 0), i.moneda)}</div><div class="l">Valor</div></div>
+        ${UI.statTile(cant, 'En existencia', cant <= 0 ? 'rojo' : '')}
+        ${UI.statTile(fmtMoneda(Number(i.costo) || 0, i.moneda), 'Costo c/u')}
+        ${UI.statTile(UI.fmtDinero(cant * (Number(i.costo) || 0), i.moneda), 'Valor')}
       </div>
       ${i.notas ? `<p class="muted" style="margin-bottom:12px">📝 ${esc(i.notas)}</p>` : ''}
 

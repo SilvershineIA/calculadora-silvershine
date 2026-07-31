@@ -103,10 +103,9 @@ const Facturas = (() => {
     // Totales de la vista
     const pend = lista.filter(f => f.estado === 'pendiente' && f.saldo > 0);
     const porCobrar = pend.reduce((s, f) => s + f.saldo, 0);
-    $('#factResumen').innerHTML = `
-      <div class="stat"><div class="n">${fmtMoneda(porCobrar)}</div><div class="l">Por cobrar</div></div>
-      <div class="stat"><div class="n">${pend.length}</div><div class="l">Facturas pendientes</div></div>
-    `;
+    $('#factResumen').innerHTML =
+      UI.statTile(UI.fmtDinero(porCobrar), 'Por cobrar', porCobrar > 0 ? 'rojo' : '') +
+      UI.statTile(pend.length, 'Facturas pendientes');
 
     if (filtroEstado) lista = lista.filter(f => f.estado === filtroEstado);
     if (filtro) {
