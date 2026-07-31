@@ -121,8 +121,11 @@ const Finanzas = (() => {
       $('#finCustom').hidden = periodo !== 'custom';
       if (periodo !== 'custom') render();
     });
-    $('#finDesde').addEventListener('change', e => { desde = e.target.value; if (hasta) render(); });
-    $('#finHasta').addEventListener('change', e => { hasta = e.target.value; if (desde) render(); });
+    /* Escribir una fecha activa el rango personalizado solo (aunque el
+       selector estuviera en otro período) y filtra al momento */
+    const usarCustom = () => { periodo = 'custom'; $('#finPeriodo').value = 'custom'; $('#finCustom').hidden = false; };
+    $('#finDesde').addEventListener('change', e => { desde = e.target.value; usarCustom(); render(); });
+    $('#finHasta').addEventListener('change', e => { hasta = e.target.value; usarCustom(); render(); });
     $('#finLista').addEventListener('click', e => {
       if (e.target.closest('.fin-costo')) return;   // escribir el costo no abre el detalle
       const item = e.target.closest('.item[data-id]');
