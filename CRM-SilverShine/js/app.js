@@ -331,12 +331,62 @@
     if (cambio) await DB.config.upsert(emp);
   }
 
+  /* ── Migración única: facturas duplicadas del export de QuickBooks
+        (31 jul 2026). QB traía la factura interna (sin NCF o "#17xx") Y
+        la re-emitida con NCF — mismo cliente, mismo monto, días de
+        diferencia. Se anula la versión sin NCF (todas saldo 0, sin
+        abonos: la deuda no cambia). Detectadas al inflarse las ventas
+        de marzo. ── */
+  async function limpiarDuplicadasQB() {
+    if (await DB.config.get('dupQB2026')) return;
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún: no marcar hecho
+    const DUPLICADAS = [                   // [facturaId sin NCF, NCF gemela]
+      ['fac-qb-00086', 'B0200001898'],     // Ramón Moisés Ruiz 5,050
+      ['fac-qb-00089', 'B0200001896'],     // Eddy Guzman 75,810
+      ['fac-qb-00104', 'B0200001879'],     // Wilgrady Ferreira 39,800
+      ['fac-qb-00105', 'B0200001877'],     // Yendy Valenzuela 35,000
+      ['fac-qb-00115', 'B0200001880'],     // Albert Rodriguez 4,300
+      ['fac-qb-00120', 'B0200001870'],     // Miguel Severino 90,000
+      ['fac-qb-00122', 'B020001865'],      // Elisel David Salcie 50,000
+      ['fac-qb-00145', 'B0200001845'],     // Daniel Hernández 9,900
+      ['fac-qb-00160', 'B02000001834'],    // Johanderson Quezada 64,000
+      ['fac-qb-00175', 'B0200001817'],     // Reimy Columna 30,500
+      ['fac-qb-00187', 'B0200001809'],     // Neftalí Omar 4,800
+      ['fac-qb-00199', 'B0200001796'],     // Milton Escalante 38,500
+      ['fac-qb-00205', 'B0200001791'],     // Milka Mejía 86,895
+      ['fac-qb-00229', 'B0200001775'],     // Endry Piñeyro 56,000
+      ['fac-qb-00232', 'B0200001773'],     // Felix Matos 76,000
+      ['fac-qb-00282', 'B0200001725'],     // Victor Rosario 6,300
+      ['fac-qb-00307', 'B0200001703'],     // Geury Pacheco 29,000
+      ['fac-qb-00316', 'B0200001694'],     // José Elías López 9,300
+      ['fac-qb-00357', 'B0200001660'],     // Alexis Jose Diaz 44,000
+      ['fac-qb-00362', 'B0200001656'],     // Miguel Iván Frias 77,000.14 (gemela con ¢14 de diferencia)
+      ['fac-qb-00468', 'B0200001557'],     // Neury 7,500
+      ['fac-qb-00485', 'B0200001538'],     // Ydalmis Jazmin 6,000
+      ['fac-qb-00496', 'B0200001533'],     // Emmanuel Martinez 8,400
+    ];
+    let anuladas = 0;
+    for (const [fid, ncf] of DUPLICADAS) {
+      const f = await DB.facturas.get(fid);
+      if (!f || f.estado === 'anulada') continue;
+      if (f.saldo > 0 || (f.abonos || []).length) continue;   // por seguridad: solo saldadas sin abonos
+      f.estado = 'anulada';
+      f.notas = [f.notas, `Duplicado del export de QuickBooks — la válida es ${ncf}. Anulada en la limpieza del 31 jul 2026.`]
+        .filter(Boolean).join('\n');
+      await DB.facturas.upsert(f);
+      anuladas++;
+    }
+    await DB.config.upsert({ id: 'dupQB2026', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
+    if (anuladas) toast(`🧹 ${anuladas} facturas duplicadas de QuickBooks anuladas`);
+  }
+
   /* ── Migración única: costos de producción 2026 entregados por el
         usuario (31 jul 2026, lista "Órdenes/Confecciones en China").
         Solo pone el costo si la factura aún no tiene; corre una vez
         (bandera en config, sincronizada entre dispositivos). ── */
   async function migrarCostos2026() {
     if (await DB.config.get('costos2026')) return;
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún: no marcar hecho
     const COSTOS = [                       // [facturaId, costo]
       ['fac-qb-00397', 18500],             // Saul Ogando Blanco ("Raul" en la lista)
       ['fac-qb-00403', 23500],             // Alissa Batista
@@ -469,6 +519,7 @@
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
     await migrarPlanesEasyPay();
+    await limpiarDuplicadasQB();
     await migrarCostos2026();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
