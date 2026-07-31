@@ -41,6 +41,161 @@ const Finanzas = (() => {
     return 10 * p;
   };
 
+  /* ═══════ Estimador de costos de plata ═══════════════════════
+     Tabla de costos del taller en US$ (solitarios, duos y trios).
+     Plata = factura de RD$15,000 o menos sin costo puesto.       */
+  const PLATA_MAX_DOP = 15000;
+  const COSTOS_PLATA = {
+    sol: {
+      'trinidad de amor': 24.20, 'herencia de amor': 26.32, 'lazo eterno': 23.58,
+      'sendero de luz': 20.38, 'alma unida': 15.71, 'claridad infinita': 19.63,
+      'esencia radiante': 29.66, 'llama serena': 23.90, 'luz del corazon': 23.59,
+      'princesa': 17.97, 'cumbre de amor': 34.20, 'brillo del destino': 23.76,
+      'eco de ternura': 19.63, 'jardin de luz': 13.11,
+    },
+    duo: {
+      'claridad infinita': 19.63, 'eco de ternura': 17.70,
+      'llama serena': 20.90, 'brillo del destino': 23.76,
+    },
+    trio: {
+      'trinidad de amor': 47.74, 'herencia de amor': 49.86, 'lazo eterno': 47.12,
+      'sendero de luz': 43.94, 'alma unida': 39.25, 'claridad infinita': 34.39,
+      'esencia radiante': 53.20, 'llama serena': 38.66, 'luz del corazon': 47.13,
+      'princesa': 41.51, 'cumbre de amor': 57.74, 'brillo del destino': 38.52,
+      'eco de ternura': 32.46, 'jardin de luz': 36.65,
+    },
+    banda: { '2mm con piedra': 8.80, '2mm liso': 8.78, '4mm liso': 14.76 },
+  };
+  const NOMBRES_PLATA = Object.keys(COSTOS_PLATA.sol).sort((a, b) => b.length - a.length);
+  const PCT_DEFECTO = 0.38;      // % costo/venta si no hay ninguna línea identificada
+
+  const normTxt = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  /* Costo US$ de una línea según su descripción, o null si no se identifica.
+     "Trio X" → trio; "Duo X" → duo; el nombre solo → solitario.
+     "2mm … y 4mm …" (duo de boda) → banda 2mm + banda 4mm.                  */
+  function costoLineaUSD(descripcion) {
+    const d = normTxt(descripcion);
+    if (!d) return null;
+    for (const base of NOMBRES_PLATA) {
+      if (!d.includes(base)) continue;
+      if (/\btrio\b/.test(d)) return COSTOS_PLATA.trio[base] ?? null;
+      if (/\bduo\b/.test(d))  return COSTOS_PLATA.duo[base] ?? COSTOS_PLATA.sol[base] ?? null;
+      return COSTOS_PLATA.sol[base] ?? null;
+    }
+    const b = COSTOS_PLATA.banda;
+    const p2 = d.includes('2mm'), p4 = /4m?m/.test(d);   // "4m size 8" aparece así en QuickBooks
+    if (p2 && p4) return b['2mm liso'] + b['4mm liso'];
+    if (p4) return b['4mm liso'];
+    if (p2) return d.includes('piedra') ? b['2mm con piedra'] : b['2mm liso'];
+    return null;
+  }
+
+  /* Recorre todas las facturas de plata sin costo y propone un costo:
+     líneas identificadas al costo real de la tabla, el resto a un % del
+     subtotal (el % sale de las propias líneas identificadas). */
+  async function estimarCostos() {
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    if (!tasa) { UI.toast('Configura la tasa del dólar en la Calculadora primero'); return; }
+
+    const todas = await DB.facturas.list();
+    const cand = [];
+    let sumCostoIdDOP = 0, sumSubIdDOP = 0;    // para deducir el % costo/venta
+
+    for (const f of todas) {
+      if (f.estado === 'anulada' || f.costo > 0 || !(f.total > 0)) continue;
+      const mon = f.moneda || 'DOP';
+      const aDOP = mon === 'USD' ? tasa : 1;
+      if (f.total * aDOP > PLATA_MAX_DOP) continue;                       // eso no es plata
+      const lineas = f.lineas || [];
+      if (lineas.some(l => /\boro\b/.test(normTxt(l.descripcion)))) continue;  // oro barato: manual
+
+      let costoUSD = 0, subId = 0, subNoId = 0;
+      for (const l of lineas) {
+        const cant = Number(l.cantidad) || 1;
+        const sub = cant * (Number(l.precio) || 0);
+        const c = costoLineaUSD(l.descripcion);
+        if (c !== null) { costoUSD += c * cant; subId += sub; }
+        else subNoId += sub;
+      }
+      sumCostoIdDOP += costoUSD * tasa;
+      sumSubIdDOP += subId * aDOP;
+      cand.push({ f, mon, costoUSD, subId, subNoId });
+    }
+    if (!cand.length) {
+      UI.toast('No hay facturas de plata sin costo — todo está al día 🎉');
+      return;
+    }
+
+    let pct = sumSubIdDOP > 0 ? sumCostoIdDOP / sumSubIdDOP : PCT_DEFECTO;
+    pct = Math.min(0.7, Math.max(0.15, pct));
+
+    /* Costo propuesto en la moneda de cada factura */
+    const props = cand.map(c => {
+      const enUSD = c.mon === 'USD';
+      const costo = (enUSD ? c.costoUSD : c.costoUSD * tasa) + pct * c.subNoId;
+      const v = enUSD ? Math.round(costo * 100) / 100 : Math.round(costo);
+      const metodo = c.subNoId <= 0 ? 'nombre' : (c.costoUSD > 0 ? 'mixto' : 'pct');
+      return { ...c, costo: v, metodo, sospechosa: v >= c.f.total * 0.8 };
+    }).sort((a, b) => (b.f.fecha || '').localeCompare(a.f.fecha || ''));
+
+    const nNombre = props.filter(p => p.metodo === 'nombre').length;
+    const nMixto  = props.filter(p => p.metodo === 'mixto').length;
+    const nPct    = props.filter(p => p.metodo === 'pct').length;
+    const EMO = { nombre: '📗', mixto: '📙', pct: '📊' };
+
+    const body = UI.abrirModal('🪄 Estimar costos de plata', `
+      <p class="muted" style="margin-bottom:10px">
+        Plata = facturas de <b>RD$${PLATA_MAX_DOP.toLocaleString('es-DO')} o menos</b> sin costo puesto.
+        Tabla del taller en US$ convertida con la tasa <b>${tasa}</b>.<br>
+        📗 ${nNombre} por nombre exacto · 📙 ${nMixto} mixtas · 📊 ${nPct} por porcentaje
+        (${Math.round(pct * 100)}% del subtotal${sumSubIdDOP > 0 ? ', deducido de las líneas identificadas' : ' típico'}).
+        Las dudosas (costo ≥ 80% de la venta) vienen desmarcadas.
+      </p>
+      <div class="est-lista">
+        ${props.map((p, i) => `
+          <label class="est-row ${p.sospechosa ? 'est-dudosa' : ''}">
+            <input type="checkbox" data-i="${i}" ${p.sospechosa ? '' : 'checked'}>
+            <span class="est-info">${fmtFecha(p.f.fecha)} · ${esc(p.f.clienteNombre || 'Sin nombre')}
+              <span class="muted">${esc(p.f.orden ? '#' + p.f.orden : (p.f.numero || 's/n'))}</span></span>
+            <span class="est-monto">${fmtDinero(p.f.total, p.mon)} → <b>${fmtDinero(p.costo, p.mon)}</b> ${EMO[p.metodo]}</span>
+          </label>`).join('')}
+      </div>
+      <button class="btn-gold btn-block" id="btnAplicarEst" style="margin-top:14px"></button>
+    `);
+
+    const btn = body.querySelector('#btnAplicarEst');
+    const cuenta = () => {
+      const n = body.querySelectorAll('.est-row input:checked').length;
+      btn.textContent = `💾 Aplicar costo a ${n} factura${n === 1 ? '' : 's'}`;
+      btn.disabled = !n;
+    };
+    cuenta();
+    body.querySelector('.est-lista').addEventListener('change', cuenta);
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Guardando…';
+      const elegidas = [...body.querySelectorAll('.est-row input:checked')]
+        .map(ch => props[Number(ch.dataset.i)]);
+      const porId = new Map(elegidas.map(p => [p.f.id, p]));
+      /* Un solo guardado del arreglo completo (mucho más rápido que
+         cientos de upserts) y cada cambio se notifica a la nube. */
+      const nuevas = (await DB.facturas.list()).map(f => {
+        const p = porId.get(f.id);
+        return p ? { ...f, costo: p.costo, costoEstimado: p.metodo } : f;
+      });
+      await DB.reemplazar('facturas', nuevas);
+      if (typeof Sync !== 'undefined') {
+        for (const f of nuevas) if (porId.has(f.id)) Sync.notificar('facturas', 'upsert', f);
+        setTimeout(() => Sync.vaciarCola(), 1500);   // por si la cola quedó a medias
+      }
+      UI.cerrarModal();
+      UI.toast(`🪄 Costo estimado puesto a ${elegidas.length} facturas de plata`);
+      render();
+    });
+  }
+
   async function render() {
     const { d, h } = rangoDe(periodo);
     const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
@@ -111,7 +266,7 @@ const Finanzas = (() => {
           <div class="item-sub">${fmtFecha(f.fecha)} · ${fmtMoneda(f.total, t)}${
             gan !== null ? ` · <span class="${gan >= 0 ? 'verde' : 'rojo'}">ganó ${fmtMoneda(gan, t)}</span>` : ''}${
             f.estado === 'pendiente' && f.saldo > 0 ? ` · <span class="rojo">debe ${fmtMoneda(f.saldo, t)}</span>` : ''}
-            · costo <input class="fin-costo" data-fid="${f.id}" type="text" inputmode="decimal" autocomplete="off" value="${f.costo ?? ''}" placeholder="5000+1200+300" title="Acepta sumas: 5000+1200+300"></div>
+            · costo <input class="fin-costo ${f.costoEstimado ? 'fin-costo-est' : ''}" data-fid="${f.id}" type="text" inputmode="decimal" autocomplete="off" value="${f.costo ?? ''}" placeholder="5000+1200+300" title="${f.costoEstimado ? 'Costo estimado automáticamente — escribe encima para corregirlo' : 'Acepta sumas: 5000+1200+300'}"></div>
         </div>
         <span class="item-arrow">›</span>
       </div>`;
@@ -274,6 +429,7 @@ const Finanzas = (() => {
     const usarCustom = () => { periodo = 'custom'; $('#finPeriodo').value = 'custom'; $('#finCustom').hidden = false; };
     $('#finDesde').addEventListener('change', e => { desde = e.target.value; usarCustom(); render(); });
     $('#finHasta').addEventListener('change', e => { hasta = e.target.value; usarCustom(); render(); });
+    $('#btnEstimarCostos').addEventListener('click', estimarCostos);
 
     /* Tooltip de los gráficos: ratón y teclado */
     const charts = $('#finCharts');
@@ -314,6 +470,7 @@ const Finanzas = (() => {
       const f = await DB.facturas.get(inp.dataset.fid);
       if (!f) return;
       f.costo = v || null;
+      f.costoEstimado = null;                 // escrito a mano: ya no es un estimado
       await DB.facturas.upsert(f);
       UI.toast(f.costo ? `Costo guardado: ${fmtMoneda(f.costo, f.moneda || 'DOP')}` : 'Costo quitado');
       render();

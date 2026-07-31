@@ -287,6 +287,21 @@ button:hover{filter:brightness(1.12)}
 @media(max-width:900px){.fin-charts{grid-template-columns:1fr}}
 .fin-costo{width:110px;padding:4px 8px;font-size:.85rem;display:inline-block;vertical-align:middle;
   border:1px solid var(--border);border-radius:8px;background:var(--panel)}
+.fin-costo-est{border-style:dashed;border-color:var(--gold);color:var(--gold-bright)}
+
+/* ── Estimador de costos de plata ── */
+.est-lista{max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:10px}
+.est-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 12px;border-bottom:1px solid var(--border);
+  font-size:.85rem;cursor:pointer;
+}
+.est-row:last-child{border-bottom:none}
+.est-row:hover{background:var(--rose-soft)}
+.est-row input{width:auto;flex:0 0 auto}
+.est-info{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.est-monto{flex:0 0 auto;white-space:nowrap}
+.est-dudosa .est-monto b{color:var(--red)}
 .rojo{color:var(--red)}
 .verde{color:var(--green)}
 .dorado{color:var(--gold-bright)}
