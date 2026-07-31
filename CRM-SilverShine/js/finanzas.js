@@ -104,8 +104,9 @@ const Finanzas = (() => {
         <div class="item-info">
           <div class="item-name">${esc(f.clienteNombre)} <span class="muted">${esc(f.orden ? '#' + f.orden : (f.numero || 's/n'))}</span></div>
           <div class="item-sub">${fmtFecha(f.fecha)} · ${fmtMoneda(f.total, t)}${
-            gan !== null ? ` · costo ${fmtMoneda(f.costo, t)} · <span class="${gan >= 0 ? 'verde' : 'rojo'}">ganó ${fmtMoneda(gan, t)}</span>` : ' · <span class="muted">sin costo</span>'}${
-            f.estado === 'pendiente' && f.saldo > 0 ? ` · <span class="rojo">debe ${fmtMoneda(f.saldo, t)}</span>` : ''}</div>
+            gan !== null ? ` · <span class="${gan >= 0 ? 'verde' : 'rojo'}">ganó ${fmtMoneda(gan, t)}</span>` : ''}${
+            f.estado === 'pendiente' && f.saldo > 0 ? ` · <span class="rojo">debe ${fmtMoneda(f.saldo, t)}</span>` : ''}
+            · costo <input class="fin-costo" data-fid="${f.id}" type="number" min="0" step="0.01" value="${f.costo ?? ''}" placeholder="0.00"></div>
         </div>
         <span class="item-arrow">›</span>
       </div>`;
@@ -123,8 +124,20 @@ const Finanzas = (() => {
     $('#finDesde').addEventListener('change', e => { desde = e.target.value; if (hasta) render(); });
     $('#finHasta').addEventListener('change', e => { hasta = e.target.value; if (desde) render(); });
     $('#finLista').addEventListener('click', e => {
+      if (e.target.closest('.fin-costo')) return;   // escribir el costo no abre el detalle
       const item = e.target.closest('.item[data-id]');
       if (item) Facturas.detalle(item.dataset.id);
+    });
+    /* Guardar el costo directo desde la fila */
+    $('#finLista').addEventListener('change', async e => {
+      const inp = e.target.closest('.fin-costo');
+      if (!inp) return;
+      const f = await DB.facturas.get(inp.dataset.fid);
+      if (!f) return;
+      f.costo = Number(inp.value) || null;
+      await DB.facturas.upsert(f);
+      UI.toast(f.costo ? `Costo guardado: ${fmtMoneda(f.costo, f.moneda || 'DOP')}` : 'Costo quitado');
+      render();
     });
   }
 
