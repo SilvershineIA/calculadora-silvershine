@@ -429,7 +429,8 @@ const Finanzas = (() => {
     const usarCustom = () => { periodo = 'custom'; $('#finPeriodo').value = 'custom'; $('#finCustom').hidden = false; };
     $('#finDesde').addEventListener('change', e => { desde = e.target.value; usarCustom(); render(); });
     $('#finHasta').addEventListener('change', e => { hasta = e.target.value; usarCustom(); render(); });
-    $('#btnEstimarCostos').addEventListener('click', estimarCostos);
+    const btnEst = $('#btnEstimarCostos');
+    if (btnEst) btnEst.addEventListener('click', estimarCostos);   // puede faltar si el HTML viene de un caché viejo
 
     /* Tooltip de los gráficos: ratón y teclado */
     const charts = $('#finCharts');
