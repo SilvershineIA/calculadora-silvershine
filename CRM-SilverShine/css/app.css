@@ -113,6 +113,7 @@ textarea{resize:vertical;min-height:70px}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}
 input[type=number]{appearance:textfield}
 .row{display:flex;gap:12px;margin-bottom:12px}
+.row[hidden]{display:none}
 .row>div{flex:1}
 .search{margin-bottom:14px;background:var(--panel)}
 .filter-row{display:flex;gap:10px;margin-bottom:14px}
