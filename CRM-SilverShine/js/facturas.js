@@ -191,6 +191,7 @@ const Facturas = (() => {
       <div class="row" style="margin-top:10px">
         ${f.estado !== 'anulada' ? `<button class="btn-ghost btn-block" id="fEditar">✏️ Editar</button>` : ''}
         ${f.estado !== 'anulada' ? `<button class="btn-danger btn-block" id="fAnular">Anular</button>` : ''}
+        ${f.estado === 'anulada' ? `<button class="btn-gold btn-block" id="fDesanular">↩ Desanular</button>` : ''}
       </div>
     `);
 
@@ -304,10 +305,23 @@ const Facturas = (() => {
     });
     on('#fEditar', () => formulario(f));
     on('#fAnular', async () => {
-      if (!confirm(`¿Anular la factura ${f.numero}? Se conserva en el historial como anulada.`)) return;
-      f.estado = 'anulada'; f.saldo = 0;
+      if (!confirm(`¿Anular la factura ${f.numero}? Se conserva en el historial como anulada y podrás desanularla después.`)) return;
+      f.estado = 'anulada';   // el saldo se conserva para poder desanular con su balance exacto
       await DB.facturas.upsert(f);
       cerrarModal(); toast('Factura anulada'); render();
+    });
+    on('#fDesanular', async () => {
+      const abonado = (f.abonos || []).reduce((s, a) => s + a.monto, 0);
+      const saldoRest = f.saldo > 0.005 ? f.saldo : Math.max(0, Math.round((f.total - abonado) * 100) / 100);
+      if (!confirm(`¿Restaurar la factura ${rotulo(f)}? Volverá como ${
+        saldoRest > 0.005 ? `pendiente con balance ${fmtMoneda(saldoRest, t)}` : 'pagada'}.`)) return;
+      f.saldo = saldoRest;
+      f.estado = saldoRest > 0.005 ? 'pendiente' : 'pagada';
+      if (f.planPago) actualizarProxCobro(f);
+      await DB.facturas.upsert(f);
+      toast('↩ Factura restaurada');
+      render();
+      detalle(f.id);
     });
   }
 

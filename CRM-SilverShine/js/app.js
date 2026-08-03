@@ -440,6 +440,22 @@
     if (j && !(j.costo > 0)) { j.costo = 4000; await DB.facturas.upsert(j); }
   }
 
+  /* ── Migración única: el usuario aclaró (31 jul, más tarde) que la
+        B0200001940 de Samuel Tejeda NO era duplicada — se restaura como
+        pendiente con su balance de 18,000. Corre después de ajustes0731. ── */
+  async function restaurarSamuel1940() {
+    if (await DB.config.get('restaura1940')) return;
+    const f = await DB.facturas.get('fac-qb-00045');
+    if (!f) return;
+    if (f.estado === 'anulada') {
+      f.estado = f.saldo > 0.005 ? 'pendiente' : 'pagada';
+      f.notas = String(f.notas || '').split('\n').filter(l => !l.includes('Duplicado confirmado')).join('\n');
+      await DB.facturas.upsert(f);
+      toast('↩ Factura B0200001940 de Samuel Tejeda restaurada');
+    }
+    await DB.config.upsert({ id: 'restaura1940', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
+  }
+
   /* ── Migración única: costos de producción 2026 entregados por el
         usuario (31 jul 2026, lista "Órdenes/Confecciones en China").
         Solo pone el costo si la factura aún no tiene; corre una vez
@@ -582,6 +598,7 @@
     await limpiarDuplicadasQB();
     await migrarCostos2026();
     await ajustesConfirmados31Jul();
+    await restaurarSamuel1940();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();
