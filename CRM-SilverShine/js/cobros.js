@@ -145,7 +145,7 @@ const Cobros = (() => {
     on('#coVerFactura', () => Facturas.detalle(f.id));
 
     const mensaje = emp =>
-      `Hola ${f.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
+      `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
       `Le recordamos con cariño su balance pendiente:\n` +
       `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')}\n` +
       `🔴 Pendiente: *${fmtMoneda(f.saldo, t)}*` +

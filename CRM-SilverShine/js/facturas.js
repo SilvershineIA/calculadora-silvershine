@@ -267,7 +267,7 @@ const Facturas = (() => {
     const mensajeFactura = emp => {
       const lineasTxt = f.lineas.map(l =>
         `▪ ${l.descripcion}${l.cantidad > 1 ? ` ×${l.cantidad}` : ''} — ${fmtMoneda(l.cantidad * l.precio, t)}`).join('\n');
-      let msg = `Hola ${f.clienteNombre}, le saluda *${emp.nombre}* ✨\n\n` +
+      let msg = `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
         `🧾 *Factura ${rotulo(f)}*${f.orden && f.ncf ? ` · NCF ${f.ncf}` : ''}\n` +
         `📅 ${fmtFecha(f.fecha)}\n\n${lineasTxt}\n` +
         (f.impuesto ? `▪ ITBIS — ${fmtMoneda(f.impuesto, t)}\n` : '') +
@@ -358,7 +358,7 @@ const Facturas = (() => {
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
     const mensajeRecibo = emp =>
       `✅ *${emp.nombre} — Recibo de pago*\n${numRec} · ${fmtFecha(abono.fecha)}\n\n` +
-      `Hola ${f.clienteNombre}, confirmamos su pago:\n\n` +
+      `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨ Confirmamos su pago:\n\n` +
       `💵 *${fmtMoneda(abono.monto, t)}* (${abono.metodo || 'pago'})\n` +
       `🧾 Factura ${rotulo(f)}: total ${fmtMoneda(f.total, t)} · abonado ${fmtMoneda(abonado, t)}\n` +
       (f.saldo > 0.005 ? `🔴 Balance restante: *${fmtMoneda(f.saldo, t)}*` : `🎉 *Factura saldada — ¡muchas gracias!*`) +

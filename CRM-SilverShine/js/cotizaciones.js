@@ -291,7 +291,8 @@ const Cotizaciones = (() => {
       }
       const msg =
         `✨ *${emp.nombre} — Cotización COT-${c.numero}*\n📅 ${fechaLarga}\n\n` +
-        `Hola ${c.clienteNombre} 👋 Gracias por tu interés. Aquí tienes tu cotización:\n\n` +
+        `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n` +
+        `Gracias por tu interés. Aquí tienes tu cotización:\n\n` +
         `${lineasTxt}\n` +
         `${c.peso ? `⚖️ Peso aprox.: ${c.peso} g\n` : ''}\n` +
         `💰 *Precio: ${precioTxt}*\n` +
@@ -323,7 +324,7 @@ const Cotizaciones = (() => {
     on('#cCorreo', async () => {
       const emp = await UI.getEmpresa();
       const asunto = `Cotización COT-${c.numero} — ${emp.nombre}`;
-      const cuerpo = `Hola ${c.clienteNombre},\n\nGracias por su interés. Le adjuntamos su cotización COT-${c.numero}` +
+      const cuerpo = `Hola ${c.clienteNombre},\n\nLe saluda ${UI.quienSaluda(emp)}. Gracias por su interés — le adjuntamos su cotización COT-${c.numero}` +
         `${c.vence ? `, válida hasta el ${fmtFecha(c.vence)}` : ''}.\n\n` +
         `Si tiene alguna duda o le gustaría ajustar algo de la pieza, estamos a la orden para ayudarle con gusto.\n\n` +
         `${emp.nombre} · ${emp.web}\n${emp.direccion || ''}\nTel. ${emp.telefono}`;
@@ -336,13 +337,13 @@ const Cotizaciones = (() => {
     /* Abiertas: saludo suave sin presión. Aceptadas sin facturar (lead
        caliente): recordar con cariño cómo iniciar la pieza (70/30). */
     const mensajeSeguimiento = emp => esLeadCaliente(c)
-      ? `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
+      ? `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
         `¡Qué alegría que le encantó su pieza de la cotización *COT-${c.numero}*! 😍\n` +
         `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'Su pieza'}\n\n` +
         `Cuando guste comenzamos: con el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* iniciamos la confección y el 30% restante se paga a la entrega.${
           c.easypay ? ' También puede tomarla con su plan EasyPay si lo prefiere.' : ''}\n\n` +
         `Estamos a la orden para lo que necesite 💎\n${emp.nombre} · ${emp.web}`
-      : `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
+      : `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
         `Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
         `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
         `¿Qué le pareció? 😊 ¿Le gustó la pieza, o le gustaría modificar algo — el peso, el material o el presupuesto? Con gusto la ajustamos hasta que quede perfecta para usted.\n\n` +

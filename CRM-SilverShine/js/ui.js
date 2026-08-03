@@ -91,6 +91,7 @@ const UI = (() => {
   const EMPRESA_DEFECTO = {
     id: 'empresa',
     nombre: 'SilverShine',
+    vendedor: 'José',
     razon: 'Grupo Morillo Ciprian SRL',
     rnc: '132-44210-5',
     direccion: 'Plaza APH, 4to piso, local 25, Piantini, Santo Domingo',
@@ -105,6 +106,9 @@ const UI = (() => {
     const guardada = await DB.config.get('empresa');
     return { ...EMPRESA_DEFECTO, ...(guardada || {}) };
   }
+
+  /* Firma personal de los mensajes: "José de SilverShine" (editable en Ajustes) */
+  const quienSaluda = emp => emp.vendedor ? `${emp.vendedor} de ${emp.nombre}` : emp.nombre;
 
   /* ── WhatsApp: teléfono o @usuario ──
      Los usernames de WhatsApp NO tienen enlace tipo wa.me (hay que buscar
@@ -252,5 +256,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
 })();
