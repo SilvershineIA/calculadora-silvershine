@@ -17,11 +17,16 @@ const Cotizaciones = (() => {
     return `<span class="badge ${cls}">${e}</span>`;
   };
 
-  /* Segunda etiqueta: ¿hubo gestión (creación o seguimiento) en los últimos 15 días? */
+  /* Aceptada pero sin factura = el lead más caliente: hay que perseguirla */
+  const esLeadCaliente = c => estadoDe(c) === 'aceptada' && !c.facturaId;
+
+  /* Segunda etiqueta: ¿hubo gestión (creación o seguimiento) reciente?
+     Abiertas: 15 días de ventana · aceptadas sin facturar: 7 (más calientes) */
   const badgeSeguimiento = c => {
-    if (!ABIERTAS.includes(estadoDe(c))) return '';
+    if (!ABIERTAS.includes(estadoDe(c)) && !esLeadCaliente(c)) return '';
+    const dias = esLeadCaliente(c) ? 7 : 15;
     const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
-    const corte = new Date(Date.now() - 15 * 864e5).toISOString().slice(0, 10);
+    const corte = new Date(Date.now() - dias * 864e5).toISOString().slice(0, 10);
     return ultima && ultima >= corte
       ? '<span class="badge b-pag">🤝 al día</span>'
       : '<span class="badge b-roja">🤝 sin seguimiento</span>';
@@ -60,15 +65,18 @@ const Cotizaciones = (() => {
       UI.statTile(UI.fmtDinero(monto), 'Ventas en camino');
 
     /* ── Panel de conversión y seguimiento ──
-       Conversión = aceptadas ÷ cerradas (aceptada + rechazada + vencida).
-       La efectividad del seguimiento compara la conversión de las cerradas
-       QUE recibieron seguimiento contra las que no. */
+       El cierre VERDADERO es pasar a factura (facturaId) — "aceptada" a
+       secas es palabra del cliente, aún sin cerrar. Conversión = facturadas
+       ÷ cerradas (facturada + rechazada + vencida); las aceptadas sin
+       factura quedan aparte como "por facturar". La efectividad del
+       seguimiento compara la conversión de cerradas CON vs SIN seguimiento. */
     const todasCot = lista;
-    const esCerrada = c => ['aceptada', 'rechazada', 'vencida'].includes(estadoDe(c));
+    const esFacturada = c => !!c.facturaId;
+    const esCerrada = c => esFacturada(c) || ['rechazada', 'vencida'].includes(estadoDe(c));
     const tasaDe = arr => {
       const cer = arr.filter(esCerrada);
       if (!cer.length) return null;
-      return Math.round(cer.filter(c => estadoDe(c) === 'aceptada').length / cer.length * 100);
+      return Math.round(cer.filter(esFacturada).length / cer.length * 100);
     };
     const hace90 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
     const ultimas90 = todasCot.filter(c => (c.fecha || '') >= hace90);
@@ -76,11 +84,11 @@ const Cotizaciones = (() => {
     const conSeg = cerradas.filter(c => (c.seguimientos || []).length);
     const sinSeg = cerradas.filter(c => !(c.seguimientos || []).length);
     const tasaGrupo = arr => arr.length
-      ? Math.round(arr.filter(c => estadoDe(c) === 'aceptada').length / arr.length * 100) : null;
-    // Tiempo promedio de cotización → factura (solo las convertidas desde el CRM)
+      ? Math.round(arr.filter(esFacturada).length / arr.length * 100) : null;
+    // Tiempo promedio de cotización → factura
     const facturasTodas = await DB.facturas.list();
     const tiempos = todasCot
-      .filter(c => estadoDe(c) === 'aceptada' && c.facturaId)
+      .filter(esFacturada)
       .map(c => {
         const f = facturasTodas.find(x => x.id === c.facturaId);
         return f && f.fecha && c.fecha ? Math.round((new Date(f.fecha) - new Date(c.fecha)) / 864e5) : null;
@@ -88,12 +96,12 @@ const Cotizaciones = (() => {
       .filter(v => v !== null && v >= 0);
     const tMedio = tiempos.length ? Math.round(tiempos.reduce((s, v) => s + v, 0) / tiempos.length) : null;
     const cotizado90 = ultimas90.reduce((s, c) => s + (c.total || 0), 0);
-    const ganado90 = ultimas90.filter(c => estadoDe(c) === 'aceptada').reduce((s, c) => s + (c.total || 0), 0);
+    const facturado90 = ultimas90.filter(esFacturada).reduce((s, c) => s + (c.total || 0), 0);
     const pct = v => v === null ? '—' : v + '%';
-    const nAcep = cerradas.filter(c => estadoDe(c) === 'aceptada').length;
+    const porFacturarTodas = todasCot.filter(c => estadoDe(c) === 'aceptada' && !c.facturaId);
     $('#cotConversion').innerHTML = `
       <div class="card" style="margin-bottom:14px">
-        <h2>📊 Conversión y seguimiento</h2>
+        <h2>📊 Conversión y seguimiento <span class="muted" style="text-transform:none;letter-spacing:0;font-size:.8rem">· cierre = pasó a factura</span></h2>
         <div class="stat-grid">
           ${UI.statTile(pct(tasaDe(todasCot)), 'Conversión histórica')}
           ${UI.statTile(pct(tasaDe(ultimas90)), 'Conversión 90 días')}
@@ -102,10 +110,11 @@ const Cotizaciones = (() => {
         </div>
         <p class="muted" style="margin-top:10px;line-height:1.8">
           ${tMedio !== null ? `⏱ De cotización a factura: <b>${tMedio} día${tMedio === 1 ? '' : 's'}</b> en promedio. ` : ''}
-          💰 Últimos 90 días: ganado <b>${UI.fmtDinero(ganado90)}</b> de ${UI.fmtDinero(cotizado90)} cotizados${
-            cotizado90 > 0 ? ` (${Math.round(ganado90 / cotizado90 * 100)}% del valor)` : ''}.<br>
-          Cerradas: ${nAcep} aceptadas · ${cerradas.filter(c => estadoDe(c) === 'rechazada').length} rechazadas · ${
-            cerradas.filter(c => estadoDe(c) === 'vencida').length} vencidas · ${abiertas.length} abiertas en juego.
+          💰 Últimos 90 días: facturado <b>${UI.fmtDinero(facturado90)}</b> de ${UI.fmtDinero(cotizado90)} cotizados${
+            cotizado90 > 0 ? ` (${Math.round(facturado90 / cotizado90 * 100)}% del valor)` : ''}.<br>
+          ${cerradas.filter(esFacturada).length} facturadas · ${porFacturarTodas.length ? `<b class="rojo">${porFacturarTodas.length} aceptadas SIN facturar</b>` : '0 aceptadas sin facturar'} · ${
+            cerradas.filter(c => !esFacturada(c) && estadoDe(c) === 'rechazada').length} rechazadas · ${
+            cerradas.filter(c => !esFacturada(c) && estadoDe(c) === 'vencida').length} vencidas · ${abiertas.length} abiertas en juego.
         </p>
       </div>`;
 
@@ -158,14 +167,18 @@ const Cotizaciones = (() => {
     const grupos = [[], [], []];
     lista.filter(c => ABIERTAS.includes(estadoDe(c))).forEach(c => grupos[urgencia(c)].push(c));
     grupos.forEach(g => g.sort((a, b) => (b.total || 0) - (a.total || 0)));
-    const aceptadas = lista.filter(c => !ABIERTAS.includes(estadoDe(c)));
+    // Aceptadas de palabra pero sin factura = el verdadero pendiente de cierre
+    const porFacturar = lista.filter(c => estadoDe(c) === 'aceptada' && !c.facturaId)
+      .sort((a, b) => (b.total || 0) - (a.total || 0));
+    const facturadas = lista.filter(c => estadoDe(c) === 'aceptada' && c.facturaId);
     const seccion = (titulo, arr, cls) => !arr.length ? '' :
       `<h3 class="sub-h ${cls}">${titulo} (${arr.length})</h3>` + arr.map(fila).join('');
     cont.innerHTML =
+      seccion('🧾 Aceptadas por facturar — ¡el cierre de verdad!', porFacturar, 'rojo') +
       seccion('🔴 Urgentes — vencen ya o 15+ días sin gestión', grupos[0], 'rojo') +
       seccion('🟠 Necesitan atención', grupos[1], '') +
       seccion('🟢 Al día', grupos[2], '') +
-      seccion('✅ Aceptadas recientes', aceptadas.slice(0, 15), '');
+      seccion('✅ Facturadas recientes', facturadas.slice(0, 15), '');
   }
 
   /* ── Detalle ── */
@@ -200,8 +213,8 @@ const Cotizaciones = (() => {
         ${UI.tieneWhatsApp(cliente) ? `<button class="btn-ghost btn-block" id="cWhatsApp">💬 WhatsApp</button>` : ''}
         ${cliente && cliente.correo ? `<button class="btn-ghost btn-block" id="cCorreo">✉️ Correo</button>` : ''}
       </div>
-      ${abierta && cliente && (UI.tieneWhatsApp(cliente) || cliente.correo) ? `
-      <h3 class="sub-h" style="margin-top:14px">🤝 Seguimiento (mensaje suave)${
+      ${(abierta || esLeadCaliente(c)) && cliente && (UI.tieneWhatsApp(cliente) || cliente.correo) ? `
+      <h3 class="sub-h" style="margin-top:14px">🤝 Seguimiento ${esLeadCaliente(c) ? '(¡lead caliente — a cerrar!)' : '(mensaje suave)'}${
         (c.seguimientos || []).length
           ? ` <span class="muted" style="text-transform:none;letter-spacing:0">· último: ${fmtFecha(c.seguimientos[c.seguimientos.length - 1].fecha)} por ${esc(c.seguimientos[c.seguimientos.length - 1].via)}</span>`
           : ''}</h3>
@@ -320,12 +333,20 @@ const Cotizaciones = (() => {
       if (modo === 'compartido' && cliente.correo) toast(`✉️ ${cliente.correo} copiado — pégalo en "Para:"`);
     });
     /* Seguimiento suave: saludo sin presión, se registra con fecha y vía */
-    const mensajeSeguimiento = emp =>
-      `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
-      `Solo pasamos a saludarle 😊 Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
-      `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
-      `Sin ningún compromiso — si tiene alguna duda, quiere ajustar algo de la pieza o ver otras opciones, estamos a la orden con mucho gusto.\n\n` +
-      `¡Que tenga un excelente día! 💎\n${emp.nombre} · ${emp.web}`;
+    /* Abiertas: saludo suave sin presión. Aceptadas sin facturar (lead
+       caliente): recordar con cariño cómo iniciar la pieza (70/30). */
+    const mensajeSeguimiento = emp => esLeadCaliente(c)
+      ? `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
+        `¡Qué alegría que le encantó su pieza de la cotización *COT-${c.numero}*! 😍\n` +
+        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'Su pieza'}\n\n` +
+        `Cuando guste comenzamos: con el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* iniciamos la confección y el 30% restante se paga a la entrega.${
+          c.easypay ? ' También puede tomarla con su plan EasyPay si lo prefiere.' : ''}\n\n` +
+        `Estamos a la orden para lo que necesite 💎\n${emp.nombre} · ${emp.web}`
+      : `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
+        `Solo pasamos a saludarle 😊 Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
+        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
+        `Sin ningún compromiso — si tiene alguna duda, quiere ajustar algo de la pieza o ver otras opciones, estamos a la orden con mucho gusto.\n\n` +
+        `¡Que tenga un excelente día! 💎\n${emp.nombre} · ${emp.web}`;
 
     const registrarSeguimiento = async via => {
       c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via }];
