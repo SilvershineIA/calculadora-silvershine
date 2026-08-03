@@ -417,43 +417,31 @@
     if (anuladas) toast(`🧹 ${anuladas} facturas anuladas para cuadrar con QuickBooks`);
   }
 
-  /* ── Migración única: ajustes confirmados por el usuario (31 jul 2026):
-        Samuel Tejeda tenía factura duplicada CON NCF (B0200001940, debía
-        18,000 fantasma) — se anula y su costo pasa a la válida B0200001941.
-        Jacier Cabral: costo de la lista ("Orden 307 - 4mm") en su NCF. ── */
+  /* ── Ajustes del 31 jul (auto-reparable): costos confirmados por el
+        usuario. OJO: aquí ANTES se anulaba la B0200001940 de Samuel —
+        el usuario aclaró después que NO era duplicada; esa parte se
+        eliminó y restaurarSamuel1940 revierte lo ya anulado. ── */
   async function ajustesConfirmados31Jul() {
-    /* Sin bandera: verifica y repara en cada arranque (idempotente). */
     if (!(await DB.facturas.list()).length) return;   // sin datos aún
-    const dup = await DB.facturas.get('fac-qb-00045');            // Samuel B0200001940
-    if (dup && dup.estado !== 'anulada') {
-      dup.estado = 'anulada';
-      delete dup.costo;
-      delete dup.proxCobro;
-      dup.notas = [dup.notas, 'Duplicado confirmado por el usuario — la válida es B0200001941. Anulada el 31 jul 2026.']
-        .filter(Boolean).join('\n');
-      await DB.facturas.upsert(dup);
-      toast('🧹 Duplicada de Samuel Tejeda anulada — su deuda fantasma de RD$18,000 desapareció');
-    }
     const real = await DB.facturas.get('fac-qb-00044');           // Samuel B0200001941
     if (real && !(real.costo > 0)) { real.costo = 22200; await DB.facturas.upsert(real); }
     const j = await DB.facturas.get('fac-qb-00473');              // Jacier B0200001555
     if (j && !(j.costo > 0)) { j.costo = 4000; await DB.facturas.upsert(j); }
   }
 
-  /* ── Migración única: el usuario aclaró (31 jul, más tarde) que la
-        B0200001940 de Samuel Tejeda NO era duplicada — se restaura como
-        pendiente con su balance de 18,000. Corre después de ajustes0731. ── */
+  /* ── Restauración de la B0200001940 de Samuel (auto-reparable): si está
+        anulada POR LA MIGRACIÓN VIEJA (se reconoce por su nota), se
+        restaura con su balance. Una anulación manual del usuario (sin esa
+        nota) se respeta y no se toca. ── */
   async function restaurarSamuel1940() {
-    if (await DB.config.get('restaura1940')) return;
     const f = await DB.facturas.get('fac-qb-00045');
     if (!f) return;
-    if (f.estado === 'anulada') {
+    if (f.estado === 'anulada' && String(f.notas || '').includes('Duplicado confirmado por el usuario')) {
       f.estado = f.saldo > 0.005 ? 'pendiente' : 'pagada';
-      f.notas = String(f.notas || '').split('\n').filter(l => !l.includes('Duplicado confirmado')).join('\n');
+      f.notas = String(f.notas || '').split('\n').filter(l => !l.includes('Duplicado confirmado por el usuario')).join('\n');
       await DB.facturas.upsert(f);
       toast('↩ Factura B0200001940 de Samuel Tejeda restaurada');
     }
-    await DB.config.upsert({ id: 'restaura1940', hecho: true, fecha: new Date().toISOString().slice(0, 10) });
   }
 
   /* ── Migración única: costos de producción 2026 entregados por el
