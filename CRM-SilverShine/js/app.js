@@ -368,6 +368,7 @@
       ['fac-qb-00357', 'B0200001660'],     // Alexis Jose Diaz 44,000
       ['fac-qb-00362', 'B0200001656'],     // Miguel Iván Frias 77,000.14 (gemela con ¢14 de diferencia)
       ['fac-qb-00468', 'B0200001557'],     // Neury 7,500
+      ['fac-qb-00470', 'B0200001555'],     // Jacier Cabral 83,500 (la válida es de 82,500 — confirmado por el usuario 1 ago)
       ['fac-qb-00485', 'B0200001538'],     // Ydalmis Jazmin 6,000
       ['fac-qb-00496', 'B0200001533'],     // Emmanuel Martinez 8,400
     ];
