@@ -59,6 +59,56 @@ const Cotizaciones = (() => {
       UI.statTile(abiertas.length, 'Abiertas') +
       UI.statTile(UI.fmtDinero(monto), 'Ventas en camino');
 
+    /* ── Panel de conversión y seguimiento ──
+       Conversión = aceptadas ÷ cerradas (aceptada + rechazada + vencida).
+       La efectividad del seguimiento compara la conversión de las cerradas
+       QUE recibieron seguimiento contra las que no. */
+    const todasCot = lista;
+    const esCerrada = c => ['aceptada', 'rechazada', 'vencida'].includes(estadoDe(c));
+    const tasaDe = arr => {
+      const cer = arr.filter(esCerrada);
+      if (!cer.length) return null;
+      return Math.round(cer.filter(c => estadoDe(c) === 'aceptada').length / cer.length * 100);
+    };
+    const hace90 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    const ultimas90 = todasCot.filter(c => (c.fecha || '') >= hace90);
+    const cerradas = todasCot.filter(esCerrada);
+    const conSeg = cerradas.filter(c => (c.seguimientos || []).length);
+    const sinSeg = cerradas.filter(c => !(c.seguimientos || []).length);
+    const tasaGrupo = arr => arr.length
+      ? Math.round(arr.filter(c => estadoDe(c) === 'aceptada').length / arr.length * 100) : null;
+    // Tiempo promedio de cotización → factura (solo las convertidas desde el CRM)
+    const facturasTodas = await DB.facturas.list();
+    const tiempos = todasCot
+      .filter(c => estadoDe(c) === 'aceptada' && c.facturaId)
+      .map(c => {
+        const f = facturasTodas.find(x => x.id === c.facturaId);
+        return f && f.fecha && c.fecha ? Math.round((new Date(f.fecha) - new Date(c.fecha)) / 864e5) : null;
+      })
+      .filter(v => v !== null && v >= 0);
+    const tMedio = tiempos.length ? Math.round(tiempos.reduce((s, v) => s + v, 0) / tiempos.length) : null;
+    const cotizado90 = ultimas90.reduce((s, c) => s + (c.total || 0), 0);
+    const ganado90 = ultimas90.filter(c => estadoDe(c) === 'aceptada').reduce((s, c) => s + (c.total || 0), 0);
+    const pct = v => v === null ? '—' : v + '%';
+    const nAcep = cerradas.filter(c => estadoDe(c) === 'aceptada').length;
+    $('#cotConversion').innerHTML = `
+      <div class="card" style="margin-bottom:14px">
+        <h2>📊 Conversión y seguimiento</h2>
+        <div class="stat-grid">
+          ${UI.statTile(pct(tasaDe(todasCot)), 'Conversión histórica')}
+          ${UI.statTile(pct(tasaDe(ultimas90)), 'Conversión 90 días')}
+          ${UI.statTile(pct(tasaGrupo(conSeg)), 'Con seguimiento 🤝')}
+          ${UI.statTile(pct(tasaGrupo(sinSeg)), 'Sin seguimiento')}
+        </div>
+        <p class="muted" style="margin-top:10px;line-height:1.8">
+          ${tMedio !== null ? `⏱ De cotización a factura: <b>${tMedio} día${tMedio === 1 ? '' : 's'}</b> en promedio. ` : ''}
+          💰 Últimos 90 días: ganado <b>${UI.fmtDinero(ganado90)}</b> de ${UI.fmtDinero(cotizado90)} cotizados${
+            cotizado90 > 0 ? ` (${Math.round(ganado90 / cotizado90 * 100)}% del valor)` : ''}.<br>
+          Cerradas: ${nAcep} aceptadas · ${cerradas.filter(c => estadoDe(c) === 'rechazada').length} rechazadas · ${
+            cerradas.filter(c => estadoDe(c) === 'vencida').length} vencidas · ${abiertas.length} abiertas en juego.
+        </p>
+      </div>`;
+
     if (filtroEstado) lista = lista.filter(c => estadoDe(c) === filtroEstado);
     else if (!filtro) lista = lista.filter(c => !['vencida', 'rechazada'].includes(estadoDe(c)));   // vencidas y rechazadas ocultas salvo búsqueda o filtro
     if (filtro) {
@@ -76,7 +126,7 @@ const Cotizaciones = (() => {
       return;
     }
 
-    cont.innerHTML = lista.slice(0, 100).map(c => `
+    const fila = c => `
       <div class="item" data-id="${c.id}">
         <div class="item-info">
           <div class="item-name">${esc(c.clienteNombre)} ${badge(c)}${badgeSeguimiento(c)}</div>
@@ -85,7 +135,37 @@ const Cotizaciones = (() => {
             (c.seguimientos || []).length ? ` · 🤝 ${fmtFecha(c.seguimientos[c.seguimientos.length - 1].fecha)}` : ''}</div>
         </div>
         <span class="item-arrow">›</span>
-      </div>`).join('');
+      </div>`;
+
+    if (filtro || filtroEstado) {
+      cont.innerHTML = lista.slice(0, 100).map(fila).join('');
+      return;
+    }
+
+    /* ── Vista "Activas": jerarquía por urgencia ──
+       🔴 vence en ≤2 días o 15+ días sin gestión · 🟠 vence en ≤7 días o
+       7+ días sin gestión · 🟢 al día; dentro de cada grupo, mayor monto
+       primero. Las aceptadas van al final como referencia. */
+    const hoyMs = Date.now();
+    const urgencia = c => {
+      const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
+      const diasSin = ultima ? Math.floor((hoyMs - new Date(ultima + 'T00:00:00')) / 864e5) : 999;
+      const diasVence = c.vence ? Math.ceil((new Date(c.vence + 'T00:00:00') - hoyMs) / 864e5) : null;
+      if ((diasVence !== null && diasVence <= 2) || diasSin >= 15) return 0;
+      if ((diasVence !== null && diasVence <= 7) || diasSin >= 7) return 1;
+      return 2;
+    };
+    const grupos = [[], [], []];
+    lista.filter(c => ABIERTAS.includes(estadoDe(c))).forEach(c => grupos[urgencia(c)].push(c));
+    grupos.forEach(g => g.sort((a, b) => (b.total || 0) - (a.total || 0)));
+    const aceptadas = lista.filter(c => !ABIERTAS.includes(estadoDe(c)));
+    const seccion = (titulo, arr, cls) => !arr.length ? '' :
+      `<h3 class="sub-h ${cls}">${titulo} (${arr.length})</h3>` + arr.map(fila).join('');
+    cont.innerHTML =
+      seccion('🔴 Urgentes — vencen ya o 15+ días sin gestión', grupos[0], 'rojo') +
+      seccion('🟠 Necesitan atención', grupos[1], '') +
+      seccion('🟢 Al día', grupos[2], '') +
+      seccion('✅ Aceptadas recientes', aceptadas.slice(0, 15), '');
   }
 
   /* ── Detalle ── */
@@ -201,7 +281,8 @@ const Cotizaciones = (() => {
         `Hola ${c.clienteNombre} 👋 Gracias por tu interés. Aquí tienes tu cotización:\n\n` +
         `${lineasTxt}\n` +
         `${c.peso ? `⚖️ Peso aprox.: ${c.peso} g\n` : ''}\n` +
-        `💰 *Precio: ${precioTxt}*\n\n` +
+        `💰 *Precio: ${precioTxt}*\n` +
+        `📌 *Forma de pago:* 70% para iniciar su pieza y 30% a la entrega.\n\n` +
         (() => {
           const ep = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;
           if (!ep) return '';
