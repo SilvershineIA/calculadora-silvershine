@@ -343,10 +343,10 @@ const Cotizaciones = (() => {
           c.easypay ? ' También puede tomarla con su plan EasyPay si lo prefiere.' : ''}\n\n` +
         `Estamos a la orden para lo que necesite 💎\n${emp.nombre} · ${emp.web}`
       : `Hola ${c.clienteNombre} 👋 Le saluda *${emp.nombre}* ✨\n\n` +
-        `Solo pasamos a saludarle 😊 Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
+        `Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
         `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
-        `Sin ningún compromiso — si tiene alguna duda, quiere ajustar algo de la pieza o ver otras opciones, estamos a la orden con mucho gusto.\n\n` +
-        `¡Que tenga un excelente día! 💎\n${emp.nombre} · ${emp.web}`;
+        `¿Qué le pareció? 😊 ¿Le gustó la pieza, o le gustaría modificar algo — el peso, el material o el presupuesto? Con gusto la ajustamos hasta que quede perfecta para usted.\n\n` +
+        `Quedamos atentos, sin ningún compromiso 💎\n${emp.nombre} · ${emp.web}`;
 
     const registrarSeguimiento = async via => {
       c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via }];
