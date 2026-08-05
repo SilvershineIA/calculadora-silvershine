@@ -435,12 +435,15 @@
       await DB.cotizaciones.upsert(c);
       toast(`🔗 Cotización COT-${c.numero} enlazada a su factura${como ? ` (${como})` : ''}`);
     };
-    // Pase 1: la factura dice de cuál cotización nació (botón Convertir)
+    // Pase 1: la factura dice de cuál cotización nació (botón Convertir).
+    // Regex laxo a propósito: solo busca "COT-n" — las notas escritas por
+    // versiones con el encoding dañado dicen "SegÃºn cotizaciÃ³n" y el
+    // texto exacto no matchearía.
     for (const f of facts) {
       if (reclamadas.has(f.id)) continue;
-      const m = /Según cotización COT-(\S+)/.exec(f.notas || '');
+      const m = /COT-([^\s.,;]+)/.exec(f.notas || '');
       if (!m) continue;
-      const c = sueltas.find(x => String(x.numero) === m[1] && x.clienteId === f.clienteId && !x.facturaId);
+      const c = sueltas.find(x => String(x.numero).trim() === m[1].trim() && x.clienteId === f.clienteId && !x.facturaId);
       if (c) await enlazar(c, f, '');
     }
     // Pase 2: factura hecha A MANO tras la cotización — mismo cliente,
