@@ -426,18 +426,33 @@
     const cots = await DB.cotizaciones.list();
     const sueltas = cots.filter(c => !c.facturaId);
     if (!sueltas.length) return;
-    const facts = await DB.facturas.list();
+    const facts = (await DB.facturas.list()).filter(f => f.estado !== 'anulada');
+    const reclamadas = new Set(cots.map(x => x.facturaId).filter(Boolean));
+    const enlazar = async (c, f, como) => {
+      c.facturaId = f.id;
+      c.estado = 'aceptada';
+      reclamadas.add(f.id);
+      await DB.cotizaciones.upsert(c);
+      toast(`🔗 Cotización COT-${c.numero} enlazada a su factura${como ? ` (${como})` : ''}`);
+    };
+    // Pase 1: la factura dice de cuál cotización nació (botón Convertir)
     for (const f of facts) {
-      if (f.estado === 'anulada') continue;
+      if (reclamadas.has(f.id)) continue;
       const m = /Según cotización COT-(\S+)/.exec(f.notas || '');
       if (!m) continue;
       const c = sueltas.find(x => String(x.numero) === m[1] && x.clienteId === f.clienteId && !x.facturaId);
-      if (c) {
-        c.facturaId = f.id;
-        c.estado = 'aceptada';
-        await DB.cotizaciones.upsert(c);
-        toast(`🔗 Cotización COT-${c.numero} re-enlazada a su factura`);
-      }
+      if (c) await enlazar(c, f, '');
+    }
+    // Pase 2: factura hecha A MANO tras la cotización — mismo cliente,
+    // mismo monto exacto y fecha entre la cotización y 60 días después
+    const dias = iso => Math.round(new Date(iso + 'T00:00:00') / 864e5);
+    for (const c of sueltas) {
+      if (c.facturaId || !c.clienteId || !(c.total > 0)) continue;
+      if (!['pendiente', 'enviada', 'borrador', 'aceptada'].includes(c.estado)) continue;
+      const f = facts.find(f => !reclamadas.has(f.id) && f.clienteId === c.clienteId &&
+        Math.abs((f.total || 0) - c.total) < 0.01 && (f.moneda || 'DOP') === (c.moneda || 'DOP') &&
+        f.fecha && c.fecha && dias(f.fecha) >= dias(c.fecha) && dias(f.fecha) - dias(c.fecha) <= 60);
+      if (f) await enlazar(c, f, 'mismo cliente y monto');
     }
   }
 

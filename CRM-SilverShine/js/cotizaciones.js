@@ -207,6 +207,7 @@ const Cotizaciones = (() => {
       ${c.facturaId ? `<p class="muted" style="margin-top:8px">✅ Convertida en factura.</p>` : ''}
 
       ${abierta ? `<button class="btn-gold btn-block" id="cConvertir" style="margin:14px 0 6px">🧾 Convertir en factura</button>` : ''}
+      ${(abierta || esLeadCaliente(c)) ? `<button class="btn-ghost btn-block" id="cVincular" style="margin-bottom:6px">🔗 Ya se facturó — vincular la factura</button>` : ''}
       <h3 class="sub-h" style="margin-top:14px">📤 Enviar cotización</h3>
       <div class="row">
         <button class="btn-ghost btn-block" id="cImprimir">🖨 Imprimir</button>
@@ -275,6 +276,34 @@ const Cotizaciones = (() => {
       cerrarModal();
       toast(`Factura #${orden} · ${numero} creada desde la cotización`);
       Facturas.detalle(fact.id);
+    });
+
+    /* La factura ya existe (se hizo a mano): elegirla y quedar vinculada */
+    on('#cVincular', async () => {
+      const facts = (await DB.facturas.list())
+        .filter(f => f.clienteId === c.clienteId && f.estado !== 'anulada')
+        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 8);
+      const reclamadas = new Set((await DB.cotizaciones.list()).map(x => x.facturaId).filter(Boolean));
+      abrirModal(`Vincular COT-${c.numero} a su factura`, `
+        <p class="muted" style="margin-bottom:12px">Elige la factura que nació de esta cotización — quedará marcada como cerrada y contará en la conversión:</p>
+        ${facts.map(f => `
+          <div class="item vinc-f" data-fid="${f.id}" style="cursor:pointer">
+            <div class="item-info">
+              <div class="item-name">${esc(f.orden ? '#' + f.orden : (f.numero || 's/n'))}${reclamadas.has(f.id) ? ' <span class="muted">(ya vinculada a otra)</span>' : ''}</div>
+              <div class="item-sub">${fmtFecha(f.fecha)} · ${fmtMoneda(f.total, f.moneda)}</div>
+            </div><span class="item-arrow">›</span>
+          </div>`).join('') || '<p class="muted">Este cliente no tiene facturas todavía.</p>'}
+        <button class="btn-ghost btn-block" id="vVolver" style="margin-top:12px">← Volver a la cotización</button>
+      `);
+      UI.$$('.vinc-f').forEach(el => el.addEventListener('click', async () => {
+        c.facturaId = el.dataset.fid;
+        c.estado = 'aceptada';
+        await DB.cotizaciones.upsert(c);
+        toast(`🔗 COT-${c.numero} vinculada — ya cuenta como cerrada`);
+        render();
+        detalle(c.id);
+      }));
+      $('#vVolver').addEventListener('click', () => detalle(c.id));
     });
 
     on('#cImprimir', () => imprimir(c, cliente));
