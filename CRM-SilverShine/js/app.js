@@ -1,10 +1,10 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   app.js â€” NavegaciÃ³n, panel y ajustes.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════════════════
+   app.js — Navegación, panel y ajustes.
+   ═══════════════════════════════════════════════════════════ */
 (() => {
   const { $, $$, toast } = UI;
 
-  /* â”€â”€ NavegaciÃ³n entre vistas â”€â”€ */
+  /* ── Navegación entre vistas ── */
   const vistas = {
     clientes:     () => Clientes.render(),
     catalogo:     () => Catalogo.render(),
@@ -28,7 +28,7 @@
 
   $$('.nav-btn').forEach(b => b.addEventListener('click', () => irA(b.dataset.view)));
 
-  /* â”€â”€ Panel â”€â”€ */
+  /* ── Panel ── */
   async function renderPanel() {
     const clientes = await DB.clientes.list();
     const facturas = await DB.facturas.list();
@@ -53,15 +53,15 @@
       <div class="item" data-id="${f.id}">
         <div class="item-info">
           <div class="item-name">${UI.esc(f.clienteNombre)}</div>
-          <div class="item-sub">${UI.esc(f.numero || 's/n')} Â· ${UI.fmtFecha(f.fecha)}</div>
+          <div class="item-sub">${UI.esc(f.numero || 's/n')} · ${UI.fmtFecha(f.fecha)}</div>
         </div>
         <b class="rojo">${UI.fmtMoneda(f.saldo, f.moneda)}</b>
       </div>`).join('')
-      : '<p class="muted">ðŸŽ‰ No hay cobros vencidos.</p>';
+      : '<p class="muted">🎉 No hay cobros vencidos.</p>';
     $('#panelPendientes').querySelectorAll('.item').forEach(el =>
       el.addEventListener('click', () => Cobros.detalle(el.dataset.id)));
 
-    // Tareas de hoy y vencidas (con pasos: manda el prÃ³ximo paso pendiente)
+    // Tareas de hoy y vencidas (con pasos: manda el próximo paso pendiente)
     const tareas = (await DB.tareas.list()).filter(t => !t.hecha);
     const hoy = new Date().toISOString().slice(0, 10);
     const deHoy = tareas
@@ -69,12 +69,12 @@
       .filter(x => x.fecha && x.fecha <= hoy)
       .sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5);
     $('#panelTareas').innerHTML = deHoy.length ? deHoy.map(x => `
-      <div class="abono-row"><span>${x.fecha < hoy ? 'ðŸ”´' : 'ðŸ“Œ'} ${UI.esc(x.t.titulo)}${
-        x.paso ? ' â†’ ' + UI.esc(x.paso.titulo) : ''}${x.t.clienteNombre ? ' Â· ' + UI.esc(x.t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(x.fecha)}</span></div>`).join('')
+      <div class="abono-row"><span>${x.fecha < hoy ? '🔴' : '📌'} ${UI.esc(x.t.titulo)}${
+        x.paso ? ' → ' + UI.esc(x.paso.titulo) : ''}${x.t.clienteNombre ? ' · ' + UI.esc(x.t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(x.fecha)}</span></div>`).join('')
       : '<p class="muted">Sin tareas para hoy.</p>';
   }
 
-  /* â”€â”€ Ajustes: respaldo â”€â”€ */
+  /* ── Ajustes: respaldo ── */
   $('#btnExportar').addEventListener('click', async () => {
     const data = await DB.exportar();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -90,7 +90,7 @@
   $('#fileImportar').addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!confirm('Importar un respaldo REEMPLAZA los datos actuales de este dispositivo. Â¿Continuar?')) {
+    if (!confirm('Importar un respaldo REEMPLAZA los datos actuales de este dispositivo. ¿Continuar?')) {
       e.target.value = '';
       return;
     }
@@ -98,15 +98,15 @@
       const data = JSON.parse(await file.text());
       const n = await DB.importar(data);
       toast(`Respaldo importado (${n} registros)`);
-      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nubeâ€¦'); await Sync.subirTodo(); pintarEstadoNube(); }
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nube…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('panel');
     } catch {
-      toast('El archivo no es un respaldo vÃ¡lido');
+      toast('El archivo no es un respaldo válido');
     }
     e.target.value = '';
   });
 
-  /* â”€â”€ Empresa y factura â”€â”€ */
+  /* ── Empresa y factura ── */
   async function cargarFormEmpresa() {
     const emp = await UI.getEmpresa();
     const f = $('#formEmpresa');
@@ -125,12 +125,12 @@
     toast('Datos de empresa guardados');
   });
 
-  /* â”€â”€ MigraciÃ³n Ãºnica: asignar orden #1825â€¦#1839 a las facturas
-        posteriores al corte de Shopify (#1824, 16 jul 2026) â”€â”€ */
+  /* ── Migración única: asignar orden #1825…#1839 a las facturas
+        posteriores al corte de Shopify (#1824, 16 jul 2026) ── */
   async function migrarOrdenes() {
-    // Idempotente: verifica el rango histÃ³rico completo y corrige lo que falte.
+    // Idempotente: verifica el rango histórico completo y corrige lo que falte.
     // Solo toca facturas importadas de QuickBooks entre el corte de Shopify
-    // (#1824, 16 jul) y el fin de la importaciÃ³n (27 jul); nunca las nuevas.
+    // (#1824, 16 jul) y el fin de la importación (27 jul); nunca las nuevas.
     const facts = await DB.facturas.list();
     const objetivo = facts
       .filter(f => f.origen === 'quickbooks' && f.estado !== 'anulada' &&
@@ -141,26 +141,26 @@
       if (f.orden !== n) { f.orden = n; await DB.facturas.upsert(f); corregidas++; }
       n++;
     }
-    if (corregidas) console.info(`Ã“rdenes corregidas: ${corregidas} (hasta #${n - 1})`);
+    if (corregidas) console.info(`Órdenes corregidas: ${corregidas} (hasta #${n - 1})`);
   }
 
-  /* â”€â”€ Nube (Supabase) â”€â”€ */
+  /* ── Nube (Supabase) ── */
   function pintarEstadoNube(msj) {
     const el = $('#nubeEstado');
     const info = Sync.info();
-    if (msj) { el.innerHTML = `â³ ${msj}`; return; }
+    if (msj) { el.innerHTML = `⏳ ${msj}`; return; }
     if (Sync.conectado()) {
       const pend = Sync.pendientes();
-      el.innerHTML = `ðŸŸ¢ Conectado como <b>${info.email}</b>` +
-        (pend ? ` Â· ${pend} cambio(s) esperando internet` : ' Â· todo sincronizado');
+      el.innerHTML = `🟢 Conectado como <b>${info.email}</b>` +
+        (pend ? ` · ${pend} cambio(s) esperando internet` : ' · todo sincronizado');
       $('#btnDesconectar').hidden = false;
       $('#zonaReparar').hidden = false;
       $('#formNube').querySelectorAll('input').forEach(i => i.disabled = true);
     } else {
       $('#zonaReparar').hidden = true;
       el.innerHTML = info
-        ? 'ðŸŸ  SesiÃ³n cerrada â€” vuelve a poner tu clave y presiona Conectar.'
-        : 'âšª Sin conectar. Los datos solo viven en este dispositivo.';
+        ? '🟠 Sesión cerrada — vuelve a poner tu clave y presiona Conectar.'
+        : '⚪ Sin conectar. Los datos solo viven en este dispositivo.';
       $('#btnDesconectar').hidden = !info;
       $('#formNube').querySelectorAll('input').forEach(i => i.disabled = false);
       if (info) { $('#formNube').url.value = info.url; $('#formNube').email.value = info.email; }
@@ -177,25 +177,25 @@
     const password = fd.get('password');
     if (!url || !anonKey || !email || !password) { toast('Completa los cuatro campos'); return; }
     try {
-      pintarEstadoNube('Conectandoâ€¦');
+      pintarEstadoNube('Conectando…');
       await Sync.login(url, anonKey, email, password);
       const nubeConDatos = await Sync.nubeTieneDatos();
       const localConDatos = (await DB.clientes.list()).length > 0;
       if (!nubeConDatos && localConDatos) {
-        pintarEstadoNube('Primera subida de datosâ€¦');
+        pintarEstadoNube('Primera subida de datos…');
         await Sync.subirTodo();
-        toast('â˜ï¸ Datos subidos a la nube');
+        toast('☁️ Datos subidos a la nube');
       } else if (nubeConDatos) {
         if (!localConDatos || confirm(
           'La nube Y este dispositivo tienen datos distintos.\n\n' +
-          'Â· ACEPTAR: usar los de la NUBE (borra lo que ves en esta app).\n' +
-          'Â· CANCELAR: conservar los de ESTE dispositivo (luego usa "Reparar nube" en Ajustes para subirlos).')) {
+          '· ACEPTAR: usar los de la NUBE (borra lo que ves en esta app).\n' +
+          '· CANCELAR: conservar los de ESTE dispositivo (luego usa "Reparar nube" en Ajustes para subirlos).')) {
           await Sync.bajarTodo();
-          toast('â˜ï¸ Datos descargados de la nube');
-        } else if (localConDatos && confirm('Â¿Subir AHORA los datos de este dispositivo a la nube? (Reemplaza lo que hay allÃ¡ â€” recomendado para que no se pierdan al reabrir la app.)')) {
-          pintarEstadoNube('Reparando la nubeâ€¦');
+          toast('☁️ Datos descargados de la nube');
+        } else if (localConDatos && confirm('¿Subir AHORA los datos de este dispositivo a la nube? (Reemplaza lo que hay allá — recomendado para que no se pierdan al reabrir la app.)')) {
+          pintarEstadoNube('Reparando la nube…');
           await Sync.repararNube();
-          toast('â˜ï¸ Nube reparada con los datos de este dispositivo');
+          toast('☁️ Nube reparada con los datos de este dispositivo');
         }
       }
       e.target.password.value = '';
@@ -203,11 +203,11 @@
       renderPanel();
     } catch (err) {
       pintarEstadoNube();
-      $('#nubeEstado').innerHTML = `ðŸ”´ ${err.message}`;
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
     }
   });
 
-  /* Enlace mÃ¡gico: conexiÃ³n pre-llenada para otro dispositivo (sin la clave) */
+  /* Enlace mágico: conexión pre-llenada para otro dispositivo (sin la clave) */
   const PUB_URL = 'https://silvershineia.github.io/calculadora-silvershine/CRM-SilverShine/';
   $('#btnEnlaceMovil').addEventListener('click', () => {
     const c = Sync.cfgPublica();
@@ -215,31 +215,31 @@
     const payload = btoa(unescape(encodeURIComponent(JSON.stringify(c))));
     const enlace = PUB_URL + '#cfg=' + payload;
     UI.abrirModal('Conectar el celular', `
-      <p class="muted" style="margin-bottom:10px">1. Copia este enlace y envÃ­atelo por WhatsApp o correo.<br>
-      2. Ãbrelo en el celular: la conexiÃ³n ya irÃ¡ puesta.<br>
+      <p class="muted" style="margin-bottom:10px">1. Copia este enlace y envíatelo por WhatsApp o correo.<br>
+      2. Ábrelo en el celular: la conexión ya irá puesta.<br>
       3. Escribe tu clave de usuario y presiona Conectar.<br>
       <b>Tu clave nunca viaja en el enlace.</b></p>
       <textarea id="enlaceMovil" readonly style="height:120px;font-size:.78rem;word-break:break-all">${enlace}</textarea>
-      <button type="button" class="btn-gold btn-block" id="copiarEnlace" style="margin-top:10px">ðŸ“‹ Copiar enlace</button>
+      <button type="button" class="btn-gold btn-block" id="copiarEnlace" style="margin-top:10px">📋 Copiar enlace</button>
     `);
     $('#copiarEnlace').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(enlace); }
       catch { $('#enlaceMovil').select(); document.execCommand('copy'); }
-      toast('Enlace copiado â€” pÃ©galo en WhatsApp');
+      toast('Enlace copiado — pégalo en WhatsApp');
     });
   });
 
   $('#btnDescargarNube').addEventListener('click', async () => {
     try {
-      pintarEstadoNube('Descargandoâ€¦');
+      pintarEstadoNube('Descargando…');
       await Sync.bajarTodo();
       pintarEstadoNube();
-      toast('â˜ï¸ Datos descargados de la nube');
+      toast('☁️ Datos descargados de la nube');
       renderPanel();
       irA('panel');
     } catch (err) {
       pintarEstadoNube();
-      $('#nubeEstado').innerHTML = `ðŸ”´ ${err.message}`;
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
     }
   });
 
@@ -247,60 +247,60 @@
     const clientes = (await DB.clientes.list()).length;
     const facturas = (await DB.facturas.list()).length;
     if (!clientes && !facturas) {
-      toast('Este dispositivo estÃ¡ vacÃ­o: no puede reparar la nube. Usa "Descargar todo de la nube".');
+      toast('Este dispositivo está vacío: no puede reparar la nube. Usa "Descargar todo de la nube".');
       return;
     }
-    if (!confirm(`Esto BORRA todo lo que hay en la nube y sube lo de este dispositivo (${clientes} clientes, ${facturas} facturas).\n\nÂ¿Continuar?`)) return;
+    if (!confirm(`Esto BORRA todo lo que hay en la nube y sube lo de este dispositivo (${clientes} clientes, ${facturas} facturas).\n\n¿Continuar?`)) return;
     try {
-      pintarEstadoNube('Reparando la nubeâ€¦');
+      pintarEstadoNube('Reparando la nube…');
       await Sync.repararNube();
       pintarEstadoNube();
-      toast('â˜ï¸ Nube reparada');
+      toast('☁️ Nube reparada');
       renderPanel();
     } catch (err) {
       pintarEstadoNube();
-      $('#nubeEstado').innerHTML = `ðŸ”´ ${err.message}`;
+      $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
     }
   });
 
   $('#btnDesconectar').addEventListener('click', () => {
-    if (!confirm('Â¿Desconectar de la nube? Los datos locales se conservan; solo se detiene la sincronizaciÃ³n.')) return;
+    if (!confirm('¿Desconectar de la nube? Los datos locales se conservan; solo se detiene la sincronización.')) return;
     Sync.desconectar();
     pintarEstadoNube();
     toast('Desconectado de la nube');
   });
 
-  /* â”€â”€ Cargar histÃ³rico de QuickBooks â”€â”€ */
+  /* ── Cargar histórico de QuickBooks ── */
   $('#btnCargarQB').addEventListener('click', async () => {
-    if (!confirm('Esto carga el histÃ³rico de QuickBooks y REEMPLAZA los clientes, facturas, pagos y cotizaciones actuales de este dispositivo. Â¿Continuar?')) return;
+    if (!confirm('Esto carga el histórico de QuickBooks y REEMPLAZA los clientes, facturas, pagos y cotizaciones actuales de este dispositivo. ¿Continuar?')) return;
     try {
       const n = await DB.cargarQuickBooks();
       toast(`Cargado: ${n.clientes} clientes, ${n.facturas} facturas, ${n.pagos} pagos, ${n.cotizaciones} cotizaciones`);
-      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nubeâ€¦'); await Sync.subirTodo(); pintarEstadoNube(); }
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo a la nube…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('panel');
     } catch (err) {
       toast('No se pudo cargar: ' + err.message);
     }
   });
 
-  /* â”€â”€ VersiÃ³n visible: se lee del ?v= del propio HTML cargado, asÃ­
-        siempre refleja lo que este dispositivo estÃ¡ viendo de verdad â”€â”€ */
+  /* ── Versión visible: se lee del ?v= del propio HTML cargado, así
+        siempre refleja lo que este dispositivo está viendo de verdad ── */
   {
     const m = (($('link[rel="stylesheet"]') || {}).href || '').match(/v=(\d+)/);
     if (m) $('.topbar-title').insertAdjacentHTML('beforeend', `<span class="topbar-ver">v${m[1]}</span>`);
   }
 
-  /* â”€â”€ Arranque â”€â”€
-     Cada init va protegido: si un mÃ³dulo falla (p. ej. un HTML viejo en
-     cachÃ© con JS nuevo durante una actualizaciÃ³n), el resto de la app
+  /* ── Arranque ──
+     Cada init va protegido: si un módulo falla (p. ej. un HTML viejo en
+     caché con JS nuevo durante una actualización), el resto de la app
      sigue funcionando en vez de quedarse en blanco. */
   for (const M of [Clientes, Catalogo, Calculadora, Facturas, Cotizaciones, Finanzas, Inventario, Tareas]) {
-    try { M.init(); } catch (e) { console.error('Init fallÃ³:', e); }
+    try { M.init(); } catch (e) { console.error('Init falló:', e); }
   }
   renderPanel();
   pintarEstadoNube();
 
-  // Â¿Llegamos con un enlace mÃ¡gico? (#cfg=...) â†’ pre-llenar la conexiÃ³n
+  // ¿Llegamos con un enlace mágico? (#cfg=...) → pre-llenar la conexión
   const mCfg = location.hash.match(/^#cfg=(.+)$/);
   if (mCfg && !Sync.conectado()) {
     try {
@@ -312,19 +312,19 @@
       history.replaceState(null, '', location.pathname + location.search);
       irA('ajustes');
       setTimeout(() => {
-        toast('ConexiÃ³n lista: escribe tu clave y presiona Conectar');
+        toast('Conexión lista: escribe tu clave y presiona Conectar');
         f.password.focus();
       }, 300);
-    } catch { /* enlace invÃ¡lido: se ignora */ }
+    } catch { /* enlace inválido: se ignora */ }
   }
 
-  // Si quedÃ³ guardada una versiÃ³n anterior del texto de garantÃ­a, actualizarla
+  // Si quedó guardada una versión anterior del texto de garantía, actualizarla
   async function actualizarGarantiaVieja() {
     const emp = await DB.config.get('empresa');
     if (!emp || !emp.garantia) return;
     const esVersionVieja =
-      emp.garantia.includes('garantÃ­a de fabricaciÃ³n de 6 meses') ||
-      (emp.garantia.includes('90 dÃ­as') && !emp.garantia.includes('limpieza')) ||
+      emp.garantia.includes('garantía de fabricación de 6 meses') ||
+      (emp.garantia.includes('90 días') && !emp.garantia.includes('limpieza')) ||
       (emp.garantia.includes('por vida') && !emp.garantia.includes('vermeil'));
     let cambio = false;
     if (esVersionVieja) { emp.garantia = UI.EMPRESA_DEFECTO.garantia; cambio = true; }
@@ -335,40 +335,40 @@
     if (cambio) await DB.config.upsert(emp);
   }
 
-  /* â”€â”€ MigraciÃ³n Ãºnica: facturas duplicadas del export de QuickBooks
-        (31 jul 2026). QB traÃ­a la factura interna (sin NCF o "#17xx") Y
-        la re-emitida con NCF â€” mismo cliente, mismo monto, dÃ­as de
-        diferencia. Se anula la versiÃ³n sin NCF (todas saldo 0, sin
+  /* ── Migración única: facturas duplicadas del export de QuickBooks
+        (31 jul 2026). QB traía la factura interna (sin NCF o "#17xx") Y
+        la re-emitida con NCF — mismo cliente, mismo monto, días de
+        diferencia. Se anula la versión sin NCF (todas saldo 0, sin
         abonos: la deuda no cambia). Detectadas al inflarse las ventas
-        de marzo. â”€â”€ */
+        de marzo. ── */
   async function limpiarDuplicadasQB() {
-    /* Sin bandera de "ya corriÃ³": verifica los datos reales en cada arranque
-       y repara lo que falte (un bug de la cola de sync llegÃ³ a perder estos
-       cambios en la nube). Es idempotente: solo toca lo que estÃ¡ mal. */
-    if (!(await DB.facturas.list()).length) return;   // sin datos aÃºn
+    /* Sin bandera de "ya corrió": verifica los datos reales en cada arranque
+       y repara lo que falte (un bug de la cola de sync llegó a perder estos
+       cambios en la nube). Es idempotente: solo toca lo que está mal. */
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún
     const DUPLICADAS = [                   // [facturaId sin NCF, NCF gemela]
-      ['fac-qb-00086', 'B0200001898'],     // RamÃ³n MoisÃ©s Ruiz 5,050
+      ['fac-qb-00086', 'B0200001898'],     // Ramón Moisés Ruiz 5,050
       ['fac-qb-00089', 'B0200001896'],     // Eddy Guzman 75,810
       ['fac-qb-00104', 'B0200001879'],     // Wilgrady Ferreira 39,800
       ['fac-qb-00105', 'B0200001877'],     // Yendy Valenzuela 35,000
       ['fac-qb-00115', 'B0200001880'],     // Albert Rodriguez 4,300
       ['fac-qb-00120', 'B0200001870'],     // Miguel Severino 90,000
       ['fac-qb-00122', 'B020001865'],      // Elisel David Salcie 50,000
-      ['fac-qb-00145', 'B0200001845'],     // Daniel HernÃ¡ndez 9,900
+      ['fac-qb-00145', 'B0200001845'],     // Daniel Hernández 9,900
       ['fac-qb-00160', 'B02000001834'],    // Johanderson Quezada 64,000
       ['fac-qb-00175', 'B0200001817'],     // Reimy Columna 30,500
-      ['fac-qb-00187', 'B0200001809'],     // NeftalÃ­ Omar 4,800
+      ['fac-qb-00187', 'B0200001809'],     // Neftalí Omar 4,800
       ['fac-qb-00199', 'B0200001796'],     // Milton Escalante 38,500
-      ['fac-qb-00205', 'B0200001791'],     // Milka MejÃ­a 86,895
-      ['fac-qb-00229', 'B0200001775'],     // Endry PiÃ±eyro 56,000
+      ['fac-qb-00205', 'B0200001791'],     // Milka Mejía 86,895
+      ['fac-qb-00229', 'B0200001775'],     // Endry Piñeyro 56,000
       ['fac-qb-00232', 'B0200001773'],     // Felix Matos 76,000
       ['fac-qb-00282', 'B0200001725'],     // Victor Rosario 6,300
       ['fac-qb-00307', 'B0200001703'],     // Geury Pacheco 29,000
-      ['fac-qb-00316', 'B0200001694'],     // JosÃ© ElÃ­as LÃ³pez 9,300
+      ['fac-qb-00316', 'B0200001694'],     // José Elías López 9,300
       ['fac-qb-00357', 'B0200001660'],     // Alexis Jose Diaz 44,000
-      ['fac-qb-00362', 'B0200001656'],     // Miguel IvÃ¡n Frias 77,000.14 (gemela con Â¢14 de diferencia)
+      ['fac-qb-00362', 'B0200001656'],     // Miguel Iván Frias 77,000.14 (gemela con ¢14 de diferencia)
       ['fac-qb-00468', 'B0200001557'],     // Neury 7,500
-      ['fac-qb-00470', 'B0200001555'],     // Jacier Cabral 83,500 (la vÃ¡lida es de 82,500 â€” confirmado por el usuario 1 ago)
+      ['fac-qb-00470', 'B0200001555'],     // Jacier Cabral 83,500 (la válida es de 82,500 — confirmado por el usuario 1 ago)
       ['fac-qb-00485', 'B0200001538'],     // Ydalmis Jazmin 6,000
       ['fac-qb-00496', 'B0200001533'],     // Emmanuel Martinez 8,400
     ];
@@ -376,27 +376,27 @@
        con el monto ajustado). QuickBooks no las cuenta como ventas; con ellas
        anuladas el CRM cuadra con QuickBooks mes por mes al centavo
        (confirmado por el usuario contra los balances de QB, 31 jul 2026). */
-    const INTERNAS_SIN_NCF = [               // [facturaId, NCF de la re-emisiÃ³n]
-      ['fac-qb-00396', 'B0200001626'],       // Brahian GÃ³mez 8,000
+    const INTERNAS_SIN_NCF = [               // [facturaId, NCF de la re-emisión]
+      ['fac-qb-00396', 'B0200001626'],       // Brahian Gómez 8,000
       ['fac-qb-00393', 'B0200001629'],       // Edison Matos 9,000
-      ['fac-qb-00377', 'B0200001642'],       // Steven NuÃ±ez 8,100
+      ['fac-qb-00377', 'B0200001642'],       // Steven Nuñez 8,100
       ['fac-qb-00361', 'B0200001657'],       // Javier Mendez 9,500
       ['fac-qb-00343', 'B0200001671'],       // Abel Ferrer 8,925
       ['fac-qb-00339', 'B0200001677'],       // Nestor Nouel 9,440
-      ['fac-qb-00328', 'B0200001686'],       // JosÃ© Eduardo Gil 9,425
-      ['fac-qb-00283', 'B0200001724'],       // Yaisy SolÃ­s 3,500
+      ['fac-qb-00328', 'B0200001686'],       // José Eduardo Gil 9,425
+      ['fac-qb-00283', 'B0200001724'],       // Yaisy Solís 3,500
       ['fac-qb-00273', 'B0200001734'],       // Carlos Reyes 6,000
       ['fac-qb-00260', 'B0200001745'],       // Cesar Israel Feliz 4,500
       ['fac-qb-00245', 'B0200001756'],       // Juan Ramon Paulino 33,000
       ['fac-qb-00244', 'B0200001763'],       // Marisol Salazar 8,100
       ['fac-qb-00240', 'B0200001766'],       // Carlos Mansel 8,670
       ['fac-qb-00222', 'B0200001780'],       // Kevyn Perez Cordero 36,500
-      ['fac-qb-00223', 'B0200001779'],       // Ezequiel PÃ©rez Mota 8,925
+      ['fac-qb-00223', 'B0200001779'],       // Ezequiel Pérez Mota 8,925
       ['fac-qb-00213', 'B0200001785'],       // Flerida Dominguez 3,800
       ['fac-qb-00214', 'B0200001786'],       // Joel Diaz Suero 8,100
       ['fac-qb-00190', 'B0200001807'],       // Jose Alberto Martinez 84,880
-      ['fac-qb-00158', 'B0100001836'],       // KÃ©mil Cuesta #1691 7,500
-      ['fac-qb-00139', 'B0200001857'],       // Shanti PeÃ±a #1700 8,500
+      ['fac-qb-00158', 'B0100001836'],       // Kémil Cuesta #1691 7,500
+      ['fac-qb-00139', 'B0200001857'],       // Shanti Peña #1700 8,500
       ['fac-qb-00092', ''],                  // Emmanuel Martinez #1738 500
     ];
     let anuladas = 0;
@@ -410,30 +410,53 @@
       anuladas++;
     };
     for (const [fid, ncf] of DUPLICADAS) {
-      await anular(fid, `Duplicado del export de QuickBooks â€” la vÃ¡lida es ${ncf}. Anulada en la limpieza del 31 jul 2026.`);
+      await anular(fid, `Duplicado del export de QuickBooks — la válida es ${ncf}. Anulada en la limpieza del 31 jul 2026.`);
     }
     for (const [fid, ncf] of INTERNAS_SIN_NCF) {
-      await anular(fid, `Factura interna sin NCF${ncf ? ` re-facturada como ${ncf}` : ''} â€” QuickBooks no la cuenta como venta. Anulada en el cuadre del 31 jul 2026.`);
+      await anular(fid, `Factura interna sin NCF${ncf ? ` re-facturada como ${ncf}` : ''} — QuickBooks no la cuenta como venta. Anulada en el cuadre del 31 jul 2026.`);
     }
-    if (anuladas) toast(`ðŸ§¹ ${anuladas} facturas anuladas para cuadrar con QuickBooks`);
+    if (anuladas) toast(`🧹 ${anuladas} facturas anuladas para cuadrar con QuickBooks`);
   }
 
-  /* â”€â”€ Ajustes del 31 jul (auto-reparable): costos confirmados por el
-        usuario. OJO: aquÃ­ ANTES se anulaba la B0200001940 de Samuel â€”
-        el usuario aclarÃ³ despuÃ©s que NO era duplicada; esa parte se
-        eliminÃ³ y restaurarSamuel1940 revierte lo ya anulado. â”€â”€ */
+  /* ── Reparar enlaces cotización→factura perdidos (auto-reparable):
+        al convertir, la factura guarda "Según cotización COT-n"; si la
+        cotización quedó sin facturaId (corte de sync a mitad del guardado),
+        aquí se re-enlaza y se marca aceptada para que salga del visor. ── */
+  async function repararEnlacesCotizacion() {
+    const cots = await DB.cotizaciones.list();
+    const sueltas = cots.filter(c => !c.facturaId);
+    if (!sueltas.length) return;
+    const facts = await DB.facturas.list();
+    for (const f of facts) {
+      if (f.estado === 'anulada') continue;
+      const m = /Según cotización COT-(\S+)/.exec(f.notas || '');
+      if (!m) continue;
+      const c = sueltas.find(x => String(x.numero) === m[1] && x.clienteId === f.clienteId && !x.facturaId);
+      if (c) {
+        c.facturaId = f.id;
+        c.estado = 'aceptada';
+        await DB.cotizaciones.upsert(c);
+        toast(`🔗 Cotización COT-${c.numero} re-enlazada a su factura`);
+      }
+    }
+  }
+
+  /* ── Ajustes del 31 jul (auto-reparable): costos confirmados por el
+        usuario. OJO: aquí ANTES se anulaba la B0200001940 de Samuel —
+        el usuario aclaró después que NO era duplicada; esa parte se
+        eliminó y restaurarSamuel1940 revierte lo ya anulado. ── */
   async function ajustesConfirmados31Jul() {
-    if (!(await DB.facturas.list()).length) return;   // sin datos aÃºn
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún
     const real = await DB.facturas.get('fac-qb-00044');           // Samuel B0200001941
     if (real && !(real.costo > 0)) { real.costo = 22200; await DB.facturas.upsert(real); }
     const j = await DB.facturas.get('fac-qb-00473');              // Jacier B0200001555
     if (j && !(j.costo > 0)) { j.costo = 4000; await DB.facturas.upsert(j); }
   }
 
-  /* â”€â”€ RestauraciÃ³n de la B0200001940 de Samuel (auto-reparable): si estÃ¡
-        anulada POR LA MIGRACIÃ“N VIEJA (se reconoce por su nota), se
-        restaura con su balance. Una anulaciÃ³n manual del usuario (sin esa
-        nota) se respeta y no se toca. â”€â”€ */
+  /* ── Restauración de la B0200001940 de Samuel (auto-reparable): si está
+        anulada POR LA MIGRACIÓN VIEJA (se reconoce por su nota), se
+        restaura con su balance. Una anulación manual del usuario (sin esa
+        nota) se respeta y no se toca. ── */
   async function restaurarSamuel1940() {
     const f = await DB.facturas.get('fac-qb-00045');
     if (!f) return;
@@ -441,24 +464,24 @@
       f.estado = f.saldo > 0.005 ? 'pendiente' : 'pagada';
       f.notas = String(f.notas || '').split('\n').filter(l => !l.includes('Duplicado confirmado por el usuario')).join('\n');
       await DB.facturas.upsert(f);
-      toast('â†© Factura B0200001940 de Samuel Tejeda restaurada');
+      toast('↩ Factura B0200001940 de Samuel Tejeda restaurada');
     }
   }
 
-  /* â”€â”€ MigraciÃ³n Ãºnica: costos de producciÃ³n 2026 entregados por el
-        usuario (31 jul 2026, lista "Ã“rdenes/Confecciones en China").
-        Solo pone el costo si la factura aÃºn no tiene; corre una vez
-        (bandera en config, sincronizada entre dispositivos). â”€â”€ */
+  /* ── Migración única: costos de producción 2026 entregados por el
+        usuario (31 jul 2026, lista "Órdenes/Confecciones en China").
+        Solo pone el costo si la factura aún no tiene; corre una vez
+        (bandera en config, sincronizada entre dispositivos). ── */
   async function migrarCostos2026() {
     /* Sin bandera: repara costos faltantes en cada arranque (nunca pisa
-       un costo ya puesto, asÃ­ que una correcciÃ³n manual queda intacta). */
-    if (!(await DB.facturas.list()).length) return;   // sin datos aÃºn
+       un costo ya puesto, así que una corrección manual queda intacta). */
+    if (!(await DB.facturas.list()).length) return;   // sin datos aún
     const COSTOS = [                       // [facturaId, costo]
       ['fac-qb-00397', 18500],             // Saul Ogando Blanco ("Raul" en la lista)
       ['fac-qb-00403', 23500],             // Alissa Batista
       ['fac-qb-00356', 30000],             // Alfonso Fernandez
       ['fac-qb-00341', 34000],             // Samson Ashley
-      ['fac-qb-00336', 25000],             // Julio CÃ©sar NÃºÃ±ez Mota
+      ['fac-qb-00336', 25000],             // Julio César Núñez Mota
       ['fac-qb-00291', 34000],             // Fernando A. Bordas
       ['fac-qb-00182', 27218],             // Claudio Javier Adams
       ['fac-qb-00174', 25048],             // Martin Arias
@@ -469,11 +492,11 @@
       ['fac-qb-00111', 24800],             // Wilgrady Ferreira Morel
       ['fac-qb-00082', 3000],              // Jesus Miguel Toribio
       ['fac-qb-00090', 30000],             // Eddy Guzman
-      ['fac-qb-00073', 23280],             // Rafael DiplÃ¡n Suazo
+      ['fac-qb-00073', 23280],             // Rafael Diplán Suazo
       ['fac-qb-00070', 39480],             // Jonathan Perez
-      ['fac-qb-00056', 13320],             // Randy LebrÃ³n Michel
+      ['fac-qb-00056', 13320],             // Randy Lebrón Michel
       ['fac-qb-00045', 22200],             // Samuel Tejeda
-      ['fac-qb-00041', 24840],             // Oliver RamÃ­rez
+      ['fac-qb-00041', 24840],             // Oliver Ramírez
       ['fac-qb-00048', 15636],             // Jerson de oleo Perez
       ['fac-qb-00030', 46860],             // Ruth Celeste Feliz
       ['fac-qb-00028', 25000],             // Jean Carlos Osoria
@@ -495,22 +518,22 @@
       await DB.facturas.upsert(f);
       puestos++;
     }
-    if (puestos) toast(`ðŸ“ˆ Costos 2026 aplicados a ${puestos} facturas`);
+    if (puestos) toast(`📈 Costos 2026 aplicados a ${puestos} facturas`);
   }
 
-  /* â”€â”€ MigraciÃ³n Ãºnica: clientes con plan EasyPay confirmados por el
-        usuario (28 jul 2026). Sus facturas pendientes pasan al mÃ³dulo
-        EasyPay con las cuotas por programar. Idempotente. â”€â”€ */
+  /* ── Migración única: clientes con plan EasyPay confirmados por el
+        usuario (28 jul 2026). Sus facturas pendientes pasan al módulo
+        EasyPay con las cuotas por programar. Idempotente. ── */
   async function migrarPlanesEasyPay() {
     const PLANES = [                                  // [clienteId, numero de factura]
       ['cli-qb-01383', 'B0200001955'],                // Ruth Celeste Feliz
-      ['cli-qb-01129', 'B0200001656'],                // Miguel IvÃ¡n Frias JimÃ©nez
-      ['cli-qb-00011', 'B0200001931'],                // Adan Alexis GÃ³mez Bocio
+      ['cli-qb-01129', 'B0200001656'],                // Miguel Iván Frias Jiménez
+      ['cli-qb-00011', 'B0200001931'],                // Adan Alexis Gómez Bocio
       ['cli-qb-01039', 'B0200001843'],                // Marcos Guerrero
       ['cli-qb-01145', 'B0200001796'],                // Milton Escalante
-      ['cli-qb-01203', 'B0200001946'],                // Nidia Carolina NÃºÃ±ez MartÃ­nez
+      ['cli-qb-01203', 'B0200001946'],                // Nidia Carolina Núñez Martínez
       ['cli-qb-00415', 'B020001865'],                 // Elisel David Salcie Arias
-      ['cli-qb-01359', 'B0200001498'],                // Ronnel RodrÃ­guez Bido
+      ['cli-qb-01359', 'B0200001498'],                // Ronnel Rodríguez Bido
     ];
     const facts = await DB.facturas.list();
     const hoy = new Date();
@@ -520,16 +543,16 @@
       if (!f || f.estado !== 'pendiente' || !(f.saldo > 0)) continue;
       if (f.planPago && f.planPago.cuotas && f.planPago.cuotas.length) continue;   // ya tiene plan con cuotas
 
-      // Pagos mensuales: el dÃ­a de pago es el dÃ­a de la factura.
-      // La cuota se estima del ritmo real: pagado Ã· meses transcurridos.
+      // Pagos mensuales: el día de pago es el día de la factura.
+      // La cuota se estima del ritmo real: pagado ÷ meses transcurridos.
       const fechaF = new Date(f.fecha + 'T00:00:00');
       const pagado = Math.round((f.total - f.saldo) * 100) / 100;
       const mesesTrans = Math.max(1, Math.round((hoy - fechaF) / (30.44 * 864e5)));
       const ritmo = pagado / mesesTrans;
       const n = ritmo > 0 ? Math.min(12, Math.max(1, Math.round(f.saldo / ritmo))) : 3;
 
-      // Aniversario mensual conservando el dÃ­a de la factura
-      // (sin el desborde de JS: 30 ene + 1 mes NO es 2 mar, es el Ãºltimo dÃ­a de feb)
+      // Aniversario mensual conservando el día de la factura
+      // (sin el desborde de JS: 30 ene + 1 mes NO es 2 mar, es el último día de feb)
       const dia = fechaF.getDate();
       const aniversario = k => {
         const d = new Date(fechaF.getFullYear(), fechaF.getMonth() + k, 1);
@@ -556,31 +579,31 @@
     if (marcadas) console.info(`Planes EasyPay mensuales generados: ${marcadas}`);
   }
 
-  // Si el catÃ¡logo estÃ¡ vacÃ­o, cargar el de Shopify automÃ¡ticamente
+  // Si el catálogo está vacío, cargar el de Shopify automáticamente
   async function cargarCatalogoSiVacio() {
     if ((await DB.productos.list()).length) return;
     try {
       const n = await DB.cargarCatalogoShopify();
       if (n) {
-        toast(`ðŸ› CatÃ¡logo de Shopify cargado (${n} diseÃ±os)`);
+        toast(`🛍 Catálogo de Shopify cargado (${n} diseños)`);
         if (Sync.conectado()) await Sync.subirTodo();
       }
-    } catch { /* sin archivo o sin red: se queda vacÃ­o */ }
+    } catch { /* sin archivo o sin red: se queda vacío */ }
   }
 
   $('#btnCargarCatalogo').addEventListener('click', async () => {
-    if (!confirm('Esto REEMPLAZA el catÃ¡logo actual con los productos publicados en silvershine.com.do. Â¿Continuar?')) return;
+    if (!confirm('Esto REEMPLAZA el catálogo actual con los productos publicados en silvershine.com.do. ¿Continuar?')) return;
     try {
       const n = await DB.cargarCatalogoShopify();
-      toast(`ðŸ› CatÃ¡logo recargado: ${n} diseÃ±os`);
-      if (Sync.conectado()) { pintarEstadoNube('Subiendo catÃ¡logoâ€¦'); await Sync.subirTodo(); pintarEstadoNube(); }
+      toast(`🛍 Catálogo recargado: ${n} diseños`);
+      if (Sync.conectado()) { pintarEstadoNube('Subiendo catálogo…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('catalogo');
     } catch (err) {
       toast('No se pudo recargar: ' + err.message);
     }
   });
 
-  // Al abrir: vaciar cambios pendientes, bajar lo Ãºltimo y asignar Ã³rdenes si faltan
+  // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
     await migrarPlanesEasyPay();
@@ -588,6 +611,7 @@
     await migrarCostos2026();
     await ajustesConfirmados31Jul();
     await restaurarSamuel1940();
+    await repararEnlacesCotizacion();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();

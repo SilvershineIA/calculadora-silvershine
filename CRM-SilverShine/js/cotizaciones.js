@@ -119,7 +119,7 @@ const Cotizaciones = (() => {
       </div>`;
 
     if (filtroEstado) lista = lista.filter(c => estadoDe(c) === filtroEstado);
-    else if (!filtro) lista = lista.filter(c => !['vencida', 'rechazada'].includes(estadoDe(c)));   // vencidas y rechazadas ocultas salvo búsqueda o filtro
+    else if (!filtro) lista = lista.filter(c => !['vencida', 'rechazada'].includes(estadoDe(c)) && !c.facturaId);   // vencidas, rechazadas y facturadas ocultas salvo búsqueda o filtro
     if (filtro) {
       const f = filtro.toLowerCase();
       lista = lista.filter(x =>
@@ -168,17 +168,17 @@ const Cotizaciones = (() => {
     lista.filter(c => ABIERTAS.includes(estadoDe(c))).forEach(c => grupos[urgencia(c)].push(c));
     grupos.forEach(g => g.sort((a, b) => (b.total || 0) - (a.total || 0)));
     // Aceptadas de palabra pero sin factura = el verdadero pendiente de cierre
+    // (las ya facturadas no aparecen: su vida sigue en Facturas)
     const porFacturar = lista.filter(c => estadoDe(c) === 'aceptada' && !c.facturaId)
       .sort((a, b) => (b.total || 0) - (a.total || 0));
-    const facturadas = lista.filter(c => estadoDe(c) === 'aceptada' && c.facturaId);
     const seccion = (titulo, arr, cls) => !arr.length ? '' :
       `<h3 class="sub-h ${cls}">${titulo} (${arr.length})</h3>` + arr.map(fila).join('');
     cont.innerHTML =
       seccion('🧾 Aceptadas por facturar — ¡el cierre de verdad!', porFacturar, 'rojo') +
       seccion('🔴 Urgentes — vencen ya o 15+ días sin gestión', grupos[0], 'rojo') +
       seccion('🟠 Necesitan atención', grupos[1], '') +
-      seccion('🟢 Al día', grupos[2], '') +
-      seccion('✅ Facturadas recientes', facturadas.slice(0, 15), '');
+      seccion('🟢 Al día', grupos[2], '') ||
+      '<div class="empty"><span>📋</span>Sin cotizaciones activas — las facturadas viven en Facturas.</div>';
   }
 
   /* ── Detalle ── */
