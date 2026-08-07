@@ -13,6 +13,7 @@
     cotizaciones: () => Cotizaciones.render(),
     cobros:       () => Cobros.render(),
     finanzas:     () => Finanzas.render(),
+    cuadre:       () => Caja.render(),
     inventario:   () => Inventario.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
