@@ -20,10 +20,15 @@ const Cotizaciones = (() => {
   /* Aceptada pero sin factura = el lead más caliente: hay que perseguirla */
   const esLeadCaliente = c => estadoDe(c) === 'aceptada' && !c.facturaId;
 
+  /* ¿Está pospuesta a propósito? ("dale un toque en 15 días" desde Mi Día) */
+  const pospuesta = c => c.proximoToque && c.proximoToque > new Date().toISOString().slice(0, 10);
+
   /* Segunda etiqueta: ¿hubo gestión (creación o seguimiento) reciente?
-     Abiertas: 15 días de ventana · aceptadas sin facturar: 7 (más calientes) */
+     Abiertas: 15 días de ventana · aceptadas sin facturar: 7 (más calientes).
+     Si está pospuesta, la etiqueta muestra la fecha del próximo toque. */
   const badgeSeguimiento = c => {
     if (!ABIERTAS.includes(estadoDe(c)) && !esLeadCaliente(c)) return '';
+    if (pospuesta(c)) return `<span class="badge b-anu">⏰ toque el ${fmtFecha(c.proximoToque)}</span>`;
     const dias = esLeadCaliente(c) ? 7 : 15;
     const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
     const corte = new Date(Date.now() - dias * 864e5).toISOString().slice(0, 10);
@@ -191,6 +196,7 @@ const Cotizaciones = (() => {
        primero. Las aceptadas van al final como referencia. */
     const hoyMs = Date.now();
     const urgencia = c => {
+      if (pospuesta(c)) return 2;   // "toque el X": tranquila hasta esa fecha
       const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
       const diasSin = ultima ? Math.floor((hoyMs - new Date(ultima + 'T00:00:00')) / 864e5) : 999;
       const diasVence = c.vence ? Math.ceil((new Date(c.vence + 'T00:00:00') - hoyMs) / 864e5) : null;

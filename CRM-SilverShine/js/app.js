@@ -42,8 +42,10 @@
     const estadoCot = c => c.estado === 'pendiente' ? 'enviada' : c.estado;
     const items = [];
 
+    const posp = c => c.proximoToque && c.proximoToque > hoy;   // "toque el X" desde el menú ⋯
+
     // 1) Leads calientes: aceptadas sin factura — lo más valioso del día
-    for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId)) {
+    for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId && !posp(c))) {
       items.push({
         grupo: 0, monto: c.total || 0,
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
@@ -69,7 +71,7 @@
     }
 
     // 3) Cotizaciones abiertas que piden seguimiento (7+ días sin gestión o por vencer)
-    for (const c of cots.filter(c => ['enviada', 'borrador'].includes(estadoCot(c)))) {
+    for (const c of cots.filter(c => ['enviada', 'borrador'].includes(estadoCot(c)) && !posp(c))) {
       const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
       const diasSin = ultima ? Math.round((new Date(hoy + 'T00:00:00') - new Date(ultima + 'T00:00:00')) / 864e5) : 99;
       const porVencer = c.vence && c.vence >= hoy && c.vence <= new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
@@ -119,7 +121,10 @@
         </div>
         ${x.hecho
           ? '<span class="verde" style="font-size:1.15rem;flex:0 0 auto">✓</span>'
-          : `<button class="btn-gold btn-sm dia-btn" data-acc="${i}" title="Acción en 1 toque">${x.btn}</button>`}
+          : `<div style="display:flex;gap:6px;flex:0 0 auto">
+              <button class="btn-gold btn-sm dia-btn" data-acc="${i}" title="Acción en 1 toque">${x.btn}</button>${
+              x.accion !== 'tarea' ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué pasó con este?">⋯</button>` : ''}
+            </div>`}
       </div>`).join('')
       : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
 
@@ -131,12 +136,91 @@
       else if (x.accion === 'tarea') await Tareas.marcarPaso(x.id, x.paso);
       renderPanel();
     }));
+    cont.querySelectorAll('.dia-mas').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      opcionesDia(items[Number(b.dataset.mas)]);
+    }));
     cont.querySelectorAll('.dia-item').forEach(el => el.addEventListener('click', () => {
       const x = items[Number(el.dataset.i)];
       if (x.accion === 'lead' || x.accion === 'cot') Cotizaciones.detalle(x.id);
       else if (x.accion === 'cobro') Cobros.detalle(x.id);
       else DB.tareas.get(x.id).then(t => t && Tareas.formulario(t));
     }));
+  }
+
+  /* ── Mi Día: menú "¿qué pasó?" — registrar el resultado y reprogramar ──
+     Cotizaciones/leads: respondió, está pensándolo, o un toque en X días
+     (proximoToque las saca de la cola y de la urgencia hasta esa fecha).
+     Cobros: registrar abono, promesa de pago (reprograma el próximo
+     cobro) o recordar mañana. */
+  async function opcionesDia(x) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const en = d => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
+
+    if (x.accion === 'lead' || x.accion === 'cot') {
+      const c = await DB.cotizaciones.get(x.id);
+      if (!c) return;
+      UI.abrirModal(`${x.titulo} — ¿qué pasó?`, `
+        <button class="btn-gold btn-block" data-op="respondio" style="margin-bottom:8px">✅ Ya respondió — la conversación sigue conmigo</button>
+        <button class="btn-ghost btn-block" data-op="pensando" style="margin-bottom:8px">🤔 Está pensándolo — darle espacio (7 días)</button>
+        <h3 class="sub-h" style="margin-top:12px">⏰ Recordármelo con un toque en…</h3>
+        <div class="row">
+          <button class="btn-ghost btn-block" data-op="t3">3 días</button>
+          <button class="btn-ghost btn-block" data-op="t7">7 días</button>
+          <button class="btn-ghost btn-block" data-op="t15">15 días</button>
+          <button class="btn-ghost btn-block" data-op="t30">30 días</button>
+        </div>
+        <button class="btn-ghost btn-block" data-op="ver" style="margin-top:12px">📋 Ver la cotización completa</button>
+      `);
+      const acc = async (via, dias, msj) => {
+        if (via) c.seguimientos = [...(c.seguimientos || []), { fecha: hoy, via }];
+        if (dias) c.proximoToque = en(dias);
+        await DB.cotizaciones.upsert(c);
+        UI.cerrarModal(); UI.toast(msj); renderPanel();
+      };
+      const OPS = {
+        respondio: () => acc('respondió', 7, '✅ Anotado — la cola te la devuelve en 7 días si hace falta'),
+        pensando:  () => acc('dándole espacio', 7, '🤔 Espacio dado — vuelve a la cola en 7 días'),
+        t3:  () => acc(null, 3, '⏰ Toque programado en 3 días'),
+        t7:  () => acc(null, 7, '⏰ Toque programado en 7 días'),
+        t15: () => acc(null, 15, '⏰ Toque programado en 15 días'),
+        t30: () => acc(null, 30, '⏰ Toque programado en 30 días'),
+        ver: () => Cotizaciones.detalle(c.id),
+      };
+      UI.$$('#modalBody [data-op]').forEach(b => b.addEventListener('click', () => OPS[b.dataset.op]()));
+      return;
+    }
+
+    if (x.accion === 'cobro') {
+      const f = await DB.facturas.get(x.id);
+      if (!f) return;
+      UI.abrirModal(`${x.titulo} — ¿qué pasó?`, `
+        <button class="btn-gold btn-block" data-op="abono" style="margin-bottom:8px">💵 Pagó — registrar el abono</button>
+        <h3 class="sub-h" style="margin-top:12px">🤝 Prometió pagar el…</h3>
+        <div class="row">
+          <div style="flex:1"><input type="date" id="opFechaPromesa" value="${en(3)}"></div>
+          <button class="btn-gold btn-block" data-op="promesa" style="flex:1">Guardar promesa</button>
+        </div>
+        <button class="btn-ghost btn-block" data-op="manana" style="margin-top:12px">⏰ Recordármelo mañana</button>
+        <button class="btn-ghost btn-block" data-op="ver" style="margin-top:8px">💰 Ver el cobro completo</button>
+      `);
+      const reprogramar = async (fecha, msj) => {
+        f.proxCobro = { fecha, monto: (f.proxCobro && f.proxCobro.monto) || null };
+        await DB.facturas.upsert(f);
+        UI.cerrarModal(); UI.toast(msj); renderPanel();
+      };
+      const OPS = {
+        abono: () => Facturas.formAbono(f),
+        promesa: () => {
+          const fecha = UI.$('#opFechaPromesa').value;
+          if (!fecha) { UI.toast('Elige la fecha prometida'); return; }
+          reprogramar(fecha, `🤝 Promesa anotada — la cola lo reclama el ${UI.fmtFecha(fecha)}`);
+        },
+        manana: () => reprogramar(en(1), '⏰ Te lo recuerdo mañana'),
+        ver: () => Cobros.detalle(f.id),
+      };
+      UI.$$('#modalBody [data-op]').forEach(b => b.addEventListener('click', () => OPS[b.dataset.op]()));
+    }
   }
 
   /* ── Ajustes: respaldo ── */
