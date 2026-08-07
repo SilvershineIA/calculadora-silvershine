@@ -202,6 +202,51 @@ const Finanzas = (() => {
     const conv = (monto, mon) => (mon === 'USD' && tasa ? monto * tasa : monto) || 0;
 
     const todas = (await DB.facturas.list()).filter(f => f.estado !== 'anulada');
+
+    /* ── Tu semana: la rutina de 15 minutos del dueño ──
+       Últimos 7 días contra los 7 anteriores (ventanas completas — la
+       comparación no engaña a mitad de semana). El DSO usa las ventas
+       de 90 días: cuántos días tarda en volver el dinero facturado. */
+    {
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const hace = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const d7 = hace(7), d14 = hace(14), d90 = hace(90);
+      const cobradoEn = (desde, hasta) => todas.reduce((s, f) =>
+        s + (f.abonos || []).filter(a => a.fecha > desde && a.fecha <= hasta)
+          .reduce((s2, a) => s2 + conv(a.monto, f.moneda || 'DOP'), 0), 0);
+      const facturadoEn = (desde, hasta) => todas
+        .filter(f => (f.fecha || '') > desde && (f.fecha || '') <= hasta)
+        .reduce((s, f) => s + conv(f.total, f.moneda || 'DOP'), 0);
+      const cob7 = cobradoEn(d7, hoyIso), cobPrev = cobradoEn(d14, d7);
+      const fac7 = facturadoEn(d7, hoyIso), facPrev = facturadoEn(d14, d7);
+      const pendTotal = todas.filter(f => f.estado === 'pendiente' && f.saldo > 0)
+        .reduce((s, f) => s + conv(f.saldo, f.moneda || 'DOP'), 0);
+      const ventas90 = facturadoEn(d90, hoyIso);
+      const dso = ventas90 > 0 ? Math.round(pendTotal / ventas90 * 90) : null;
+      const con90 = todas.filter(f => (f.fecha || '') > d90 && f.costo > 0);
+      const v90c = con90.reduce((s, f) => s + conv(f.total, f.moneda || 'DOP'), 0);
+      const c90 = con90.reduce((s, f) => s + conv(f.costo, f.moneda || 'DOP'), 0);
+      const margen90 = v90c > 0 ? Math.round((v90c - c90) / v90c * 100) : null;
+      const delta = (v, p) => (v || p)
+        ? `<span class="${v >= p ? 'verde' : 'rojo'}">${v >= p ? '↑' : '↓'} ${UI.fmtDinero(Math.abs(v - p))}</span> vs. la semana anterior`
+        : 'sin movimiento en dos semanas';
+      $('#finSemana').innerHTML = `
+        <div class="card" style="margin-bottom:14px">
+          <h2>📆 Tu semana <span class="muted" style="text-transform:none;letter-spacing:0;font-size:.8rem">· últimos 7 días — la rutina de 15 minutos</span></h2>
+          <div class="stat-grid">
+            ${UI.statTile(UI.fmtDinero(cob7), 'Cobrado', 'verde')}
+            ${UI.statTile(UI.fmtDinero(fac7), 'Facturado')}
+            ${UI.statTile(UI.fmtDinero(pendTotal), 'En la calle', pendTotal > 0 ? 'rojo' : '')}
+            ${UI.statTile(dso === null ? '—' : dso + ' días', 'DSO · días en cobrar')}
+            ${UI.statTile(margen90 === null ? '—' : margen90 + '%', 'Margen 90 días')}
+          </div>
+          <p class="muted" style="margin-top:10px;line-height:1.8">
+            💵 Cobrado: ${delta(cob7, cobPrev)} · 🧾 Facturado: ${delta(fac7, facPrev)}.<br>
+            El <b>DSO</b> es cuántos días tarda en regresar el dinero que facturas — si sube semana tras semana, los cobros se están enfriando.
+          </p>
+        </div>`;
+    }
+
     const fs = todas
       .filter(f => (!d || (f.fecha || '') >= d) && (!h || (f.fecha || '') <= h))
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
