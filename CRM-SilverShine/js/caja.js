@@ -175,7 +175,29 @@ const Caja = (() => {
     });
   }
 
+  /* ── Para otros módulos ── */
+  async function listaCuentas() {
+    const q = await getCuadre();
+    return q.cuentas.map(c => ({ id: c.id, nombre: c.nombre, moneda: c.moneda }));
+  }
+
+  /* Registrar un cobro en el cuadre (lo llama el abono de facturas).
+     Si la moneda del abono difiere de la cuenta, convierte con la tasa. */
+  async function registrarCobro(cuentaId, monto, monedaAbono, desc) {
+    if (!cuentaId || !(monto > 0)) return;
+    const q = await getCuadre();
+    const c = q.cuentas.find(x => x.id === cuentaId);
+    if (!c) return;
+    const mon = monedaAbono || 'DOP';
+    const recibido = c.moneda === mon ? monto
+      : r2(mon === 'USD' ? monto * q.tasa : monto / q.tasa);
+    c.saldo = r2(c.saldo + recibido);
+    q.movimientos = [{ fecha: hoyISO(), desc, monto: r2(recibido), moneda: c.moneda, signo: 1 }, ...q.movimientos].slice(0, 200);
+    await DB.config.upsert(q);
+    toast(`🏦 ${c.nombre}: +${fmt(recibido, c.moneda)}`);
+  }
+
   function init() {}
 
-  return { init, render };
+  return { init, render, listaCuentas, registrarCobro };
 })();

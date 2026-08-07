@@ -482,8 +482,14 @@ const Facturas = (() => {
   }
 
   /* ── Registrar abono ── */
-  function formAbono(f) {
+  /* El método de pago sugiere la cuenta del Cuadre que recibe el dinero:
+     Efectivo→caja, Tarjeta→Mio (transitoria), Transferencia/EasyPay→Popular */
+  const CUENTA_POR_METODO = { Efectivo: 'efectivo', Transferencia: 'popular', Tarjeta: 'mio', EasyPay: 'popular' };
+
+  async function formAbono(f) {
     const t = f.moneda || 'DOP';
+    const cuentas = await Caja.listaCuentas();
+    const sugerida = CUENTA_POR_METODO[METODOS[0]];
     abrirModal(`Abono a ${f.numero || 'factura'}`, `
       <p class="muted" style="margin-bottom:14px">${esc(f.clienteNombre)} · pendiente: <b class="rojo">${fmtMoneda(f.saldo, t)}</b></p>
       <form id="formAbono">
@@ -491,14 +497,24 @@ const Facturas = (() => {
           <div><label>Monto *</label><input name="monto" type="number" step="0.01" min="0.01" max="${f.saldo}" required value="${f.saldo}"></div>
           <div><label>Fecha</label><input name="fecha" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
         </div>
-        <div class="row"><div>
-          <label>Método de pago</label>
-          <select name="metodo">${METODOS.map(m => `<option>${m}</option>`).join('')}</select>
-        </div></div>
+        <div class="row">
+          <div><label>Método de pago</label>
+            <select name="metodo">${METODOS.map(m => `<option>${m}</option>`).join('')}</select></div>
+          <div><label>🏦 ¿A qué cuenta entró?</label>
+            <select name="cuenta">
+              ${cuentas.map(c => `<option value="${c.id}" ${c.id === sugerida ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+              <option value="">No registrar en el Cuadre</option>
+            </select></div>
+        </div>
         <button type="submit" class="btn-gold btn-block">Registrar abono</button>
       </form>
     `);
-    $('#formAbono').addEventListener('submit', async e => {
+    const form = $('#formAbono');
+    form.metodo.addEventListener('change', () => {
+      const sug = CUENTA_POR_METODO[form.metodo.value];
+      if (sug) form.cuenta.value = sug;
+    });
+    form.addEventListener('submit', async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const monto = Math.min(Number(fd.get('monto')), f.saldo);
@@ -511,6 +527,8 @@ const Facturas = (() => {
       await DB.facturas.upsert(f);
       await DB.pagos.upsert({ clienteId: f.clienteId, clienteNombre: f.clienteNombre,
         fecha: fd.get('fecha'), monto, metodo: fd.get('metodo'), facturaId: f.id });
+      // El cuadre se alimenta solo (si eligió cuenta)
+      await Caja.registrarCobro(fd.get('cuenta'), monto, t, `Cobro ${f.clienteNombre} · Factura ${rotulo(f)}`);
       toast(f.estado === 'pagada' ? '¡Factura saldada! 🎉' : 'Abono registrado');
       render();
       reciboOpciones(f, f.abonos.length - 1);   // recibo listo para entregar
