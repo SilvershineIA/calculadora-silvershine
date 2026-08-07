@@ -296,6 +296,12 @@ button:hover{filter:brightness(1.12)}
 @media(max-width:900px){.fin-charts{grid-template-columns:1fr}}
 .fin-costo{width:110px;padding:4px 8px;font-size:.85rem;display:inline-block;vertical-align:middle;
   border:1px solid var(--border);border-radius:8px;background:var(--panel)}
+
+/* ── Mi Día: cola de acciones ── */
+.dia-item{cursor:pointer}
+.dia-hecho{opacity:.55}
+.dia-hecho .item-name{text-decoration:line-through}
+.dia-btn{flex:0 0 auto;min-width:44px}
 .fin-costo-est{border-style:dashed;border-color:var(--gold);color:var(--gold-bright)}
 
 /* ── Estimador de costos de plata ── */

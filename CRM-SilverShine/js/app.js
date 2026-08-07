@@ -28,50 +28,115 @@
 
   $$('.nav-btn').forEach(b => b.addEventListener('click', () => irA(b.dataset.view)));
 
-  /* ── Panel ── */
+  /* ── Mi Día: la cola única de acciones ──
+     Regla de los grandes CRM: el sistema decide qué toca hoy y el dueño
+     solo ejecuta. Mezcla leads calientes, cobros que tocan, cotizaciones
+     que piden seguimiento y pasos de taller — cada uno con su botón de
+     1 toque. Un ítem cuenta como despachado solo cuando la acción quedó
+     registrada (seguimiento de hoy, recordatorio anotado, abono, paso). */
   async function renderPanel() {
-    const clientes = await DB.clientes.list();
-    const facturas = await DB.facturas.list();
-
-    const pendientes = facturas.filter(f => f.estado === 'pendiente' && f.saldo > 0);
-    const porCobrar = pendientes.reduce((s, f) => s + f.saldo, 0);
-    const mes = new Date().toISOString().slice(0, 7);
-    const facturadoMes = facturas
-      .filter(f => f.estado !== 'anulada' && (f.fecha || '').startsWith(mes))
-      .reduce((s, f) => s + f.total, 0);
-
-    $('#panelStats').innerHTML =
-      UI.statTile(UI.fmtDinero(porCobrar), 'Por cobrar', porCobrar > 0 ? 'rojo' : '') +
-      UI.statTile(pendientes.length, 'Fact. pendientes') +
-      UI.statTile(UI.fmtDinero(facturadoMes), 'Facturado este mes') +
-      UI.statTile(clientes.length, 'Clientes');
-
-    // Cobros vencidos primero (van directo al detalle de cobro)
-    const vencidos = pendientes.filter(f => Cobros.clasificar(f) === 'vencido')
-      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).slice(0, 6);
-    $('#panelPendientes').innerHTML = vencidos.length ? vencidos.map(f => `
-      <div class="item" data-id="${f.id}">
-        <div class="item-info">
-          <div class="item-name">${UI.esc(f.clienteNombre)}</div>
-          <div class="item-sub">${UI.esc(f.numero || 's/n')} · ${UI.fmtFecha(f.fecha)}</div>
-        </div>
-        <b class="rojo">${UI.fmtMoneda(f.saldo, f.moneda)}</b>
-      </div>`).join('')
-      : '<p class="muted">🎉 No hay cobros vencidos.</p>';
-    $('#panelPendientes').querySelectorAll('.item').forEach(el =>
-      el.addEventListener('click', () => Cobros.detalle(el.dataset.id)));
-
-    // Tareas de hoy y vencidas (con pasos: manda el próximo paso pendiente)
-    const tareas = (await DB.tareas.list()).filter(t => !t.hecha);
     const hoy = new Date().toISOString().slice(0, 10);
-    const deHoy = tareas
-      .map(t => ({ t, fecha: Tareas.fechaEfectiva(t), paso: Tareas.proximoPaso(t) }))
-      .filter(x => x.fecha && x.fecha <= hoy)
-      .sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5);
-    $('#panelTareas').innerHTML = deHoy.length ? deHoy.map(x => `
-      <div class="abono-row"><span>${x.fecha < hoy ? '🔴' : '📌'} ${UI.esc(x.t.titulo)}${
-        x.paso ? ' → ' + UI.esc(x.paso.titulo) : ''}${x.t.clienteNombre ? ' · ' + UI.esc(x.t.clienteNombre) : ''}</span><span class="muted">${UI.fmtFecha(x.fecha)}</span></div>`).join('')
-      : '<p class="muted">Sin tareas para hoy.</p>';
+    const facturas = await DB.facturas.list();
+    const cots = await DB.cotizaciones.list();
+    const tareas = await DB.tareas.list();
+    const estadoCot = c => c.estado === 'pendiente' ? 'enviada' : c.estado;
+    const items = [];
+
+    // 1) Leads calientes: aceptadas sin factura — lo más valioso del día
+    for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId)) {
+      items.push({
+        grupo: 0, monto: c.total || 0,
+        hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
+        icono: '🧾', titulo: c.clienteNombre,
+        sub: `Lead caliente · COT-${UI.esc(String(c.numero || ''))} · cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7)})`,
+        accion: 'lead', id: c.id, btn: '💬',
+      });
+    }
+
+    // 2) Cobros que tocan: próximo cobro hoy o ya vencido
+    for (const f of facturas.filter(f => f.estado === 'pendiente' && f.saldo > 0)) {
+      const fecha = f.proxCobro && f.proxCobro.fecha;
+      if (!fecha || fecha > hoy) continue;
+      const dias = Math.round((new Date(hoy + 'T00:00:00') - new Date(fecha + 'T00:00:00')) / 864e5);
+      items.push({
+        grupo: 1, monto: f.proxCobro.monto || f.saldo,
+        hecho: f.ultimoRecordatorio === hoy || (f.abonos || []).some(a => a.fecha === hoy),
+        icono: '💰', titulo: f.clienteNombre,
+        sub: `${dias > 0 ? `Cobro vencido hace ${dias} día${dias === 1 ? '' : 's'}` : 'Cobro de HOY'} · ${
+          UI.fmtDinero(f.proxCobro.monto || f.saldo, f.moneda)}${dias >= 7 ? ' · 📞 mejor llamar' : ''}`,
+        accion: 'cobro', id: f.id, btn: '💬', rojo: dias > 0,
+      });
+    }
+
+    // 3) Cotizaciones abiertas que piden seguimiento (7+ días sin gestión o por vencer)
+    for (const c of cots.filter(c => ['enviada', 'borrador'].includes(estadoCot(c)))) {
+      const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
+      const diasSin = ultima ? Math.round((new Date(hoy + 'T00:00:00') - new Date(ultima + 'T00:00:00')) / 864e5) : 99;
+      const porVencer = c.vence && c.vence >= hoy && c.vence <= new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
+      if (diasSin < 7 && !porVencer) continue;
+      items.push({
+        grupo: 2, monto: c.total || 0,
+        hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
+        icono: '📋', titulo: c.clienteNombre,
+        sub: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total)} · ${
+          porVencer ? '⏳ por vencer' : `${diasSin} días sin seguimiento`}`,
+        accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15,
+      });
+    }
+
+    // 4) Tareas y pasos de taller que vencen hoy (o ya se pasaron)
+    for (const t of tareas.filter(t => !t.hecha)) {
+      const fe = Tareas.fechaEfectiva(t);
+      if (!fe || fe > hoy) continue;
+      const i = (t.pasos || []).findIndex(p => !p.hecho);
+      const paso = i >= 0 ? t.pasos[i] : null;
+      items.push({
+        grupo: 3, monto: 0, hecho: false,
+        icono: '🛠', titulo: t.titulo,
+        sub: `${paso ? UI.esc(paso.titulo) + ' · ' : ''}${UI.fmtFecha(fe)}${t.clienteNombre ? ' · ' + UI.esc(t.clienteNombre) : ''}`,
+        accion: 'tarea', id: t.id, paso: i, btn: '✓', rojo: fe < hoy,
+      });
+    }
+
+    // Pendientes arriba (leads → cobros → cotizaciones → taller, mayor monto
+    // primero); las despachadas de hoy quedan al final con su ✓
+    items.sort((a, b) => (a.hecho - b.hecho) || (a.grupo - b.grupo) || (b.monto - a.monto));
+    const hechas = items.filter(x => x.hecho).length;
+    const enJuego = items.filter(x => !x.hecho).reduce((s, x) => s + x.monto, 0);
+
+    $('#diaStats').innerHTML =
+      UI.statTile(`${hechas}/${items.length}`, 'Despachadas hoy', items.length && hechas === items.length ? 'verde' : '') +
+      UI.statTile(items.filter(x => !x.hecho && x.grupo === 0).length, 'Leads calientes') +
+      UI.statTile(items.filter(x => !x.hecho && x.grupo === 1).length, 'Cobros que tocan') +
+      UI.statTile(UI.fmtDinero(enJuego), 'Valor en juego');
+
+    const cont = $('#colaDia');
+    cont.innerHTML = items.length ? items.map((x, i) => `
+      <div class="item dia-item ${x.hecho ? 'dia-hecho' : ''}" data-i="${i}">
+        <div class="item-info">
+          <div class="item-name">${x.icono} ${UI.esc(x.titulo)}</div>
+          <div class="item-sub ${x.rojo && !x.hecho ? 'rojo' : ''}">${x.sub}</div>
+        </div>
+        ${x.hecho
+          ? '<span class="verde" style="font-size:1.15rem;flex:0 0 auto">✓</span>'
+          : `<button class="btn-gold btn-sm dia-btn" data-acc="${i}" title="Acción en 1 toque">${x.btn}</button>`}
+      </div>`).join('')
+      : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
+
+    cont.querySelectorAll('.dia-btn').forEach(b => b.addEventListener('click', async e => {
+      e.stopPropagation();
+      const x = items[Number(b.dataset.acc)];
+      if (x.accion === 'lead' || x.accion === 'cot') await Cotizaciones.seguimientoRapido(x.id);
+      else if (x.accion === 'cobro') await Cobros.recordatorioRapido(x.id);
+      else if (x.accion === 'tarea') await Tareas.marcarPaso(x.id, x.paso);
+      renderPanel();
+    }));
+    cont.querySelectorAll('.dia-item').forEach(el => el.addEventListener('click', () => {
+      const x = items[Number(el.dataset.i)];
+      if (x.accion === 'lead' || x.accion === 'cot') Cotizaciones.detalle(x.id);
+      else if (x.accion === 'cobro') Cobros.detalle(x.id);
+      else DB.tareas.get(x.id).then(t => t && Tareas.formulario(t));
+    }));
   }
 
   /* ── Ajustes: respaldo ── */

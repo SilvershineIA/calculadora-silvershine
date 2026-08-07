@@ -193,9 +193,25 @@ const Tareas = (() => {
     });
   }
 
+  /* Marcar un paso desde Mi Día (o completar la tarea si no tiene pasos) */
+  async function marcarPaso(id, i) {
+    const t = await DB.tareas.get(id);
+    if (!t) return;
+    if (t.pasos && t.pasos[i]) {
+      t.pasos[i].hecho = true;
+      if (t.pasos.every(p => p.hecho)) { t.hecha = true; toast(`🎉 "${t.titulo}" completada`); }
+      else toast(`✓ ${t.pasos[i].titulo}`);
+    } else {
+      t.hecha = true;
+      toast(`🎉 "${t.titulo}" completada`);
+    }
+    await DB.tareas.upsert(t);
+    render();
+  }
+
   function init() {
     $('#btnNuevaTarea').addEventListener('click', () => formulario());
   }
 
-  return { init, render, formulario, fechaEfectiva, proximoPaso };
+  return { init, render, formulario, fechaEfectiva, proximoPaso, marcarPaso };
 })();

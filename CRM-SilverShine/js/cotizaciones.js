@@ -32,6 +32,40 @@ const Cotizaciones = (() => {
       : '<span class="badge b-roja">🤝 sin seguimiento</span>';
   };
 
+  /* Mensaje de seguimiento (compartido por el detalle y por Mi Día).
+     Abiertas: saludo suave con la pregunta que reactiva. Aceptadas sin
+     facturar (lead caliente): cerrar con el 70/30. */
+  function mensajeSeguimientoDe(c, emp) {
+    const t = c.moneda || 'DOP';
+    return esLeadCaliente(c)
+      ? `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
+        `¡Qué alegría que le encantó su pieza de la cotización *COT-${c.numero}*! 😍\n` +
+        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'Su pieza'}\n\n` +
+        `Cuando guste comenzamos: con el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* iniciamos la confección y el 30% restante se paga a la entrega.${
+          c.easypay ? ' También puede tomarla con su plan EasyPay si lo prefiere.' : ''}\n\n` +
+        `Estamos a la orden para lo que necesite 💎\n${emp.nombre} · ${emp.web}`
+      : `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
+        `Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
+        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
+        `¿Qué le pareció? 😊 ¿Le gustó la pieza, o le gustaría modificar algo — el peso, el material o el presupuesto? Con gusto la ajustamos hasta que quede perfecta para usted.\n\n` +
+        `Quedamos atentos, sin ningún compromiso 💎\n${emp.nombre} · ${emp.web}`;
+  }
+
+  /* Seguimiento en 1 toque desde Mi Día: envía el mensaje correcto
+     (suave o de cierre), lo registra y sale */
+  async function seguimientoRapido(id) {
+    const c = await DB.cotizaciones.get(id);
+    if (!c) return false;
+    const cliente = c.clienteId ? await DB.clientes.get(c.clienteId) : null;
+    if (!UI.tieneWhatsApp(cliente)) { detalle(id); return false; }
+    const emp = await UI.getEmpresa();
+    UI.abrirWhatsApp(cliente, mensajeSeguimientoDe(c, emp));
+    c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via: 'WhatsApp' }];
+    await DB.cotizaciones.upsert(c);
+    toast('🤝 Seguimiento enviado y registrado');
+    return true;
+  }
+
   async function siguienteNumero() {
     const lista = await DB.cotizaciones.list();
     let max = 1000;
@@ -363,20 +397,7 @@ const Cotizaciones = (() => {
       if (modo === 'compartido' && cliente.correo) toast(`✉️ ${cliente.correo} copiado — pégalo en "Para:"`);
     });
     /* Seguimiento suave: saludo sin presión, se registra con fecha y vía */
-    /* Abiertas: saludo suave sin presión. Aceptadas sin facturar (lead
-       caliente): recordar con cariño cómo iniciar la pieza (70/30). */
-    const mensajeSeguimiento = emp => esLeadCaliente(c)
-      ? `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
-        `¡Qué alegría que le encantó su pieza de la cotización *COT-${c.numero}*! 😍\n` +
-        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'Su pieza'}\n\n` +
-        `Cuando guste comenzamos: con el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* iniciamos la confección y el 30% restante se paga a la entrega.${
-          c.easypay ? ' También puede tomarla con su plan EasyPay si lo prefiere.' : ''}\n\n` +
-        `Estamos a la orden para lo que necesite 💎\n${emp.nombre} · ${emp.web}`
-      : `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
-        `Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
-        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
-        `¿Qué le pareció? 😊 ¿Le gustó la pieza, o le gustaría modificar algo — el peso, el material o el presupuesto? Con gusto la ajustamos hasta que quede perfecta para usted.\n\n` +
-        `Quedamos atentos, sin ningún compromiso 💎\n${emp.nombre} · ${emp.web}`;
+    const mensajeSeguimiento = emp => mensajeSeguimientoDe(c, emp);
 
     const registrarSeguimiento = async via => {
       c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via }];
@@ -580,5 +601,5 @@ const Cotizaciones = (() => {
     });
   }
 
-  return { init, render, detalle, formulario };
+  return { init, render, detalle, formulario, seguimientoRapido };
 })();

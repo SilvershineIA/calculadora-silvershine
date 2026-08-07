@@ -28,6 +28,32 @@ const Cobros = (() => {
     return (await DB.facturas.list()).filter(f => f.estado === 'pendiente' && f.saldo > 0);
   }
 
+  /* Mensaje de recordatorio (compartido por el detalle y por Mi Día) */
+  const mensajeRecordatorio = (f, emp) => {
+    const t = f.moneda || 'DOP';
+    return `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
+      `Le recordamos con cariño su balance pendiente:\n` +
+      `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')}\n` +
+      `🔴 Pendiente: *${fmtMoneda(f.saldo, t)}*` +
+      (f.proxCobro && f.proxCobro.monto ? `\n📅 ${f.planPago ? 'Su cuota EasyPay' : 'Próximo abono acordado'}: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}` : '') +
+      (emp.cuentas ? `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}` : '') +
+      `\n\nTambién puede pagar con tarjeta o EasyPay en la tienda. ¡Gracias!\n💎 ${emp.nombre} · ${emp.web}`;
+  };
+
+  /* Recordatorio en 1 toque desde Mi Día: envía, lo anota y sale */
+  async function recordatorioRapido(facturaId) {
+    const f = await DB.facturas.get(facturaId);
+    if (!f) return false;
+    const cliente = f.clienteId ? await DB.clientes.get(f.clienteId) : null;
+    if (!UI.tieneWhatsApp(cliente)) { detalle(facturaId); return false; }
+    const emp = await UI.getEmpresa();
+    UI.abrirWhatsApp(cliente, mensajeRecordatorio(f, emp));
+    f.ultimoRecordatorio = hoyISO();
+    await DB.facturas.upsert(f);
+    toast('💬 Recordatorio enviado y anotado');
+    return true;
+  }
+
   /* ── Lista ── */
   async function render() {
     const cont = $('#listaCobros');
@@ -144,22 +170,17 @@ const Cobros = (() => {
     on('#coAbonar', () => Facturas.formAbono(f));
     on('#coVerFactura', () => Facturas.detalle(f.id));
 
-    const mensaje = emp =>
-      `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
-      `Le recordamos con cariño su balance pendiente:\n` +
-      `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')}\n` +
-      `🔴 Pendiente: *${fmtMoneda(f.saldo, t)}*` +
-      (f.proxCobro && f.proxCobro.monto ? `\n📅 ${f.planPago ? 'Su cuota EasyPay' : 'Próximo abono acordado'}: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}` : '') +
-      (emp.cuentas ? `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}` : '') +
-      `\n\nTambién puede pagar con tarjeta o EasyPay en la tienda. ¡Gracias!\n💎 ${emp.nombre} · ${emp.web}`;
-
     on('#coWhatsApp', async () => {
       const emp = await UI.getEmpresa();
-      UI.abrirWhatsApp(cliente, mensaje(emp));
+      UI.abrirWhatsApp(cliente, mensajeRecordatorio(f, emp));
+      f.ultimoRecordatorio = hoyISO();          // Mi Día lo marca como despachado
+      await DB.facturas.upsert(f);
     });
     on('#coCorreo', async () => {
       const emp = await UI.getEmpresa();
-      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(`Recordatorio de balance — ${emp.nombre}`)}&body=${encodeURIComponent(mensaje(emp).replace(/\*/g, ''))}`;
+      location.href = `mailto:${cliente.correo}?subject=${encodeURIComponent(`Recordatorio de balance — ${emp.nombre}`)}&body=${encodeURIComponent(mensajeRecordatorio(f, emp).replace(/\*/g, ''))}`;
+      f.ultimoRecordatorio = hoyISO();
+      await DB.facturas.upsert(f);
     });
 
     $('#formProx').addEventListener('submit', async e => {
@@ -176,5 +197,5 @@ const Cobros = (() => {
     });
   }
 
-  return { render, detalle, clasificar, pendientes };
+  return { render, detalle, clasificar, pendientes, recordatorioRapido };
 })();
