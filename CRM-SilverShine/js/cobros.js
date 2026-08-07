@@ -28,16 +28,39 @@ const Cobros = (() => {
     return (await DB.facturas.list()).filter(f => f.estado === 'pendiente' && f.saldo > 0);
   }
 
-  /* Mensaje de recordatorio (compartido por el detalle y por Mi Día) */
+  /* ── Etapa de cobro (secuencia escalonada del informe) ──
+     El tono del recordatorio lo decide el atraso, no el usuario:
+     previo (aún no vence) → hoy → firme (1-6d) → urgente (7-13d,
+     mejor llamar) → escalada (14+d, proponer acuerdo de pago). */
+  function etapaDe(f) {
+    const ref = (f.proxCobro && f.proxCobro.fecha) || f.fecha;
+    const dias = Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(ref + 'T00:00:00')) / 864e5);
+    if (dias < 0)   return { id: 'previo',   dias, ref, nombre: `😊 Previo — vence ${fmtFecha(ref)}` };
+    if (dias === 0) return { id: 'hoy',      dias, ref, nombre: '📅 Vence hoy' };
+    if (dias < 7)   return { id: 'firme',    dias, ref, nombre: `🟠 Firme — ${dias} día${dias === 1 ? '' : 's'} de atraso` };
+    if (dias < 14)  return { id: 'urgente',  dias, ref, nombre: `🔴 Urgente — ${dias} días (mejor llamar)` };
+    return { id: 'escalada', dias, ref, nombre: `⚠️ Escalada — ${dias} días (proponer acuerdo)` };
+  }
+
+  /* Mensaje de recordatorio: el tono escala solo según la etapa */
   const mensajeRecordatorio = (f, emp) => {
     const t = f.moneda || 'DOP';
-    return `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
-      `Le recordamos con cariño su balance pendiente:\n` +
-      `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')}\n` +
-      `🔴 Pendiente: *${fmtMoneda(f.saldo, t)}*` +
-      (f.proxCobro && f.proxCobro.monto ? `\n📅 ${f.planPago ? 'Su cuota EasyPay' : 'Próximo abono acordado'}: ${fmtMoneda(f.proxCobro.monto, t)}${f.proxCobro.fecha ? ' para el ' + fmtFecha(f.proxCobro.fecha) : ''}` : '') +
-      (emp.cuentas ? `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}` : '') +
-      `\n\nTambién puede pagar con tarjeta o EasyPay en la tienda. ¡Gracias!\n💎 ${emp.nombre} · ${emp.web}`;
+    const e = etapaDe(f);
+    const queCosa = f.planPago ? 'cuota EasyPay' : 'abono acordado';
+    const monto = f.proxCobro && f.proxCobro.monto ? fmtMoneda(f.proxCobro.monto, t) : fmtMoneda(f.saldo, t);
+    const refLinea = `🧾 Factura ${f.orden ? '#' + f.orden : (f.numero || '')} · balance pendiente *${fmtMoneda(f.saldo, t)}*`;
+    const saludo = `Hola ${f.clienteNombre}, le saluda *${UI.quienSaluda(emp)}* ✨\n\n`;
+    const cuentas = emp.cuentas ? `\n\n*Cuentas para su pago:*\n\n${emp.cuentas}` : '';
+    const pie = `\n\nTambién puede pagar con tarjeta o EasyPay en la tienda. ¡Gracias!\n💎 ${emp.nombre} · ${emp.web}`;
+
+    const cuerpos = {
+      previo:  `Le recordamos con cariño que su ${queCosa} de *${monto}* vence el *${fmtFecha(e.ref)}* 😊\n${refLinea}`,
+      hoy:     `Hoy vence su ${queCosa} de *${monto}*.\n${refLinea}`,
+      firme:   `Su ${queCosa} de *${monto}* quedó pendiente desde el ${fmtFecha(e.ref)} — ¿le llegó nuestro recordatorio?\n${refLinea}\n\nSi ya realizó el pago, haga caso omiso de este mensaje 🙏`,
+      urgente: `Su cuenta presenta *${e.dias} días de atraso* en su ${queCosa} de *${monto}*.\n${refLinea}\n\nNos gustaría ayudarle a ponerse al día — si tiene algún inconveniente, escríbanos con confianza y buscamos juntos una solución.`,
+      escalada:`Su cuenta acumula *${e.dias} días de atraso*.\n${refLinea}\n\nQueremos ayudarle a regularizarla: podemos acordar un *plan de pago a su medida* — respóndanos este mensaje o pase por la tienda y lo cuadramos en minutos. Mantener su cuenta al día conserva activa su garantía y sus beneficios EasyPay.`,
+    };
+    return saludo + cuerpos[e.id] + cuentas + pie;
   };
 
   /* Recordatorio en 1 toque desde Mi Día: envía, lo anota y sale */
@@ -87,6 +110,24 @@ const Cobros = (() => {
       UI.statTile(proximosTotal, 'Próximos 7 días') +
       UI.statTile(easy.length, 'Planes EasyPay') +
       UI.statTile(UI.fmtDinero(total), 'Total en la calle');
+
+    /* Antigüedad de la deuda: dónde está el dinero en la calle.
+       Una deuda de 90+ días no se gestiona igual que una de 10. */
+    const hoyMs = new Date(hoyISO() + 'T00:00:00').getTime();
+    const edadDe = f => Math.floor((hoyMs - new Date((f.fecha || hoyISO()) + 'T00:00:00').getTime()) / 864e5);
+    const tramo = { a: 0, b: 0, c: 0, d: 0 };
+    for (const f of lista) {
+      const e = edadDe(f);
+      if (e <= 30) tramo.a += f.saldo;
+      else if (e <= 60) tramo.b += f.saldo;
+      else if (e <= 90) tramo.c += f.saldo;
+      else tramo.d += f.saldo;
+    }
+    $('#cobrosAging').innerHTML =
+      UI.statTile(UI.fmtDinero(tramo.a), '0–30 días') +
+      UI.statTile(UI.fmtDinero(tramo.b), '31–60 días') +
+      UI.statTile(UI.fmtDinero(tramo.c), '61–90 días', tramo.c > 0 ? 'rojo' : '') +
+      UI.statTile(UI.fmtDinero(tramo.d), 'Más de 90 días', tramo.d > 0 ? 'rojo' : '');
 
     if (!lista.length) {
       cont.innerHTML = '<div class="empty"><span>🎉</span>No hay cobros pendientes. Todo al día.</div>';
@@ -144,7 +185,8 @@ const Cobros = (() => {
       <div class="deuda-banner">Debe <b>${fmtMoneda(f.saldo, t)}</b> de ${fmtMoneda(f.total, t)} · ${esc(f.numero || 's/n')}</div>
       <p class="muted" style="margin-bottom:12px">Factura del ${fmtFecha(f.fecha)}.
         ${f.planPago ? '📅 <b>Plan EasyPay</b> (' + esc(f.planPago.frecuencia) + '). ' : ''}
-        ${f.proxCobro && f.proxCobro.fecha ? `Próximo cobro: <b>${fmtFecha(f.proxCobro.fecha)}</b>${f.proxCobro.monto ? ' por ' + fmtMoneda(f.proxCobro.monto, t) : ''}.` : 'Sin próximo cobro programado.'}</p>
+        ${f.proxCobro && f.proxCobro.fecha ? `Próximo cobro: <b>${fmtFecha(f.proxCobro.fecha)}</b>${f.proxCobro.monto ? ' por ' + fmtMoneda(f.proxCobro.monto, t) : ''}.` : 'Sin próximo cobro programado.'}<br>
+        Etapa de cobro: <b>${etapaDe(f).nombre}</b> — el mensaje de WhatsApp usa este tono automáticamente.</p>
 
       <button class="btn-gold btn-block" id="coAbonar">💵 Registrar abono</button>
       <div class="row" style="margin-top:10px">

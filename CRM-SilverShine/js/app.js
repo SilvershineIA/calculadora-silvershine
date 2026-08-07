@@ -55,16 +55,20 @@
       });
     }
 
-    // 2) Cobros que tocan: próximo cobro hoy o ya vencido
+    // 2) Cobros que tocan: vencidos, de hoy, y el recordatorio previo
+    //    (la secuencia escalonada arranca 3 días ANTES del vencimiento)
     for (const f of facturas.filter(f => f.estado === 'pendiente' && f.saldo > 0)) {
       const fecha = f.proxCobro && f.proxCobro.fecha;
-      if (!fecha || fecha > hoy) continue;
+      if (!fecha) continue;
       const dias = Math.round((new Date(hoy + 'T00:00:00') - new Date(fecha + 'T00:00:00')) / 864e5);
+      if (dias < -3) continue;   // todavía falta — entra a la cola 3 días antes
       items.push({
         grupo: 1, monto: f.proxCobro.monto || f.saldo,
         hecho: f.ultimoRecordatorio === hoy || (f.abonos || []).some(a => a.fecha === hoy),
         icono: '💰', titulo: f.clienteNombre,
-        sub: `${dias > 0 ? `Cobro vencido hace ${dias} día${dias === 1 ? '' : 's'}` : 'Cobro de HOY'} · ${
+        sub: `${dias > 0 ? `Cobro vencido hace ${dias} día${dias === 1 ? '' : 's'}`
+          : dias === 0 ? 'Cobro de HOY'
+          : `Vence en ${-dias} día${dias === -1 ? '' : 's'} — aviso amistoso`} · ${
           UI.fmtDinero(f.proxCobro.monto || f.saldo, f.moneda)}${dias >= 7 ? ' · 📞 mejor llamar' : ''}`,
         accion: 'cobro', id: f.id, btn: '💬', rojo: dias > 0,
       });
