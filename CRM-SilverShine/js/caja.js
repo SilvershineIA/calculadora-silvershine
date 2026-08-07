@@ -37,13 +37,21 @@ const Caja = (() => {
     return { ...g, tasa: g.tasa || DEFECTO.tasa, cuentas: g.cuentas || DEFECTO.cuentas.map(c => ({ ...c })), movimientos: g.movimientos || [] };
   }
 
+  /* Tasa del dólar EN VIVO desde la Calculadora (que la trae de internet);
+     lo guardado en el cuadre queda solo como respaldo si aún no cargó. */
+  function tasaVigente(q) {
+    const viva = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    return viva > 0 ? viva : (q.tasa || 60);
+  }
+
   const fmt = (m, mon) => UI.fmtMoneda(m, mon);
   const enPesos = (c, tasa) => c.moneda === 'USD' ? c.saldo * tasa : c.saldo;
 
   /* ── Panel ── */
   async function render() {
     const q = await getCuadre();
-    const tasa = q.tasa;
+    const tasa = tasaVigente(q);
+    if (tasa !== q.tasa) { q.tasa = tasa; await DB.config.upsert(q); }   // respaldo fresco para cuando no haya internet
     const grupo = id => q.cuentas.filter(c => c.grupo === id);
     const tot = arr => r2(arr.reduce((s, c) => s + enPesos(c, tasa), 0));
     const bancos = grupo('banco'), usd = grupo('usd'), tarjetas = grupo('tarjeta');
@@ -69,10 +77,7 @@ const Caja = (() => {
       <div class="card">
         <h2>💵 Dólares (Shopify, PayPal, Relay)</h2>
         ${filas(usd)}
-        <div class="row" style="margin:10px 0 2px"><div>
-          <label>Valor del dólar</label>
-          <input type="text" inputmode="decimal" id="cuadreTasa" value="${tasa}">
-        </div></div>
+        <div class="abono-row"><span>💱 Valor del dólar <span class="muted">· en vivo de la Calculadora</span></span><b>${tasa}</b></div>
         <div class="abono-row"><span><b>Total en pesos</b></span><b class="dorado">${UI.fmtDinero(tot(usd))}</b></div>
       </div>
       <div class="card">
@@ -88,14 +93,6 @@ const Caja = (() => {
         <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b>
       </div>`).join('') || '<p class="muted">Sin movimientos todavía — toca cualquier cuenta para registrar el primero.</p>';
 
-    $('#cuadreTasa').addEventListener('change', async e => {
-      const v = Number(String(e.target.value).replace(',', '.'));
-      if (!(v > 0)) { toast('Tasa no válida'); render(); return; }
-      q.tasa = v;
-      await DB.config.upsert(q);
-      toast(`💱 Dólar a ${v}`);
-      render();
-    });
     UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => movimiento(el.dataset.id)));
   }
 
@@ -159,12 +156,13 @@ const Caja = (() => {
       } else {
         const d = q.cuentas.find(x => x.id === form.destino.value);
         if (!d) { toast('Elige la cuenta destino'); return; }
-        // Entre monedas distintas se convierte con la tasa del panel
+        // Entre monedas distintas se convierte con la tasa en vivo
+        const tasa = tasaVigente(q);
         const recibido = c.moneda === d.moneda ? monto
-          : r2(c.moneda === 'USD' ? monto * q.tasa : monto / q.tasa);
+          : r2(c.moneda === 'USD' ? monto * tasa : monto / tasa);
         c.saldo = r2(c.saldo - monto);
         d.saldo = r2(d.saldo + recibido);
-        anotar(conNota(`${c.nombre} → ${d.nombre}${c.moneda !== d.moneda ? ` (a ${q.tasa})` : ''}`), monto, c.moneda, -1);
+        anotar(conNota(`${c.nombre} → ${d.nombre}${c.moneda !== d.moneda ? ` (a ${tasa})` : ''}`), monto, c.moneda, -1);
       }
 
       q.movimientos = [...nuevos, ...q.movimientos].slice(0, 200);
@@ -189,8 +187,9 @@ const Caja = (() => {
     const c = q.cuentas.find(x => x.id === cuentaId);
     if (!c) return;
     const mon = monedaAbono || 'DOP';
+    const tasa = tasaVigente(q);
     const recibido = c.moneda === mon ? monto
-      : r2(mon === 'USD' ? monto * q.tasa : monto / q.tasa);
+      : r2(mon === 'USD' ? monto * tasa : monto / tasa);
     c.saldo = r2(c.saldo + recibido);
     q.movimientos = [{ fecha: hoyISO(), desc, monto: r2(recibido), moneda: c.moneda, signo: 1 }, ...q.movimientos].slice(0, 200);
     await DB.config.upsert(q);
