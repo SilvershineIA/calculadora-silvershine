@@ -122,10 +122,14 @@
       <div class="item dia-item ${x.hecho ? 'dia-hecho' : ''}" data-i="${i}">
         <div class="item-info">
           <div class="item-name">${x.icono} ${UI.esc(x.titulo)}</div>
-          <div class="item-sub ${x.rojo && !x.hecho ? 'rojo' : ''}">${x.sub}</div>
+          <div class="item-sub ${x.rojo && !x.hecho ? 'rojo' : ''}">${x.sub}${
+            x.hecho && x.accion !== 'tarea' ? ' · 📨 enviado hoy — cuando responda, toca ⋯' : ''}</div>
         </div>
         ${x.hecho
-          ? '<span class="verde" style="font-size:1.15rem;flex:0 0 auto">✓</span>'
+          ? `<div style="display:flex;gap:6px;align-items:center;flex:0 0 auto">
+              <span class="verde" style="font-size:1.15rem">✓</span>${
+              x.accion !== 'tarea' ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué respondió?">⋯</button>` : ''}
+            </div>`
           : `<div style="display:flex;gap:6px;flex:0 0 auto">
               <button class="btn-gold btn-sm dia-btn" data-acc="${i}" title="Acción en 1 toque">${x.btn}</button>${
               x.accion !== 'tarea' ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué pasó con este?">⋯</button>` : ''}
@@ -165,17 +169,19 @@
     if (x.accion === 'lead' || x.accion === 'cot') {
       const c = await DB.cotizaciones.get(x.id);
       if (!c) return;
-      UI.abrirModal(`${x.titulo} — ¿qué pasó?`, `
-        <button class="btn-gold btn-block" data-op="respondio" style="margin-bottom:8px">✅ Ya respondió — la conversación sigue conmigo</button>
+      UI.abrirModal(`${x.titulo} — ¿qué respondió?`, `
+        <button class="btn-gold btn-block" data-op="respondio" style="margin-bottom:8px">✅ Le interesa — la conversación sigue conmigo</button>
+        <button class="btn-ghost btn-block" data-op="modificar" style="margin-bottom:8px">✏️ Quiere modificar algo — ajustar la cotización</button>
         <button class="btn-ghost btn-block" data-op="pensando" style="margin-bottom:8px">🤔 Está pensándolo — darle espacio (7 días)</button>
-        <h3 class="sub-h" style="margin-top:12px">⏰ Recordármelo con un toque en…</h3>
+        <h3 class="sub-h" style="margin-top:12px">⏰ Sin respuesta — recordármelo en…</h3>
         <div class="row">
           <button class="btn-ghost btn-block" data-op="t3">3 días</button>
           <button class="btn-ghost btn-block" data-op="t7">7 días</button>
           <button class="btn-ghost btn-block" data-op="t15">15 días</button>
           <button class="btn-ghost btn-block" data-op="t30">30 días</button>
         </div>
-        <button class="btn-ghost btn-block" data-op="ver" style="margin-top:12px">📋 Ver la cotización completa</button>
+        <button class="btn-danger btn-block" data-op="rechazo" style="margin-top:12px">❌ No le interesó — marcar rechazada</button>
+        <button class="btn-ghost btn-block" data-op="ver" style="margin-top:8px">📋 Ver la cotización completa</button>
       `);
       const acc = async (via, dias, msj) => {
         if (via) c.seguimientos = [...(c.seguimientos || []), { fecha: hoy, via }];
@@ -190,6 +196,19 @@
         t7:  () => acc(null, 7, '⏰ Toque programado en 7 días'),
         t15: () => acc(null, 15, '⏰ Toque programado en 15 días'),
         t30: () => acc(null, 30, '⏰ Toque programado en 30 días'),
+        modificar: async () => {
+          c.seguimientos = [...(c.seguimientos || []), { fecha: hoy, via: 'quiere modificar' }];
+          await DB.cotizaciones.upsert(c);
+          Cotizaciones.formulario(c);   // abre la edición directo
+        },
+        rechazo: async () => {
+          if (!confirm(`¿Marcar rechazada la COT-${c.numero} de ${c.clienteNombre}? Sale de la cola y del visor (queda en el filtro "Rechazadas").`)) return;
+          c.estado = 'rechazada';
+          c.estadoManual = hoy;
+          delete c.proximoToque;
+          await DB.cotizaciones.upsert(c);
+          UI.cerrarModal(); UI.toast('❌ Rechazada — anotada en la conversión'); renderPanel();
+        },
         ver: () => Cotizaciones.detalle(c.id),
       };
       UI.$$('#modalBody [data-op]').forEach(b => b.addEventListener('click', () => OPS[b.dataset.op]()));
