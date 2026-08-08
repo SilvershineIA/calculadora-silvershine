@@ -121,6 +121,17 @@ const Sync = (() => {
         for (const f of pagina) porId.set(f.id, f.data);
         if (pagina.length < PAGINA) break;
       }
+      /* Auto-sanador de config: si un doc existe localmente pero no en la
+         nube (p. ej. el cuadre cuando la tabla config estuvo rechazando
+         escrituras), se RE-SUBE en vez de borrarse al reemplazar. */
+      if (tabla === 'config') {
+        const locales = await DB.config.list();
+        for (const o of locales.filter(x => !porId.has(x.id))) {
+          try { await rest('POST', tabla, [{ id: o.id, data: o }], 'resolution=merge-duplicates'); }
+          catch (e) { console.warn('config local sin subir:', o.id, e.message); }
+          porId.set(o.id, o);   // pase lo que pase, no se pierde localmente
+        }
+      }
       await DB.reemplazar(tabla, [...porId.values()]);
       estadoUI(`Descargando… ${tabla} (${porId.size})`);
       } catch (e) {
@@ -181,7 +192,7 @@ const Sync = (() => {
           // …pero tampoco callar: el Cuadre vive en config y perderlo duele
           if (!avisoOpcional && typeof UI !== 'undefined') {
             avisoOpcional = true;
-            UI.toast(`⚠ La nube rechazó un cambio de "${it.tabla}" — falta su tabla o permiso en Supabase (ver Ajustes)`);
+            UI.toast(`⚠ La nube rechazó "${it.tabla}": ${String(e.message).slice(0, 90)} — corre el SQL del esquema en Supabase`);
           }
         }
         /* Quitar SOLO el elemento procesado de la cola actual (no de la foto) */
