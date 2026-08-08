@@ -20,7 +20,9 @@
     ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); },
   };
 
+  let vistaActual = 'panel';
   function irA(nombre) {
+    vistaActual = nombre;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === nombre));
     $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === nombre));
     if (vistas[nombre]) vistas[nombre]();
@@ -28,6 +30,27 @@
   }
 
   $$('.nav-btn').forEach(b => b.addEventListener('click', () => irA(b.dataset.view)));
+
+  /* ── Re-sincronizar al VOLVER a la app, no solo al abrirla ──
+     La PWA queda residente en el teléfono: sin esto, un cambio hecho en
+     la PC (p. ej. el Cuadre) no se veía hasta cerrar y reabrir. Al
+     regresar el foco: vaciar pendientes + bajar lo último + repintar la
+     vista. Con calma: máx. 1 vez por minuto y nunca con un modal abierto
+     (para no pisar un formulario a mitad de escritura). */
+  let ultimaSyncFoco = 0;
+  async function sincronizarAlVolver() {
+    if (document.hidden || !Sync.conectado()) return;
+    if (Date.now() - ultimaSyncFoco < 60000) return;
+    if (!$('#modalBg').hidden) return;
+    ultimaSyncFoco = Date.now();
+    const ok = await Sync.alAbrir();
+    if (ok && $('#modalBg').hidden) {
+      if (vistas[vistaActual]) vistas[vistaActual]();
+      pintarEstadoNube();
+    }
+  }
+  document.addEventListener('visibilitychange', sincronizarAlVolver);
+  window.addEventListener('focus', sincronizarAlVolver);
 
   /* ── Mi Día: la cola única de acciones ──
      Regla de los grandes CRM: el sistema decide qué toca hoy y el dueño

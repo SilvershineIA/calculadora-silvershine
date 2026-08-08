@@ -154,6 +154,7 @@ const Sync = (() => {
   }
 
   let vaciando = false;
+  let avisoOpcional = false;   // avisar una sola vez por sesión
   async function vaciarCola() {
     if (vaciando || !conectado() || !navigator.onLine) return;
     vaciando = true;
@@ -174,9 +175,14 @@ const Sync = (() => {
             await rest('DELETE', `${it.tabla}?id=eq.${encodeURIComponent(it.id)}`);
           }
         } catch (e) {
-          // un cambio de una tabla opcional que falla no debe atascar la cola
+          // un cambio de una tabla opcional que falla no debe atascar la cola…
           if (!OPCIONALES.has(it.tabla)) throw e;
           console.warn(`Cambio de ${it.tabla} descartado:`, e.message);
+          // …pero tampoco callar: el Cuadre vive en config y perderlo duele
+          if (!avisoOpcional && typeof UI !== 'undefined') {
+            avisoOpcional = true;
+            UI.toast(`⚠ La nube rechazó un cambio de "${it.tabla}" — falta su tabla o permiso en Supabase (ver Ajustes)`);
+          }
         }
         /* Quitar SOLO el elemento procesado de la cola actual (no de la foto) */
         const ahora = cola.leer();
