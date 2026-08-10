@@ -517,6 +517,11 @@ button:hover{filter:brightness(1.12)}
   #printArea .p-tabla th{border-bottom:2px solid #333;text-align:left;padding:6px 4px;font-size:.8rem;text-transform:uppercase;letter-spacing:1px}
   #printArea .p-tabla td{border-bottom:1px solid #ddd;padding:8px 4px}
   #printArea .p-tabla .num{text-align:right;white-space:nowrap}
+  /* Tablas de reportes: compactas para que quepan muchas columnas */
+  #printArea .p-rep{font-size:9.5px}
+  #printArea .p-rep th{font-size:8px;letter-spacing:.5px;padding:4px 3px}
+  #printArea .p-rep td{padding:4px 3px}
+  #printArea .p-rep td:first-child{white-space:nowrap}
   #printArea .p-total{
     display:flex;justify-content:space-between;align-items:baseline;
     margin-top:22px;padding:13px 12px;background:#F7ECE8;border:1px solid #CF9B90;

@@ -32,8 +32,10 @@ const Reportes = (() => {
     UI.toast('📥 ' + nombre + ' descargado');
   }
 
-  /* ── Impresión (usa el área y estilos de las facturas) ── */
-  async function imprimir(titulo, sub, secciones) {
+  /* ── Impresión (usa el área y estilos de las facturas) ──
+     Los reportes anchos (muchas columnas) se imprimen APAISADOS:
+     se inyecta @page landscape solo durante esta impresión. */
+  async function imprimir(titulo, sub, secciones, opts = {}) {
     const emp = await UI.getEmpresa();
     const esc = UI.esc;
     const datosEmp = [
@@ -42,7 +44,7 @@ const Reportes = (() => {
     ].filter(Boolean).join('<br>');
     const tabla = sec => `
       ${sec.titulo ? `<h3 style="font-size:.9rem;margin:20px 0 6px;text-transform:uppercase;letter-spacing:1px;color:#B07F74">${esc(sec.titulo)}</h3>` : ''}
-      <table class="p-tabla">
+      <table class="p-tabla p-rep">
         <tr>${sec.columnas.map(c => `<th class="${c.a === 'right' ? 'num' : ''}">${esc(c.t)}</th>`).join('')}</tr>
         ${sec.filas.map(f => `<tr>${f.map((v, i) =>
           `<td class="${sec.columnas[i] && sec.columnas[i].a === 'right' ? 'num' : ''}">${esc(String(v ?? ''))}</td>`).join('')}</tr>`).join('')}
@@ -61,7 +63,14 @@ const Reportes = (() => {
       ${secciones.map(tabla).join('')}
       ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}
     `;
-    await UI.imprimirArea();
+    let estiloPagina = null;
+    if (opts.horizontal) {
+      estiloPagina = document.createElement('style');
+      estiloPagina.textContent = '@page { size: letter landscape; }';
+      document.head.appendChild(estiloPagina);
+    }
+    try { await UI.imprimirArea(); }
+    finally { if (estiloPagina) estiloPagina.remove(); }
   }
 
   /* ── PDF directo, paginado ──
