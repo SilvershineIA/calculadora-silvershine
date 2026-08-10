@@ -64,11 +64,13 @@ const Reportes = (() => {
     await UI.imprimirArea();
   }
 
-  /* ── PDF directo, paginado ── */
+  /* ── PDF directo, paginado ──
+     Tamaño CARTA (8.5×11, el papel del usuario) y las columnas se
+     escalan solas para llenar el ancho útil sin salirse del margen. */
   async function pdf(nombre, titulo, sub, secciones, opts = {}) {
     const emp = await UI.getEmpresa();
     const L = PDFDoc.limpiar;
-    const doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: opts.horizontal ? 'landscape' : 'portrait' });
+    const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter', orientation: opts.horizontal ? 'landscape' : 'portrait' });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
     const M = 30;
@@ -108,23 +110,30 @@ const Reportes = (() => {
 
     cabecera();
     for (const sec of secciones) {
+      /* Escalar las columnas al ancho útil: ni se salen del margen
+         ni dejan media página vacía a la derecha */
+      const util = W - 2 * M;
+      const suma = sec.columnas.reduce((s, c) => s + c.w, 0);
+      const factor = Math.min(util / suma, 1.3);
+      const cols = sec.columnas.map(c => ({ ...c, w: c.w * factor }));
+
       const xs = [];
       let x = M;
-      for (const c of sec.columnas) { xs.push(x); x += c.w; }
+      for (const c of cols) { xs.push(x); x += c.w; }
       if (y > H - 80) { doc.addPage(); cabecera(); }
       if (sec.titulo) {
         doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(...SLATE);
         doc.text(L(sec.titulo), M, y); y += 15;
       }
-      encabezadoCols(sec.columnas, xs);
+      encabezadoCols(cols, xs);
       for (const f of sec.filas) {
-        if (y > H - 40) { doc.addPage(); cabecera(); encabezadoCols(sec.columnas, xs); }
-        filaTexto(sec.columnas, xs, f, false);
+        if (y > H - 40) { doc.addPage(); cabecera(); encabezadoCols(cols, xs); }
+        filaTexto(cols, xs, f, false);
       }
       if (sec.totales) {
-        if (y > H - 40) { doc.addPage(); cabecera(); encabezadoCols(sec.columnas, xs); }
+        if (y > H - 40) { doc.addPage(); cabecera(); encabezadoCols(cols, xs); }
         doc.setDrawColor(...ROSA).setLineWidth(0.6).line(M, y - 10, W - M, y - 10);
-        filaTexto(sec.columnas, xs, sec.totales, true);
+        filaTexto(cols, xs, sec.totales, true);
       }
       y += 14;
     }

@@ -37,12 +37,35 @@
      regresar el foco: vaciar pendientes + bajar lo último + repintar la
      vista. Con calma: máx. 1 vez por minuto y nunca con un modal abierto
      (para no pisar un formulario a mitad de escritura). */
+  /* ── Auto-actualización: la PWA instalada no busca versiones nuevas
+     sola si queda abierta. Aquí se consulta sw.js fresco de la red; si
+     trae una versión mayor a la cargada, se purga el caché y se recarga
+     (solo sin modal abierto, para no interrumpir un formulario). ── */
+  async function buscarActualizacion() {
+    try {
+      if (!navigator.onLine || !$('#modalBg').hidden) return;
+      const txt = await (await fetch('sw.js', { cache: 'no-store' })).text();
+      const nueva = /sscrm-v(\d+)/.exec(txt);
+      const actual = /v=(\d+)/.exec(($('link[rel="stylesheet"]') || {}).href || '');
+      if (!nueva || !actual || Number(nueva[1]) <= Number(actual[1])) return;
+      toast(`⬆ Actualizando a la versión ${nueva[1]}…`);
+      if (navigator.serviceWorker) {
+        for (const r of await navigator.serviceWorker.getRegistrations()) await r.update();
+      }
+      for (const k of await caches.keys()) await caches.delete(k);
+      setTimeout(() => location.reload(), 900);
+    } catch { /* sin internet o red caída: se intenta luego */ }
+  }
+  setTimeout(buscarActualizacion, 4000);
+
   let ultimaSyncFoco = 0;
   async function sincronizarAlVolver() {
-    if (document.hidden || !Sync.conectado()) return;
+    if (document.hidden) return;
     if (Date.now() - ultimaSyncFoco < 60000) return;
     if (!$('#modalBg').hidden) return;
     ultimaSyncFoco = Date.now();
+    buscarActualizacion();
+    if (!Sync.conectado()) return;
     const ok = await Sync.alAbrir();
     if (ok && $('#modalBg').hidden) {
       if (vistas[vistaActual]) vistas[vistaActual]();
