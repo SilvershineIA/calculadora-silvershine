@@ -312,5 +312,5 @@ const PDFDoc = (() => {
     return compartirDoc(doc, nombre, cliente, cuerpo, asunto);
   }
 
-  return { docFactura, docCotizacion, docRecibo, docEstado, enviarPorCorreo, compartirDoc };
+  return { docFactura, docCotizacion, docRecibo, docEstado, enviarPorCorreo, compartirDoc, limpiar };
 })();

@@ -565,7 +565,95 @@ const Finanzas = (() => {
     `);
   }
 
+  /* ── Reportes para el contador (usan el período elegido arriba) ── */
+  async function datosReporteVentas(d, h) {
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    const clientes = await DB.clientes.list();
+    const rncDe = new Map(clientes.map(c => [c.id, c.rnc || '']));
+    const fs = (await DB.facturas.list())
+      .filter(f => (!d || (f.fecha || '') >= d) && (!h || (f.fecha || '') <= h))
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let tSub = 0, tImp = 0, tTot = 0, tCob = 0, tPen = 0;
+    const filas = fs.map(f => {
+      const anulada = f.estado === 'anulada';
+      const imp = f.impuesto || 0;
+      const sub = (f.total || 0) - imp;
+      const cob = anulada ? 0 : (f.total || 0) - (f.saldo || 0);
+      const pen = f.estado === 'pendiente' ? (f.saldo || 0) : 0;
+      if (!anulada) { tSub += sub; tImp += imp; tTot += f.total || 0; tCob += cob; tPen += pen; }
+      return [UI.fmtFecha(f.fecha), f.numero || '', f.orden ? '#' + f.orden : '', f.clienteNombre,
+        rncDe.get(f.clienteId) || '', n2(sub), n2(imp), n2(f.total), n2(cob), n2(pen),
+        anulada ? 'ANULADA' : f.estado, f.moneda === 'USD' ? 'US$' : 'RD$'];
+    });
+    return {
+      titulo: 'Reporte de ventas (facturas)',
+      seccion: {
+        columnas: [
+          { t: 'Fecha', w: 58 }, { t: 'NCF', w: 82 }, { t: 'Orden', w: 40 },
+          { t: 'Cliente', w: 150 }, { t: 'RNC/Céd.', w: 68 },
+          { t: 'Subtotal', w: 62, a: 'right' }, { t: 'ITBIS', w: 52, a: 'right' },
+          { t: 'Total', w: 66, a: 'right' }, { t: 'Cobrado', w: 66, a: 'right' },
+          { t: 'Pendiente', w: 66, a: 'right' }, { t: 'Estado', w: 52 }, { t: 'Mon.', w: 30 },
+        ],
+        filas,
+        totales: ['TOTALES', '', '', `${fs.length} facturas`, '', n2(tSub), n2(tImp), n2(tTot), n2(tCob), n2(tPen), '', ''],
+      },
+      nota: 'Las anuladas se listan pero NO suman en los totales.' + (tasa ? '' : ''),
+    };
+  }
+
+  async function datosReporteCobros(d, h) {
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    const fs = (await DB.facturas.list()).filter(f => f.estado !== 'anulada');
+    const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const movs = [];
+    let totalRD = 0;
+    for (const f of fs) {
+      for (const a of (f.abonos || [])) {
+        if ((d && (a.fecha || '') < d) || (h && (a.fecha || '') > h)) continue;
+        const enRD = f.moneda === 'USD' && tasa ? a.monto * tasa : a.monto;
+        totalRD += enRD;
+        movs.push({ fecha: a.fecha, fila: [UI.fmtFecha(a.fecha), f.clienteNombre,
+          f.orden ? '#' + f.orden : (f.numero || ''), a.metodo || '', n2(a.monto),
+          f.moneda === 'USD' ? 'US$' : 'RD$', n2(enRD)] });
+      }
+    }
+    movs.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    return {
+      titulo: 'Reporte de cobros (pagos recibidos)',
+      seccion: {
+        columnas: [
+          { t: 'Fecha', w: 62 }, { t: 'Cliente', w: 168 }, { t: 'Factura', w: 78 },
+          { t: 'Método', w: 82 }, { t: 'Monto', w: 62, a: 'right' }, { t: 'Mon.', w: 32 },
+          { t: 'En RD$', w: 62, a: 'right' },
+        ],
+        filas: movs.map(m => m.fila),
+        totales: ['TOTAL', `${movs.length} pagos`, '', '', '', '', n2(totalRD)],
+      },
+    };
+  }
+
+  function textoPeriodo(d, h) {
+    return (!d && !h) ? 'Todo el histórico'
+      : `Período: ${d ? UI.fmtFecha(d) : 'inicio'} al ${h ? UI.fmtFecha(h) : 'hoy'}`;
+  }
+
+  async function reporte(tipo, salida) {
+    const { d, h } = rangoDe(periodo);
+    const r = tipo === 'ventas' ? await datosReporteVentas(d, h) : await datosReporteCobros(d, h);
+    const sub = textoPeriodo(d, h) + (r.nota ? ` · ${r.nota}` : '');
+    const archivo = `silvershine-${tipo}-${(d || 'inicio')}-a-${(h || 'hoy')}`;
+    if (salida === 'csv') Reportes.descargarCSV(archivo + '.csv', [r.seccion]);
+    else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', r.titulo, sub, [r.seccion], { horizontal: tipo === 'ventas' });
+    else await Reportes.imprimir(r.titulo, sub, [r.seccion]);
+  }
+
   function init() {
+    UI.$$('#finReportes [data-rep]').forEach(b => b.addEventListener('click', () => {
+      const [tipo, salida] = b.dataset.rep.split('-');
+      reporte(tipo, salida);
+    }));
     $('#finPeriodo').addEventListener('change', e => {
       periodo = e.target.value;
       $('#finCustom').hidden = periodo !== 'custom';

@@ -129,7 +129,66 @@ const Caja = (() => {
         <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b>
       </div>`).join('') || '<p class="muted">Sin movimientos todavía — toca cualquier cuenta para registrar el primero.</p>';
 
+    $('#cuadreReportes').innerHTML = `
+      <div class="card">
+        <h2>📤 Reporte para el contador</h2>
+        <div class="row" style="align-items:center">
+          <span style="flex:1">🏦 Balances y movimientos</span>
+          <button class="btn-ghost btn-sm" data-crep="imp">🖨 Imprimir</button>
+          <button class="btn-ghost btn-sm" data-crep="pdf">📄 PDF</button>
+          <button class="btn-ghost btn-sm" data-crep="csv">📥 Excel</button>
+        </div>
+      </div>`;
+    UI.$$('#cuadreReportes [data-crep]').forEach(b =>
+      b.addEventListener('click', () => reporteCuadre(b.dataset.crep)));
+
     UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => movimiento(el.dataset.id)));
+  }
+
+  /* ── Reporte del cuadre: saldos + resumen + movimientos ── */
+  async function reporteCuadre(salida) {
+    const { base, movs, saldos } = await getEstado();
+    const tasa = tasaVigente();
+    const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const GRUPOS = { banco: 'Bancos y caja', usd: 'Dólares', tarjeta: 'Tarjeta (disponible)' };
+    const enPesos = c => c.moneda === 'USD' ? r2(saldos[c.id] * tasa) : saldos[c.id];
+    const tot = g => r2(base.cuentas.filter(c => c.grupo === g).reduce((s, c) => s + enPesos(c), 0));
+
+    const secSaldos = {
+      titulo: 'Saldos por cuenta',
+      columnas: [
+        { t: 'Cuenta', w: 190 }, { t: 'Grupo', w: 110 }, { t: 'Moneda', w: 50 },
+        { t: 'Saldo', w: 90, a: 'right' }, { t: 'En RD$', w: 90, a: 'right' },
+      ],
+      filas: base.cuentas.map(c => [c.nombre, GRUPOS[c.grupo] || c.grupo,
+        c.moneda === 'USD' ? 'US$' : 'RD$', n2(saldos[c.id]), n2(enPesos(c))]),
+    };
+    const secResumen = {
+      titulo: 'Resumen',
+      columnas: [{ t: 'Concepto', w: 300 }, { t: 'RD$', w: 120, a: 'right' }],
+      filas: [
+        ['Efectivo, caja y bancos', n2(tot('banco'))],
+        [`Dólares en pesos (tasa ${tasa})`, n2(tot('usd'))],
+        ['TOTAL DISPONIBLE', n2(r2(tot('banco') + tot('usd')))],
+        ['Crédito disponible en tarjetas', n2(tot('tarjeta'))],
+      ],
+    };
+    const historial = [...movs, ...(base.movsHistoricos || [])];
+    const secMovs = {
+      titulo: `Movimientos registrados (${historial.length})`,
+      columnas: [
+        { t: 'Fecha', w: 62 }, { t: 'Descripción', w: 300 },
+        { t: 'Monto', w: 80, a: 'right' }, { t: 'Mon.', w: 36 },
+      ],
+      filas: historial.map(m => [UI.fmtFecha(m.fecha), m.desc,
+        (m.signo < 0 ? '-' : '+') + n2(m.monto), m.moneda === 'USD' ? 'US$' : 'RD$']),
+    };
+    const hoyTxt = UI.fmtFecha(hoyISO());
+    const secciones = [secSaldos, secResumen, secMovs];
+    const archivo = `silvershine-cuadre-${hoyISO()}`;
+    if (salida === 'csv') Reportes.descargarCSV(archivo + '.csv', secciones);
+    else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', 'Cuadre de caja y bancos', `Saldos al ${hoyTxt}`, secciones);
+    else await Reportes.imprimir('Cuadre de caja y bancos', `Saldos al ${hoyTxt}`, secciones);
   }
 
   /* ── Movimiento sobre una cuenta ── */
