@@ -104,6 +104,7 @@ const Caja = (() => {
       </div>`).join('');
 
     $('#cuadreGrupos').innerHTML = `
+      <button class="btn-gold btn-block" id="btnGasto" style="margin-bottom:14px">💸 Registrar gasto — negocio o personal</button>` + `
       <div class="card">
         <h2>🏦 Efectivo, caja y bancos</h2>
         ${filas(bancos)}
@@ -143,6 +144,69 @@ const Caja = (() => {
       b.addEventListener('click', () => reporteCuadre(b.dataset.crep)));
 
     UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => movimiento(el.dataset.id)));
+    $('#btnGasto').addEventListener('click', () => formGasto());
+  }
+
+  /* ── Registrar gasto: negocio o personal, con cualquier cuenta ── */
+  const CATS_NEGOCIO = ['Materiales (oro, plata, piedras)', 'Taller', 'Envíos', 'Publicidad',
+    'Local (renta, luz, agua)', 'Comisiones y fees', 'Otros negocio'];
+  const CAT_PERSONAL = 'Personal / familia';
+
+  async function formGasto() {
+    const { base } = await getEstado();
+    abrirModal('💸 Registrar gasto', `
+      <form id="formGasto">
+        <div class="row">
+          <div><label>¿De qué se trata?</label>
+            <select name="ambito">
+              <option value="negocio">🏪 Negocio</option>
+              <option value="personal">🏠 Personal</option>
+            </select></div>
+          <div id="gCatRow"><label>Categoría</label>
+            <select name="categoria">${CATS_NEGOCIO.map(c => `<option>${c}</option>`).join('')}</select></div>
+        </div>
+        <div class="row">
+          <div><label>Pagado con</label>
+            <select name="cuenta">
+              ${base.cuentas.map(c => `<option value="${c.id}">${esc(c.nombre)} (${c.moneda === 'USD' ? 'US$' : 'RD$'})</option>`).join('')}
+            </select></div>
+          <div><label>Monto <span id="gMon">(RD$)</span></label>
+            <input name="monto" type="text" inputmode="decimal" required placeholder="0.00" autocomplete="off"></div>
+        </div>
+        <div class="row"><div>
+          <label>Descripción / nota</label>
+          <input name="nota" placeholder="Ej: onza de plata, renta agosto, supermercado…" autocomplete="off">
+        </div></div>
+        <button type="submit" class="btn-gold btn-block">Registrar gasto</button>
+      </form>
+    `);
+    const form = $('#formGasto');
+    form.ambito.addEventListener('change', () => {
+      $('#gCatRow').hidden = form.ambito.value === 'personal';
+    });
+    form.cuenta.addEventListener('change', () => {
+      const c = base.cuentas.find(x => x.id === form.cuenta.value);
+      $('#gMon').textContent = c && c.moneda === 'USD' ? '(US$)' : '(RD$)';
+    });
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const monto = Number(String(form.monto.value).replace(/,/g, ''));
+      if (Number.isNaN(monto) || !(monto > 0)) { toast('Monto no válido'); return; }
+      const c = base.cuentas.find(x => x.id === form.cuenta.value);
+      const ambito = form.ambito.value;
+      const categoria = ambito === 'personal' ? CAT_PERSONAL : form.categoria.value;
+      const nota = form.nota.value.trim();
+      await DB.config.upsert({
+        id: uidMov(), tipo: 'cuadre-mov', ts: Date.now(), fecha: hoyISO(),
+        desc: `Gasto ${ambito === 'personal' ? 'personal' : 'de negocio'} · ${categoria}${nota ? ' — ' + nota : ''} · ${c.nombre}`,
+        cambios: [{ cuenta: c.id, delta: -monto }],
+        monto: r2(monto), moneda: c.moneda, signo: -1,
+        gasto: { ambito, categoria, cuentaNombre: c.nombre },
+      });
+      cerrarModal();
+      toast(`💸 Gasto registrado — ${c.nombre} bajó ${fmt(monto, c.moneda)}`);
+      render();
+    });
   }
 
   /* ── Reporte del cuadre: saldos + resumen + movimientos ── */

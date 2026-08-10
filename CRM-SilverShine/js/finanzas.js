@@ -267,13 +267,20 @@ const Finanzas = (() => {
     const ganancia = ventasConCosto - costo;
     const margen = ventasConCosto > 0 ? Math.round(ganancia / ventasConCosto * 100) : null;
 
+    // Ganancia NETA = bruta − gastos de negocio del período (los del Cuadre)
+    const gastosNeg = (await gastosEn(d, h)).filter(g => g.gasto.ambito === 'negocio')
+      .reduce((s, g) => s + g.enRD, 0);
+    const neta = ganancia - gastosNeg;
+
     $('#finStats').innerHTML =
       statTile(fmtDinero(ventas), `Ventas · ${fs.length} facturas`, '', 'stat-hero') +
       statTile(fmtDinero(cobrado), 'Cobrado', 'verde') +
       statTile(fmtDinero(pendiente), 'Pendiente', pendiente > 0 ? 'rojo' : '') +
       statTile(fmtDinero(costo), 'Costos') +
-      statTile(fmtDinero(ganancia), 'Ganancia', ganancia >= 0 ? 'verde' : 'rojo') +
-      statTile(margen === null ? '—' : margen + '%', 'Margen');
+      statTile(fmtDinero(ganancia), 'Ganancia bruta', ganancia >= 0 ? 'verde' : 'rojo') +
+      statTile(margen === null ? '—' : margen + '%', 'Margen') +
+      statTile(fmtDinero(gastosNeg), 'Gastos negocio') +
+      statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo');
 
     $('#finNota').innerHTML =
       (conCosto < fs.length
@@ -639,14 +646,90 @@ const Finanzas = (() => {
       : `Período: ${d ? UI.fmtFecha(d) : 'inicio'} al ${h ? UI.fmtFecha(h) : 'hoy'}`;
   }
 
+  /* Gastos del cuadre en un rango (docs 'cuadre-mov' con etiqueta gasto) */
+  async function gastosEn(d, h) {
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 60;
+    return (await DB.config.list())
+      .filter(m => m.tipo === 'cuadre-mov' && m.gasto &&
+        (!d || (m.fecha || '') >= d) && (!h || (m.fecha || '') <= h))
+      .map(m => ({ ...m, enRD: m.moneda === 'USD' ? (m.monto * (tasa || 60)) : m.monto }))
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  }
+
+  /* Reporte de gastos: detalle + por categoría + ganancia bruta y NETA */
+  async function datosReporteGastos(d, h) {
+    const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const gastos = await gastosEn(d, h);
+    const neg = gastos.filter(g => g.gasto.ambito === 'negocio');
+    const per = gastos.filter(g => g.gasto.ambito === 'personal');
+    const sum = arr => arr.reduce((s, g) => s + g.enRD, 0);
+
+    const detalle = {
+      titulo: 'Detalle de gastos',
+      columnas: [
+        { t: 'Fecha', w: 58 }, { t: 'Descripción', w: 200 }, { t: 'Categoría', w: 120 },
+        { t: 'Ámbito', w: 58 }, { t: 'Cuenta', w: 110 },
+        { t: 'Monto', w: 60, a: 'right' }, { t: 'Mon.', w: 32 }, { t: 'En RD$', w: 65, a: 'right' },
+      ],
+      filas: gastos.map(g => [UI.fmtFecha(g.fecha), g.desc.replace(/^Gasto [^·]+· /, ''),
+        g.gasto.categoria, g.gasto.ambito === 'personal' ? 'Personal' : 'Negocio',
+        g.gasto.cuentaNombre || '', n2(g.monto), g.moneda === 'USD' ? 'US$' : 'RD$', n2(g.enRD)]),
+      totales: ['TOTAL', `${gastos.length} gastos`, '', '', '', '', '', n2(sum(gastos))],
+    };
+
+    const porCat = new Map();
+    for (const g of gastos) {
+      const k = `${g.gasto.categoria}|${g.gasto.ambito}`;
+      porCat.set(k, (porCat.get(k) || 0) + g.enRD);
+    }
+    const categorias = {
+      titulo: 'Por categoría',
+      columnas: [{ t: 'Categoría', w: 240 }, { t: 'Ámbito', w: 80 }, { t: 'Total RD$', w: 100, a: 'right' }],
+      filas: [...porCat.entries()].sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => { const [cat, amb] = k.split('|'); return [cat, amb === 'personal' ? 'Personal' : 'Negocio', n2(v)]; }),
+    };
+
+    // Ganancia bruta del período (ventas con costo) y neta (− gastos de negocio)
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    const conv = (m, mon) => (mon === 'USD' && tasa ? m * tasa : m) || 0;
+    const fsCosto = (await DB.facturas.list()).filter(f => f.estado !== 'anulada' && f.costo > 0 &&
+      (!d || (f.fecha || '') >= d) && (!h || (f.fecha || '') <= h));
+    const vc = fsCosto.reduce((s, f) => s + conv(f.total, f.moneda || 'DOP'), 0);
+    const cc = fsCosto.reduce((s, f) => s + conv(f.costo, f.moneda || 'DOP'), 0);
+    const bruta = vc - cc;
+    const neta = bruta - sum(neg);
+    const resumen = {
+      titulo: 'Resumen del período',
+      columnas: [{ t: 'Concepto', w: 300 }, { t: 'RD$', w: 120, a: 'right' }],
+      filas: [
+        ['Gastos de negocio', n2(sum(neg))],
+        ['Gastos personales', n2(sum(per))],
+        ['Total de gastos', n2(sum(gastos))],
+        [`Ganancia BRUTA (ventas con costo: ${fsCosto.length} fact.)`, n2(bruta)],
+        ['Ganancia NETA (bruta − gastos de negocio)', n2(neta)],
+      ],
+    };
+    return { titulo: 'Reporte de gastos', secciones: [detalle, categorias, resumen], horizontal: true };
+  }
+
   async function reporte(tipo, salida) {
     const { d, h } = rangoDe(periodo);
-    const r = tipo === 'ventas' ? await datosReporteVentas(d, h) : await datosReporteCobros(d, h);
-    const sub = textoPeriodo(d, h) + (r.nota ? ` · ${r.nota}` : '');
+    let titulo, secciones, horizontal = false, nota = '';
+    if (tipo === 'ventas') {
+      const r = await datosReporteVentas(d, h);
+      titulo = r.titulo; secciones = [r.seccion]; horizontal = true; nota = r.nota || '';
+    } else if (tipo === 'cobros') {
+      const r = await datosReporteCobros(d, h);
+      titulo = r.titulo; secciones = [r.seccion];
+    } else {
+      const r = await datosReporteGastos(d, h);
+      titulo = r.titulo; secciones = r.secciones; horizontal = r.horizontal;
+    }
+    const sub = textoPeriodo(d, h) + (nota ? ` · ${nota}` : '');
     const archivo = `silvershine-${tipo}-${(d || 'inicio')}-a-${(h || 'hoy')}`;
-    if (salida === 'csv') Reportes.descargarCSV(archivo + '.csv', [r.seccion]);
-    else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', r.titulo, sub, [r.seccion], { horizontal: tipo === 'ventas' });
-    else await Reportes.imprimir(r.titulo, sub, [r.seccion]);
+    if (salida === 'csv') Reportes.descargarCSV(archivo + '.csv', secciones);
+    else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', titulo, sub, secciones, { horizontal });
+    else await Reportes.imprimir(titulo, sub, secciones);
   }
 
   function init() {
