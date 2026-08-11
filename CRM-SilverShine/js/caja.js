@@ -143,8 +143,57 @@ const Caja = (() => {
     UI.$$('#cuadreReportes [data-crep]').forEach(b =>
       b.addEventListener('click', () => reporteCuadre(b.dataset.crep)));
 
-    UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => movimiento(el.dataset.id)));
+    UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => detalleCuenta(el.dataset.id)));
     $('#btnGasto').addEventListener('click', () => formGasto());
+  }
+
+  /* ── Detalle de una cuenta: saldo, acciones y SU historial con saldo corrido ── */
+  async function detalleCuenta(cuentaId) {
+    const { base, movs, saldos } = await getEstado();
+    const c = base.cuentas.find(x => x.id === cuentaId);
+    if (!c) return;
+    const tasa = tasaVigente();
+
+    // Movimientos de ESTA cuenta, con el saldo después de cada uno
+    const propios = movs
+      .filter(m => (m.cambios || []).some(cb => cb.cuenta === c.id))
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0));   // ascendente para el corrido
+    let corrido = c.saldoInicial || 0;
+    const filas = propios.map(m => {
+      const delta = (m.cambios || []).filter(cb => cb.cuenta === c.id).reduce((s, cb) => s + cb.delta, 0);
+      corrido = r2(corrido + delta);
+      return { fecha: m.fecha, desc: m.desc, delta, saldo: corrido };
+    }).reverse();   // mostrar lo más reciente arriba
+    const historicos = (base.movsHistoricos || []).filter(m => (m.desc || '').includes(c.nombre));
+
+    abrirModal(c.nombre, `
+      <div class="deuda-banner" style="background:var(--rose-soft);border-color:var(--gold);color:var(--gold-bright)">
+        Saldo actual: <b>${fmt(saldos[c.id], c.moneda)}</b>${
+        c.moneda === 'USD' ? ` · ≈ ${UI.fmtDinero(r2(saldos[c.id] * tasa))} (a ${tasa})` : ''}
+      </div>
+      <p class="muted" style="margin-bottom:12px">Saldo inicial: ${fmt(c.saldoInicial || 0, c.moneda)} · ${filas.length} movimiento${filas.length === 1 ? '' : 's'} registrados</p>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn-gold btn-block" id="dcMov">↔ Movimiento</button>
+        <button class="btn-ghost btn-block" id="dcGasto">💸 Gasto</button>
+      </div>
+      <h3 class="sub-h">Historial de la cuenta</h3>
+      ${filas.length ? filas.slice(0, 40).map(f => `
+        <div class="abono-row" style="align-items:flex-start">
+          <span>${fmtFecha(f.fecha)} · ${esc(f.desc)}</span>
+          <span style="text-align:right;white-space:nowrap">
+            <b class="${f.delta < 0 ? 'rojo' : 'verde'}">${f.delta < 0 ? '−' : '+'}${fmt(Math.abs(f.delta), c.moneda)}</b><br>
+            <span class="muted" style="font-size:.78rem">saldo ${fmt(f.saldo, c.moneda)}</span>
+          </span>
+        </div>`).join('') : '<p class="muted">Sin movimientos nuevos en esta cuenta.</p>'}
+      ${filas.length > 40 ? `<p class="muted">…y ${filas.length - 40} más (completos en el reporte 📤).</p>` : ''}
+      ${historicos.length ? `
+        <h3 class="sub-h" style="margin-top:12px">Historial anterior (del cuadre viejo)</h3>
+        ${historicos.map(m => `
+          <div class="abono-row"><span>${fmtFecha(m.fecha)} · ${esc(m.desc)}</span>
+          <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b></div>`).join('')}` : ''}
+    `);
+    $('#dcMov').addEventListener('click', () => movimiento(c.id));
+    $('#dcGasto').addEventListener('click', () => formGasto(c.id));
   }
 
   /* ── Registrar gasto: negocio o personal, con cualquier cuenta ── */
@@ -152,7 +201,7 @@ const Caja = (() => {
     'Local (renta, luz, agua)', 'Comisiones y fees', 'Otros negocio'];
   const CAT_PERSONAL = 'Personal / familia';
 
-  async function formGasto() {
+  async function formGasto(cuentaPre) {
     const { base } = await getEstado();
     abrirModal('💸 Registrar gasto', `
       <form id="formGasto">
@@ -168,7 +217,7 @@ const Caja = (() => {
         <div class="row">
           <div><label>Pagado con</label>
             <select name="cuenta">
-              ${base.cuentas.map(c => `<option value="${c.id}">${esc(c.nombre)} (${c.moneda === 'USD' ? 'US$' : 'RD$'})</option>`).join('')}
+              ${base.cuentas.map(c => `<option value="${c.id}" ${c.id === cuentaPre ? 'selected' : ''}>${esc(c.nombre)} (${c.moneda === 'USD' ? 'US$' : 'RD$'})</option>`).join('')}
             </select></div>
           <div><label>Monto <span id="gMon">(RD$)</span></label>
             <input name="monto" type="text" inputmode="decimal" required placeholder="0.00" autocomplete="off"></div>
@@ -188,6 +237,7 @@ const Caja = (() => {
       const c = base.cuentas.find(x => x.id === form.cuenta.value);
       $('#gMon').textContent = c && c.moneda === 'USD' ? '(US$)' : '(RD$)';
     });
+    form.cuenta.dispatchEvent(new Event('change'));   // label correcto si vino preseleccionada
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const monto = Number(String(form.monto.value).replace(/,/g, ''));
@@ -203,9 +253,9 @@ const Caja = (() => {
         monto: r2(monto), moneda: c.moneda, signo: -1,
         gasto: { ambito, categoria, cuentaNombre: c.nombre },
       });
-      cerrarModal();
       toast(`💸 Gasto registrado — ${c.nombre} bajó ${fmt(monto, c.moneda)}`);
       render();
+      if (cuentaPre) detalleCuenta(cuentaPre); else cerrarModal();
     });
   }
 
@@ -287,8 +337,10 @@ const Caja = (() => {
           <input name="nota" placeholder="Ej: depósito de Adan, pago tarjeta, retiro caja…" autocomplete="off">
         </div></div>
         <button type="submit" class="btn-gold btn-block">Aplicar al cuadre</button>
+        <button type="button" class="btn-ghost btn-block" id="movVolver" style="margin-top:8px">← Volver a la cuenta</button>
       </form>
     `);
+    $('#movVolver').addEventListener('click', () => detalleCuenta(cuentaId));
 
     const form = $('#formMov');
     form.tipo.addEventListener('change', () => { $('#movDestinoRow').hidden = form.tipo.value !== 'transfer'; });
@@ -319,9 +371,9 @@ const Caja = (() => {
           [{ cuenta: c.id, delta: -monto }, { cuenta: d.id, delta: recibido }], monto, c.moneda, -1);
       }
 
-      cerrarModal();
       toast('✓ Cuadre actualizado');
       render();
+      detalleCuenta(cuentaId);   // de vuelta al detalle con el saldo fresco
     });
   }
 

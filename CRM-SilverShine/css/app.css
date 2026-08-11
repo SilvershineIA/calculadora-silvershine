@@ -297,6 +297,12 @@ button:hover{filter:brightness(1.12)}
 .fin-costo{width:110px;padding:4px 8px;font-size:.85rem;display:inline-block;vertical-align:middle;
   border:1px solid var(--border);border-radius:8px;background:var(--panel)}
 
+/* ── Ficha 360 del cliente: pestañas ── */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.chip-tab{border:1px solid var(--border);background:var(--panel);border-radius:999px;
+  padding:6px 13px;font-size:.83rem;cursor:pointer;color:var(--muted)}
+.chip-tab.on{background:var(--rose-soft);border-color:var(--gold);color:var(--gold-bright);font-weight:600}
+
 /* ── Mi Día: cola de acciones ── */
 .dia-item{cursor:pointer}
 .dia-hecho{opacity:.55}
