@@ -13,6 +13,7 @@ const Caja = (() => {
 
   const hoyISO = () => new Date().toISOString().slice(0, 10);
   const r2 = v => Math.round(v * 100) / 100;
+  let rangoMovs = 'mes';   // filtro de fecha del historial del panel
 
   /* Cuentas iniciales = el Excel del usuario (ago 2026).
      EffiCommerce quedó fuera a propósito (no lo usa). */
@@ -123,12 +124,17 @@ const Caja = (() => {
         <p class="muted" style="margin-top:8px">El pago de la tarjeta se registra como transferencia desde la cuenta principal — toca la cuenta que paga y elige 🔁.</p>
       </div>`;
 
-    const historial = [...movs, ...(base.movsHistoricos || [])].slice(0, 15);
-    $('#cuadreMovs').innerHTML = historial.map(m => `
+    const historial = [...movs, ...(base.movsHistoricos || [])]
+      .filter(m => UI.enRango(m.fecha, rangoMovs)).slice(0, 30);
+    $('#cuadreMovs').innerHTML = UI.chipsRango(rangoMovs) + (historial.map(m => `
       <div class="abono-row">
         <span>${fmtFecha(m.fecha)} · ${esc(m.desc)}</span>
         <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b>
-      </div>`).join('') || '<p class="muted">Sin movimientos todavía — toca cualquier cuenta para registrar el primero.</p>';
+      </div>`).join('') || '<p class="muted">Sin movimientos en este rango.</p>');
+    UI.$$('#cuadreMovs .chip-rango').forEach(b => b.addEventListener('click', () => {
+      rangoMovs = b.dataset.rango;
+      render();
+    }));
 
     $('#cuadreReportes').innerHTML = `
       <div class="card">
@@ -147,36 +153,41 @@ const Caja = (() => {
     $('#btnGasto').addEventListener('click', () => formGasto());
   }
 
-  /* ── Detalle de una cuenta: saldo, acciones y SU historial con saldo corrido ── */
-  async function detalleCuenta(cuentaId) {
+  /* ── Detalle de una cuenta: saldo, acciones y SU historial con saldo
+     corrido, filtrable por fecha (Hoy · 7 días · Este mes · Todo) ── */
+  async function detalleCuenta(cuentaId, rango = 'mes') {
     const { base, movs, saldos } = await getEstado();
     const c = base.cuentas.find(x => x.id === cuentaId);
     if (!c) return;
     const tasa = tasaVigente();
 
-    // Movimientos de ESTA cuenta, con el saldo después de cada uno
+    // El saldo corrido se calcula sobre TODOS los movimientos (es acumulado);
+    // el rango solo decide cuáles filas se muestran
     const propios = movs
       .filter(m => (m.cambios || []).some(cb => cb.cuenta === c.id))
-      .sort((a, b) => (a.ts || 0) - (b.ts || 0));   // ascendente para el corrido
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0));
     let corrido = c.saldoInicial || 0;
-    const filas = propios.map(m => {
+    const todas = propios.map(m => {
       const delta = (m.cambios || []).filter(cb => cb.cuenta === c.id).reduce((s, cb) => s + cb.delta, 0);
       corrido = r2(corrido + delta);
       return { fecha: m.fecha, desc: m.desc, delta, saldo: corrido };
-    }).reverse();   // mostrar lo más reciente arriba
-    const historicos = (base.movsHistoricos || []).filter(m => (m.desc || '').includes(c.nombre));
+    }).reverse();
+    const filas = todas.filter(f => UI.enRango(f.fecha, rango));
+    const historicos = (base.movsHistoricos || [])
+      .filter(m => (m.desc || '').includes(c.nombre) && UI.enRango(m.fecha, rango));
 
     abrirModal(c.nombre, `
       <div class="deuda-banner" style="background:var(--rose-soft);border-color:var(--gold);color:var(--gold-bright)">
         Saldo actual: <b>${fmt(saldos[c.id], c.moneda)}</b>${
         c.moneda === 'USD' ? ` · ≈ ${UI.fmtDinero(r2(saldos[c.id] * tasa))} (a ${tasa})` : ''}
       </div>
-      <p class="muted" style="margin-bottom:12px">Saldo inicial: ${fmt(c.saldoInicial || 0, c.moneda)} · ${filas.length} movimiento${filas.length === 1 ? '' : 's'} registrados</p>
-      <div class="row" style="margin-bottom:12px">
+      <p class="muted" style="margin-bottom:12px">Saldo inicial: ${fmt(c.saldoInicial || 0, c.moneda)} · ${todas.length} movimiento${todas.length === 1 ? '' : 's'} en total</p>
+      <div class="row" style="margin-bottom:8px">
         <button class="btn-gold btn-block" id="dcMov">↔ Movimiento</button>
         <button class="btn-ghost btn-block" id="dcGasto">💸 Gasto</button>
       </div>
       <h3 class="sub-h">Historial de la cuenta</h3>
+      ${UI.chipsRango(rango)}
       ${filas.length ? filas.slice(0, 40).map(f => `
         <div class="abono-row" style="align-items:flex-start">
           <span>${fmtFecha(f.fecha)} · ${esc(f.desc)}</span>
@@ -184,7 +195,7 @@ const Caja = (() => {
             <b class="${f.delta < 0 ? 'rojo' : 'verde'}">${f.delta < 0 ? '−' : '+'}${fmt(Math.abs(f.delta), c.moneda)}</b><br>
             <span class="muted" style="font-size:.78rem">saldo ${fmt(f.saldo, c.moneda)}</span>
           </span>
-        </div>`).join('') : '<p class="muted">Sin movimientos nuevos en esta cuenta.</p>'}
+        </div>`).join('') : '<p class="muted">Sin movimientos en este rango.</p>'}
       ${filas.length > 40 ? `<p class="muted">…y ${filas.length - 40} más (completos en el reporte 📤).</p>` : ''}
       ${historicos.length ? `
         <h3 class="sub-h" style="margin-top:12px">Historial anterior (del cuadre viejo)</h3>
@@ -192,6 +203,8 @@ const Caja = (() => {
           <div class="abono-row"><span>${fmtFecha(m.fecha)} · ${esc(m.desc)}</span>
           <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b></div>`).join('')}` : ''}
     `);
+    UI.$$('#modalBody .chip-rango').forEach(b =>
+      b.addEventListener('click', () => detalleCuenta(cuentaId, b.dataset.rango)));
     $('#dcMov').addEventListener('click', () => movimiento(c.id));
     $('#dcGasto').addEventListener('click', () => formGasto(c.id));
   }

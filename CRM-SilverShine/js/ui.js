@@ -110,6 +110,19 @@ const UI = (() => {
   /* Firma personal de los mensajes: "José de SilverShine" (editable en Ajustes) */
   const quienSaluda = emp => emp.vendedor ? `${emp.vendedor} de ${emp.nombre}` : emp.nombre;
 
+  /* ── Rango de fechas para historiales: Hoy · Semana · Mes · Todo ── */
+  const RANGOS = [['dia', 'Hoy'], ['semana', '7 días'], ['mes', 'Este mes'], ['todo', 'Todo']];
+  function enRango(fecha, rango) {
+    if (rango === 'todo') return true;
+    if (!fecha) return false;
+    const hoy = new Date().toISOString().slice(0, 10);
+    if (rango === 'dia') return fecha === hoy;
+    if (rango === 'semana') return fecha >= new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    return fecha.slice(0, 7) === hoy.slice(0, 7);   // mes calendario
+  }
+  const chipsRango = activo => `<div class="chips" style="margin:8px 0">${
+    RANGOS.map(([k, t]) => `<button type="button" class="chip-tab mini chip-rango ${k === activo ? 'on' : ''}" data-rango="${k}">${t}</button>`).join('')}</div>`;
+
   /* ── WhatsApp: teléfono o @usuario ──
      Los usernames de WhatsApp NO tienen enlace tipo wa.me (hay que buscar
      el @usuario exacto dentro de la app), así que sin teléfono copiamos
@@ -256,5 +269,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
 })();

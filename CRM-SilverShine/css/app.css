@@ -302,6 +302,7 @@ button:hover{filter:brightness(1.12)}
 .chip-tab{border:1px solid var(--border);background:var(--panel);border-radius:999px;
   padding:6px 13px;font-size:.83rem;cursor:pointer;color:var(--muted)}
 .chip-tab.on{background:var(--rose-soft);border-color:var(--gold);color:var(--gold-bright);font-weight:600}
+.chip-tab.mini{padding:3px 10px;font-size:.75rem}
 
 /* ── Mi Día: cola de acciones ── */
 .dia-item{cursor:pointer}
