@@ -267,8 +267,12 @@ const Finanzas = (() => {
     const ganancia = ventasConCosto - costo;
     const margen = ventasConCosto > 0 ? Math.round(ganancia / ventasConCosto * 100) : null;
 
-    // Ganancia NETA = bruta − gastos de negocio del período (los del Cuadre)
-    const gastosNeg = (await gastosEn(d, h)).filter(g => g.gasto.ambito === 'negocio')
+    // Ganancia NETA = bruta − gastos OPERATIVOS del período.
+    // "Materiales" queda fuera: es inversión en inventario y ya resta
+    // en la bruta vía el costo de cada pieza (evita contarlo dos veces).
+    const esMaterial = g => /^materiales/i.test((g.gasto && g.gasto.categoria) || '');
+    const gastosNeg = (await gastosEn(d, h))
+      .filter(g => g.gasto.ambito === 'negocio' && !esMaterial(g))
       .reduce((s, g) => s + g.enRD, 0);
     const neta = ganancia - gastosNeg;
 
@@ -279,7 +283,7 @@ const Finanzas = (() => {
       statTile(fmtDinero(costo), 'Costos') +
       statTile(fmtDinero(ganancia), 'Ganancia bruta', ganancia >= 0 ? 'verde' : 'rojo') +
       statTile(margen === null ? '—' : margen + '%', 'Margen') +
-      statTile(fmtDinero(gastosNeg), 'Gastos negocio') +
+      statTile(fmtDinero(gastosNeg), 'Gastos operativos') +
       statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo');
 
     $('#finNota').innerHTML =
@@ -656,11 +660,14 @@ const Finanzas = (() => {
       .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
   }
 
-  /* Reporte de gastos: detalle + por categoría + ganancia bruta y NETA */
+  /* Reporte de gastos: detalle + por categoría + ganancia bruta y NETA.
+     Materiales va aparte: es inventario, ya contado en el costo por pieza. */
   async function datosReporteGastos(d, h) {
     const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const gastos = await gastosEn(d, h);
-    const neg = gastos.filter(g => g.gasto.ambito === 'negocio');
+    const esMaterial = g => /^materiales/i.test((g.gasto && g.gasto.categoria) || '');
+    const materiales = gastos.filter(g => g.gasto.ambito === 'negocio' && esMaterial(g));
+    const neg = gastos.filter(g => g.gasto.ambito === 'negocio' && !esMaterial(g));
     const per = gastos.filter(g => g.gasto.ambito === 'personal');
     const sum = arr => arr.reduce((s, g) => s + g.enRD, 0);
 
@@ -700,13 +707,14 @@ const Finanzas = (() => {
     const neta = bruta - sum(neg);
     const resumen = {
       titulo: 'Resumen del período',
-      columnas: [{ t: 'Concepto', w: 300 }, { t: 'RD$', w: 120, a: 'right' }],
+      columnas: [{ t: 'Concepto', w: 340 }, { t: 'RD$', w: 120, a: 'right' }],
       filas: [
-        ['Gastos de negocio', n2(sum(neg))],
+        ['Gastos operativos del negocio (sin materiales)', n2(sum(neg))],
+        ['Compras de materiales — inventario, ya contadas en el costo de las piezas', n2(sum(materiales))],
         ['Gastos personales', n2(sum(per))],
-        ['Total de gastos', n2(sum(gastos))],
+        ['Total de salidas', n2(sum(gastos))],
         [`Ganancia BRUTA (ventas con costo: ${fsCosto.length} fact.)`, n2(bruta)],
-        ['Ganancia NETA (bruta − gastos de negocio)', n2(neta)],
+        ['Ganancia NETA (bruta − gastos operativos)', n2(neta)],
       ],
     };
     return { titulo: 'Reporte de gastos', secciones: [detalle, categorias, resumen], horizontal: true };

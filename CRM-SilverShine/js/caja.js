@@ -210,7 +210,10 @@ const Caja = (() => {
   }
 
   /* ── Registrar gasto: negocio o personal, con cualquier cuenta ── */
-  const CATS_NEGOCIO = ['Materiales (oro, plata, piedras)', 'Taller', 'Envíos', 'Publicidad',
+  /* "Materiales" es INVERSIÓN EN INVENTARIO, no gasto operativo: el
+     material ya resta en la ganancia vía el costo de cada pieza vendida.
+     Se registra aquí para que la cuenta baje, pero NO resta en la neta. */
+  const CATS_NEGOCIO = ['Materiales (inventario — no resta en ganancia)', 'Taller', 'Envíos', 'Publicidad',
     'Local (renta, luz, agua)', 'Comisiones y fees', 'Otros negocio'];
   const CAT_PERSONAL = 'Personal / familia';
 
