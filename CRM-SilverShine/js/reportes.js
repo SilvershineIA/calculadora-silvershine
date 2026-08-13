@@ -9,11 +9,16 @@
 const Reportes = (() => {
   const GRIS = [102, 102, 102], SLATE = [40, 40, 40], ROSA = [207, 155, 144];
 
-  /* ── CSV con BOM (acentos correctos en Excel) ── */
+  /* ── CSV con BOM (acentos correctos en Excel) ──
+     Los montos formateados ("1,234.56") van como número crudo (1234.56)
+     para que Excel los sume; y las celdas que parezcan fórmula (=, +, @)
+     se neutralizan para que no se ejecuten al abrir el archivo. */
   function descargarCSV(nombre, secciones) {
     const celda = v => {
       const s = String(v ?? '');
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      if (/^-?[\d,]+\.\d{2}$/.test(s)) return s.replace(/,/g, '');   // número de verdad
+      const seguro = /^[=+@]/.test(s) ? "'" + s : s;
+      return /[",\n]/.test(seguro) ? `"${seguro.replace(/"/g, '""')}"` : seguro;
     };
     const lineas = [];
     for (const sec of secciones) {
@@ -58,7 +63,7 @@ const Reportes = (() => {
       </div>
       <div class="p-meta">
         <div><b>${esc(titulo).toUpperCase()}</b><br>${esc(sub)}</div>
-        <div style="text-align:right">Generado: ${UI.fmtFecha(new Date().toISOString().slice(0, 10))}</div>
+        <div style="text-align:right">Generado: ${UI.fmtFecha(UI.fechaISO())}</div>
       </div>
       ${secciones.map(tabla).join('')}
       ${emp.pie ? `<div class="p-pie">${esc(emp.pie)}</div>` : ''}

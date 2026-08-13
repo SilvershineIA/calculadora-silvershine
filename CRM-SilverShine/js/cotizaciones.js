@@ -21,7 +21,7 @@ const Cotizaciones = (() => {
   const esLeadCaliente = c => estadoDe(c) === 'aceptada' && !c.facturaId;
 
   /* ¿Está pospuesta a propósito? ("dale un toque en 15 días" desde Mi Día) */
-  const pospuesta = c => c.proximoToque && c.proximoToque > new Date().toISOString().slice(0, 10);
+  const pospuesta = c => c.proximoToque && c.proximoToque > UI.fechaISO();
 
   /* Segunda etiqueta: ¿hubo gestión (creación o seguimiento) reciente?
      Abiertas: 15 días de ventana · aceptadas sin facturar: 7 (más calientes).
@@ -31,7 +31,7 @@ const Cotizaciones = (() => {
     if (pospuesta(c)) return `<span class="badge b-anu">⏰ toque el ${fmtFecha(c.proximoToque)}</span>`;
     const dias = esLeadCaliente(c) ? 7 : 15;
     const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
-    const corte = new Date(Date.now() - dias * 864e5).toISOString().slice(0, 10);
+    const corte = UI.fechaISO(new Date(Date.now() - dias * 864e5));
     return ultima && ultima >= corte
       ? '<span class="badge b-pag">🤝 al día</span>'
       : '<span class="badge b-roja">🤝 sin seguimiento</span>';
@@ -65,7 +65,7 @@ const Cotizaciones = (() => {
     if (!UI.tieneWhatsApp(cliente)) { detalle(id); return false; }
     const emp = await UI.getEmpresa();
     UI.abrirWhatsApp(cliente, mensajeSeguimientoDe(c, emp));
-    c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via: 'WhatsApp' }];
+    c.seguimientos = [...(c.seguimientos || []), { fecha: UI.fechaISO(), via: 'WhatsApp' }];
     await DB.cotizaciones.upsert(c);
     toast('🤝 Seguimiento enviado y registrado');
     return true;
@@ -88,7 +88,7 @@ const Cotizaciones = (() => {
 
     // Abiertas con más de 90 días pasan a vencidas solas
     // (si el usuario cambió el estado a mano, los 90 días corren desde ese día)
-    const corte = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    const corte = UI.fechaISO(new Date(Date.now() - 90 * 864e5));
     for (const c of lista) {
       const base = c.estadoManual || c.fecha;
       if (ABIERTAS.includes(estadoDe(c)) && base && base < corte) {
@@ -117,7 +117,7 @@ const Cotizaciones = (() => {
       if (!cer.length) return null;
       return Math.round(cer.filter(esFacturada).length / cer.length * 100);
     };
-    const hace90 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    const hace90 = UI.fechaISO(new Date(Date.now() - 90 * 864e5));
     const ultimas90 = todasCot.filter(c => (c.fecha || '') >= hace90);
     const cerradas = todasCot.filter(esCerrada);
     const conSeg = cerradas.filter(c => (c.seguimientos || []).length);
@@ -280,7 +280,7 @@ const Cotizaciones = (() => {
       if (!confirm(`¿Convertir la cotización COT-${c.numero} en factura?${epConv ? ` Incluirá el plan ${epConv.nombre}.` : ''} Se creará con el próximo NCF.`)) return;
       const numero = await Facturas.siguienteNumero();
       const orden = await Facturas.siguienteOrden();
-      const hoyIso = new Date().toISOString().slice(0, 10);
+      const hoyIso = UI.fechaISO();
       const lineasF = c.lineas.map(l => ({ ...l }));
       if (epConv && epConv.fee) {
         lineasF.push({ descripcion: `${Facturas.FEE_DESC} (${epConv.meses} cuotas × RD$${epConv.fee})`, cantidad: epConv.meses, precio: epConv.fee });
@@ -293,7 +293,7 @@ const Cotizaciones = (() => {
           const d = new Date(); const dia = d.getDate();
           d.setDate(1); d.setMonth(d.getMonth() + 1);
           d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
-          return d.toISOString().slice(0, 10);
+          return UI.fechaISO(d);
         })();
         planPago = {
           tipo: 'easypay', plan: epConv.plan, fee: epConv.fee, inicial: 0, frecuencia: 'mensual',
@@ -406,7 +406,7 @@ const Cotizaciones = (() => {
     const mensajeSeguimiento = emp => mensajeSeguimientoDe(c, emp);
 
     const registrarSeguimiento = async via => {
-      c.seguimientos = [...(c.seguimientos || []), { fecha: new Date().toISOString().slice(0, 10), via }];
+      c.seguimientos = [...(c.seguimientos || []), { fecha: UI.fechaISO(), via }];
       await DB.cotizaciones.upsert(c);
       toast(`🤝 Seguimiento por ${via} registrado`);
       render();
@@ -429,7 +429,7 @@ const Cotizaciones = (() => {
     on('#cEditar', () => formulario(c));
     $('#cEstado').addEventListener('change', async e => {
       c.estado = e.target.value;
-      c.estadoManual = new Date().toISOString().slice(0, 10);
+      c.estadoManual = UI.fechaISO();
       await DB.cotizaciones.upsert(c);
       toast(`Estado cambiado a ${e.target.value}`);
       render();
@@ -446,7 +446,7 @@ const Cotizaciones = (() => {
     let lineas = c.lineas ? c.lineas.map(l => ({ ...l })) : [{ descripcion: '', cantidad: 1, precio: '' }];
     let clienteSel = c.clienteId ? await DB.clientes.get(c.clienteId) : null;
 
-    const en5dias = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
+    const en5dias = UI.fechaISO(new Date(Date.now() + 5 * 864e5));
 
     abrirModal(esNueva ? 'Nueva cotización' : `Editar COT-${c.numero}`, `
       <form id="formCot">
@@ -457,7 +457,7 @@ const Cotizaciones = (() => {
         </div></div>
         <div class="row">
           <div><label>Número</label><input name="numero" value="${esc(String(numero))}"></div>
-          <div><label>Fecha</label><input name="fecha" type="date" value="${c.fecha || new Date().toISOString().slice(0, 10)}"></div>
+          <div><label>Fecha</label><input name="fecha" type="date" value="${c.fecha || UI.fechaISO()}"></div>
         </div>
         <div class="row">
           <div><label>Válida hasta</label><input name="vence" type="date" value="${c.vence || en5dias}"></div>

@@ -221,7 +221,7 @@ const PDFDoc = (() => {
     const doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4' });
     let y = await cabecera(doc, emp);
     y = meta(doc, y,
-      ['ESTADO DE CUENTA', 'Al ' + UI.fmtFecha(new Date().toISOString().slice(0, 10))],
+      ['ESTADO DE CUENTA', 'Al ' + UI.fmtFecha(UI.fechaISO())],
       [cliente.nombre, cliente.telefono || '', cliente.correo || '']);
     const total = pendientes.reduce((s, f) => s + f.saldo, 0);
     if (pendientes.length) {

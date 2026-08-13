@@ -208,8 +208,8 @@ const Finanzas = (() => {
        comparación no engaña a mitad de semana). El DSO usa las ventas
        de 90 días: cuántos días tarda en volver el dinero facturado. */
     {
-      const hoyIso = new Date().toISOString().slice(0, 10);
-      const hace = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const hoyIso = UI.fechaISO();
+      const hace = n => UI.fechaISO(new Date(Date.now() - n * 864e5));
       const d7 = hace(7), d14 = hace(14), d90 = hace(90);
       const cobradoEn = (desde, hasta) => todas.reduce((s, f) =>
         s + (f.abonos || []).filter(a => a.fecha > desde && a.fecha <= hasta)
@@ -585,17 +585,25 @@ const Finanzas = (() => {
       .filter(f => (!d || (f.fecha || '') >= d) && (!h || (f.fecha || '') <= h))
       .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
     const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    let tSub = 0, tImp = 0, tTot = 0, tCob = 0, tPen = 0;
+    // Cada fila va en su moneda original (columna Mon.), pero los TOTALES
+    // convierten los US$ a RD$ con la tasa viva para no mezclar monedas
+    const convT = (m, mon) => (mon === 'USD' && tasa ? m * tasa : m) || 0;
+    let tSub = 0, tImp = 0, tTot = 0, tCob = 0, tPen = 0, hayUSD = false;
     const filas = fs.map(f => {
       const anulada = f.estado === 'anulada';
+      const mon = f.moneda || 'DOP';
+      if (mon === 'USD') hayUSD = true;
       const imp = f.impuesto || 0;
       const sub = (f.total || 0) - imp;
       const cob = anulada ? 0 : (f.total || 0) - (f.saldo || 0);
       const pen = f.estado === 'pendiente' ? (f.saldo || 0) : 0;
-      if (!anulada) { tSub += sub; tImp += imp; tTot += f.total || 0; tCob += cob; tPen += pen; }
+      if (!anulada) {
+        tSub += convT(sub, mon); tImp += convT(imp, mon); tTot += convT(f.total || 0, mon);
+        tCob += convT(cob, mon); tPen += convT(pen, mon);
+      }
       return [UI.fmtFecha(f.fecha), f.numero || '', f.orden ? '#' + f.orden : '', f.clienteNombre,
         rncDe.get(f.clienteId) || '', n2(sub), n2(imp), n2(f.total), n2(cob), n2(pen),
-        anulada ? 'ANULADA' : f.estado, f.moneda === 'USD' ? 'US$' : 'RD$'];
+        anulada ? 'ANULADA' : f.estado, mon === 'USD' ? 'US$' : 'RD$'];
     });
     return {
       titulo: 'Reporte de ventas (facturas)',
@@ -610,7 +618,8 @@ const Finanzas = (() => {
         filas,
         totales: ['TOTALES', '', '', `${fs.length} facturas`, '', n2(tSub), n2(tImp), n2(tTot), n2(tCob), n2(tPen), '', ''],
       },
-      nota: 'Las anuladas se listan pero NO suman en los totales.' + (tasa ? '' : ''),
+      nota: 'Las anuladas se listan pero NO suman en los totales.' +
+        (hayUSD ? (tasa ? ` Los US$ se convierten a RD$ en los totales (tasa ${tasa}).` : ' ⚠ Hay US$ y no hay tasa — totales sin convertir.') : ''),
     };
   }
 

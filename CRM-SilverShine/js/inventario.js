@@ -7,7 +7,7 @@ const Inventario = (() => {
   const { $, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, esc } = UI;
 
   let filtro = '', categoria = '';
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  const hoyISO = () => UI.fechaISO();
 
   /* ── Lista ── */
   async function render() {

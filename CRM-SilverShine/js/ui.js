@@ -41,6 +41,12 @@ const UI = (() => {
     const simbolo = moneda === 'USD' ? 'US$' : 'RD$';
     return simbolo + Number(monto || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
+  /* Fecha ISO en HORA LOCAL (RD = UTC−4). Con toISOString (hora universal),
+     de 8:00 pm en adelante "hoy" saltaba al día siguiente y los abonos,
+     gastos y seguimientos nocturnos quedaban con la fecha de mañana. */
+  const fechaISO = (d = new Date()) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   const fmtFecha = iso => {
     if (!iso) return '';
     // 'YYYY-MM-DD' se interpreta como hora local (con solo fecha, JS asume UTC y resta un día)
@@ -115,9 +121,9 @@ const UI = (() => {
   function enRango(fecha, rango) {
     if (rango === 'todo') return true;
     if (!fecha) return false;
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = fechaISO();
     if (rango === 'dia') return fecha === hoy;
-    if (rango === 'semana') return fecha >= new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    if (rango === 'semana') return fecha >= fechaISO(new Date(Date.now() - 7 * 864e5));
     return fecha.slice(0, 7) === hoy.slice(0, 7);   // mes calendario
   }
   const chipsRango = activo => `<div class="chips" style="margin:8px 0">${
@@ -269,5 +275,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, fechaISO, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
 })();

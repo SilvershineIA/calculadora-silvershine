@@ -5,7 +5,7 @@
 const Tareas = (() => {
   const { $, abrirModal, cerrarModal, toast, fmtFecha, esc } = UI;
 
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  const hoyISO = () => UI.fechaISO();
 
   /* Fecha que manda: la del próximo paso pendiente (si hay pasos), si no la de la tarea */
   function fechaEfectiva(t) {

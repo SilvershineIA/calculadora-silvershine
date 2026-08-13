@@ -82,11 +82,15 @@
      1 toque. Un ítem cuenta como despachado solo cuando la acción quedó
      registrada (seguimiento de hoy, recordatorio anotado, abono, paso). */
   async function renderPanel() {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = UI.fechaISO();
     const facturas = await DB.facturas.list();
     const cots = await DB.cotizaciones.list();
     const tareas = await DB.tareas.list();
     const estadoCot = c => c.estado === 'pendiente' ? 'enviada' : c.estado;
+    // Montos internos siempre en RD$ (los US$ convertidos con la tasa viva)
+    // para que "Valor en juego" y el orden por monto no mezclen monedas
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    const conv = (m, mon) => (mon === 'USD' && tasa ? m * tasa : m) || 0;
     const items = [];
 
     const posp = c => c.proximoToque && c.proximoToque > hoy;   // "toque el X" desde el menú ⋯
@@ -94,10 +98,10 @@
     // 1) Leads calientes: aceptadas sin factura — lo más valioso del día
     for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId && !posp(c))) {
       items.push({
-        grupo: 0, monto: c.total || 0,
+        grupo: 0, monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
         icono: '🧾', titulo: c.clienteNombre,
-        sub: `Lead caliente · COT-${UI.esc(String(c.numero || ''))} · cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7)})`,
+        sub: `Lead caliente · COT-${UI.esc(String(c.numero || ''))} · cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7, c.moneda)})`,
         accion: 'lead', id: c.id, btn: '💬',
       });
     }
@@ -110,7 +114,7 @@
       const dias = Math.round((new Date(hoy + 'T00:00:00') - new Date(fecha + 'T00:00:00')) / 864e5);
       if (dias < -3) continue;   // todavía falta — entra a la cola 3 días antes
       items.push({
-        grupo: 1, monto: f.proxCobro.monto || f.saldo,
+        grupo: 1, monto: conv(f.proxCobro.monto || f.saldo, f.moneda || 'DOP'),
         hecho: f.ultimoRecordatorio === hoy || (f.abonos || []).some(a => a.fecha === hoy),
         icono: '💰', titulo: f.clienteNombre,
         sub: `${dias > 0 ? `Cobro vencido hace ${dias} día${dias === 1 ? '' : 's'}`
@@ -125,13 +129,13 @@
     for (const c of cots.filter(c => ['enviada', 'borrador'].includes(estadoCot(c)) && !posp(c))) {
       const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
       const diasSin = ultima ? Math.round((new Date(hoy + 'T00:00:00') - new Date(ultima + 'T00:00:00')) / 864e5) : 99;
-      const porVencer = c.vence && c.vence >= hoy && c.vence <= new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
+      const porVencer = c.vence && c.vence >= hoy && c.vence <= UI.fechaISO(new Date(Date.now() + 2 * 864e5));
       if (diasSin < 7 && !porVencer) continue;
       items.push({
-        grupo: 2, monto: c.total || 0,
+        grupo: 2, monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
         icono: '📋', titulo: c.clienteNombre,
-        sub: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total)} · ${
+        sub: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total, c.moneda)} · ${
           porVencer ? '⏳ por vencer' : `${diasSin} días sin seguimiento`}`,
         accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15,
       });
@@ -209,8 +213,8 @@
      Cobros: registrar abono, promesa de pago (reprograma el próximo
      cobro) o recordar mañana. */
   async function opcionesDia(x) {
-    const hoy = new Date().toISOString().slice(0, 10);
-    const en = d => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
+    const hoy = UI.fechaISO();
+    const en = d => UI.fechaISO(new Date(Date.now() + d * 864e5));
 
     if (x.accion === 'lead' || x.accion === 'cot') {
       const c = await DB.cotizaciones.get(x.id);
@@ -299,7 +303,7 @@
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `respaldo-crm-silvershine-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `respaldo-crm-silvershine-${UI.fechaISO()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
     toast('Respaldo descargado');
@@ -806,7 +810,7 @@
       for (let i = 0; i < n; i++) {
         const monto = i === n - 1 ? Math.round((f.saldo - acum) * 100) / 100 : base;
         acum = Math.round((acum + monto) * 100) / 100;
-        cuotas.push({ fecha: aniversario(k + i).toISOString().slice(0, 10), monto });
+        cuotas.push({ fecha: UI.fechaISO(aniversario(k + i)), monto });
       }
       f.planPago = { tipo: 'easypay', inicial: pagado, frecuencia: 'mensual', cuotas };
       f.proxCobro = { fecha: cuotas[0].fecha, monto: cuotas[0].monto };

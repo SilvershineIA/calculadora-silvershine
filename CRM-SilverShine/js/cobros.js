@@ -5,14 +5,14 @@
 const Cobros = (() => {
   const { $, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, esc } = UI;
 
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  const hoyISO = () => UI.fechaISO();
 
   /* Urgencia de un cobro:
      - Con próximo cobro programado: vencido si la fecha ya pasó.
      - Sin programar: vencido si la factura tiene más de 30 días. */
   function clasificar(f) {
     const hoy = hoyISO();
-    const en7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+    const en7 = UI.fechaISO(new Date(Date.now() + 7 * 864e5));
     if (f.proxCobro && f.proxCobro.fecha) {
       if (f.proxCobro.fecha < hoy) return 'vencido';
       if (f.proxCobro.fecha <= en7) return 'proximo';

@@ -57,7 +57,7 @@ const Facturas = (() => {
       }
       const monto = i === n - 1 ? Math.round((resto - acum) * 100) / 100 : base;
       acum = Math.round((acum + monto) * 100) / 100;
-      cuotas.push({ fecha: fecha.toISOString().slice(0, 10), monto });
+      cuotas.push({ fecha: UI.fechaISO(fecha), monto });
     }
     return cuotas;
   }
@@ -79,7 +79,7 @@ const Facturas = (() => {
 
   /* Estado visual de cada cuota del plan */
   function cuotasConEstado(f) {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = UI.fechaISO();
     const pagado = Math.round((f.total - f.saldo) * 100) / 100;
     let acum = Number(f.planPago.inicial) || 0;
     return f.planPago.cuotas.map((c, i) => {
@@ -201,7 +201,7 @@ const Facturas = (() => {
     on('#fAbonar', () => formAbono(f));
     on('#fImprimir', () => imprimir(f, cliente));
     /* Tareas de taller con pasos preprogramados */
-    const enDias = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    const enDias = n => { const d = new Date(); d.setDate(d.getDate() + n); return UI.fechaISO(d); };
     const crearTareaTaller = async (titulo, pasos, notasExtra) => {
       await DB.tareas.upsert({
         titulo: `${titulo} — Factura ${rotulo(f)}`,
@@ -495,7 +495,7 @@ const Facturas = (() => {
       <form id="formAbono">
         <div class="row">
           <div><label>Monto *</label><input name="monto" type="number" step="0.01" min="0.01" max="${f.saldo}" required value="${f.saldo}"></div>
-          <div><label>Fecha</label><input name="fecha" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+          <div><label>Fecha</label><input name="fecha" type="date" value="${UI.fechaISO()}"></div>
         </div>
         <div class="row">
           <div><label>Método de pago</label>
@@ -556,7 +556,7 @@ const Facturas = (() => {
           <div><label>Número (NCF)</label><input name="numero" value="${esc(numero)}"></div>
         </div>
         <div class="row">
-          <div><label>Fecha</label><input name="fecha" type="date" value="${f.fecha || new Date().toISOString().slice(0, 10)}"></div>
+          <div><label>Fecha</label><input name="fecha" type="date" value="${f.fecha || UI.fechaISO()}"></div>
         </div>
         <div class="row">
           <div><label>Moneda</label>
@@ -603,7 +603,7 @@ const Facturas = (() => {
               const d = new Date(); const dia = d.getDate();
               d.setDate(1); d.setMonth(d.getMonth() + 1);
               d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
-              return d.toISOString().slice(0, 10);
+              return UI.fechaISO(d);
             })()}"></div></div>
           <p class="muted" id="epPreview" style="margin-top:4px"></p>
         </div>

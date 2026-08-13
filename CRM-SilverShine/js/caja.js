@@ -11,7 +11,7 @@
 const Caja = (() => {
   const { $, abrirModal, cerrarModal, toast, fmtFecha, esc } = UI;
 
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  const hoyISO = () => UI.fechaISO();
   const r2 = v => Math.round(v * 100) / 100;
   let rangoMovs = 'mes';   // filtro de fecha del historial del panel
 
