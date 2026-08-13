@@ -77,7 +77,10 @@ const Confecciones = (() => {
     if (f.confeccion && f.confeccion.estado !== 'entregada' &&
         !confirm(`La factura ${rotulo(f)} ya tiene una confección en proceso (entrega ${fmtFecha(f.confeccion.entrega)}). ¿Reemplazar el plazo?`)) return false;
     const hoy = hoyISO();
-    f.confeccion = { inicio: hoy, dias, entrega: enDias(hoy, dias), estado: 'pendiente' };
+    /* El plazo corre desde la FECHA DE LA FACTURA (lo pactado con el
+       cliente), no desde el día en que se registra la confección */
+    const base = f.fecha || hoy;
+    f.confeccion = { inicio: base, dias, entrega: enDias(base, dias), estado: 'pendiente' };
     await DB.facturas.upsert(f);
     await DB.tareas.upsert({
       titulo: `Confección (${dias} días) — Factura ${rotulo(f)}`,
@@ -85,9 +88,9 @@ const Confecciones = (() => {
       notas: `Creada desde la factura ${rotulo(f)}${f.orden && f.numero ? ' · ' + f.numero : ''} — ${f.clienteNombre}`,
       clienteId: f.clienteId, clienteNombre: f.clienteNombre,
       pasos: [
-        { titulo: 'Enviar orden al taller', fecha: hoy,                 hecho: false },
-        { titulo: 'Seguimiento',            fecha: enDias(hoy, dias),   hecho: false },
-        { titulo: 'Seguimiento final',      fecha: enDias(hoy, dias + 1), hecho: false },
+        { titulo: 'Enviar orden al taller', fecha: hoy,                    hecho: false },
+        { titulo: 'Seguimiento',            fecha: enDias(base, dias),     hecho: false },
+        { titulo: 'Seguimiento final',      fecha: enDias(base, dias + 1), hecho: false },
       ],
       hecha: false,
     });

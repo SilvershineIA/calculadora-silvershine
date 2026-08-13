@@ -909,6 +909,25 @@
     });
   }
 
+  /* ── El plazo de la confección corre desde la FECHA DE LA FACTURA ──
+     Las creadas antes de v102 arrancaban el día en que se registraban.
+     Auto-reparable e idempotente: solo re-basa si la entrega sigue
+     siendo inicio+dias (una entrega movida a mano se respeta), y tras
+     re-basar inicio === f.fecha, así que no vuelve a tocarla. */
+  async function rebasarConfecciones() {
+    const facturas = await DB.facturas.list();
+    for (const f of facturas) {
+      const c = f.confeccion;
+      if (!c || !f.fecha || !c.dias || c.inicio === f.fecha) continue;
+      const d = new Date(c.inicio + 'T00:00:00'); d.setDate(d.getDate() + c.dias);
+      if (UI.fechaISO(d) !== c.entrega) continue;   // entrega editada a mano
+      c.inicio = f.fecha;
+      const e = new Date(f.fecha + 'T00:00:00'); e.setDate(e.getDate() + c.dias);
+      c.entrega = UI.fechaISO(e);
+      await DB.facturas.upsert(f);
+    }
+  }
+
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
@@ -919,6 +938,7 @@
     await restaurarSamuel1940();
     await repararEnlacesCotizacion();
     await migrarConfecciones();
+    await rebasarConfecciones();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     await seedProductoConfeccion();
