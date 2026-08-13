@@ -11,6 +11,7 @@
     calculadora:  () => Calculadora.abrir(),
     facturas:     () => Facturas.render(),
     cotizaciones: () => Cotizaciones.render(),
+    confecciones: () => Confecciones.render(),
     cobros:       () => Cobros.render(),
     finanzas:     () => Finanzas.render(),
     cuadre:       () => Caja.render(),
@@ -537,7 +538,7 @@
      Cada init va protegido: si un módulo falla (p. ej. un HTML viejo en
      caché con JS nuevo durante una actualización), el resto de la app
      sigue funcionando en vez de quedarse en blanco. */
-  for (const M of [Clientes, Catalogo, Calculadora, Facturas, Cotizaciones, Finanzas, Inventario, Tareas]) {
+  for (const M of [Clientes, Catalogo, Calculadora, Facturas, Cotizaciones, Confecciones, Finanzas, Inventario, Tareas]) {
     try { M.init(); } catch (e) { console.error('Init falló:', e); }
   }
   renderPanel();
@@ -864,6 +865,31 @@
     }
   });
 
+  /* ── Adoptar al módulo Confecciones las tareas de taller viejas ──
+     Auto-reparable: corre en cada arranque pero NUNCA pisa una
+     f.confeccion existente (los estados que ponga el usuario mandan).
+     Tarea hecha = pieza ya entregada. */
+  async function migrarConfecciones() {
+    const facturas = await DB.facturas.list();
+    if (!facturas.length) return;
+    const tareas = await DB.tareas.list();
+    for (const t of tareas) {
+      const m = /^Confección \((\d+) días\) — Factura (.+)$/.exec(t.titulo || '');
+      if (!m) continue;
+      const ref = m[2].trim();
+      const f = facturas.find(x => ref.startsWith('#')
+        ? String(x.orden || '') === ref.slice(1)
+        : (x.numero || '') === ref);
+      if (!f || f.confeccion || f.estado === 'anulada') continue;
+      const dias = Number(m[1]);
+      const inicio = (t.pasos && t.pasos[0] && t.pasos[0].fecha) || t.fecha || UI.fechaISO();
+      const d = new Date(inicio + 'T00:00:00'); d.setDate(d.getDate() + dias);
+      f.confeccion = { inicio, dias, entrega: UI.fechaISO(d), estado: t.hecha ? 'entregada' : 'taller' };
+      if (t.hecha) f.confeccion.entregadaEl = f.confeccion.entrega;
+      await DB.facturas.upsert(f);
+    }
+  }
+
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
@@ -873,6 +899,7 @@
     await ajustesConfirmados31Jul();
     await restaurarSamuel1940();
     await repararEnlacesCotizacion();
+    await migrarConfecciones();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     if (ok) pintarEstadoNube();

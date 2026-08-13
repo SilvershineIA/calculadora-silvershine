@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=94">
+<link rel="stylesheet" href="css/app.css?v=95">
 </head>
 <body>
 
@@ -28,6 +28,7 @@
     <button class="nav-btn" data-view="calculadora"><span class="nav-ico">🧮</span><span>Calculadora</span></button>
     <button class="nav-btn" data-view="facturas"><span class="nav-ico">🧾</span><span>Facturas</span></button>
     <button class="nav-btn" data-view="cotizaciones"><span class="nav-ico">📋</span><span>Cotizaciones</span></button>
+    <button class="nav-btn" data-view="confecciones"><span class="nav-ico">🧵</span><span>Confecciones</span></button>
     <button class="nav-btn" data-view="cobros"><span class="nav-ico">💰</span><span>Cobros</span></button>
     <button class="nav-btn" data-view="finanzas"><span class="nav-ico">📈</span><span>Finanzas</span></button>
     <button class="nav-btn" data-view="cuadre"><span class="nav-ico">🏦</span><span>Cuadre</span></button>
@@ -211,6 +212,17 @@
         </select>
       </div>
       <div id="listaCotizaciones" class="list"></div>
+    </section>
+
+    <!-- ══════════ CONFECCIONES ══════════ -->
+    <section class="view" data-view="confecciones">
+      <div class="view-head">
+        <h1 class="view-title">Confecciones</h1>
+        <button class="btn-gold btn-sm" id="btnNuevaConfeccion">+ Nueva confección</button>
+      </div>
+      <div class="stat-grid" id="confStats"></div>
+      <div class="chips" id="confFiltros"></div>
+      <div id="listaConfecciones" class="list"></div>
     </section>
 
     <section class="view" data-view="cobros">
@@ -420,21 +432,22 @@
 <div id="printArea"></div>
 
 <script src="js/jspdf.min.js"></script>
-<script src="js/pdf.js?v=94"></script>
-<script src="js/reportes.js?v=94"></script>
-<script src="js/db.js?v=94"></script>
-<script src="js/sync.js?v=94"></script>
-<script src="js/ui.js?v=94"></script>
-<script src="js/clientes.js?v=94"></script>
-<script src="js/catalogo.js?v=94"></script>
-<script src="js/calculadora.js?v=94"></script>
-<script src="js/facturas.js?v=94"></script>
-<script src="js/cotizaciones.js?v=94"></script>
-<script src="js/cobros.js?v=94"></script>
-<script src="js/finanzas.js?v=94"></script>
-<script src="js/caja.js?v=94"></script>
-<script src="js/inventario.js?v=94"></script>
-<script src="js/tareas.js?v=94"></script>
-<script src="js/app.js?v=94"></script>
+<script src="js/pdf.js?v=95"></script>
+<script src="js/reportes.js?v=95"></script>
+<script src="js/db.js?v=95"></script>
+<script src="js/sync.js?v=95"></script>
+<script src="js/ui.js?v=95"></script>
+<script src="js/clientes.js?v=95"></script>
+<script src="js/catalogo.js?v=95"></script>
+<script src="js/calculadora.js?v=95"></script>
+<script src="js/facturas.js?v=95"></script>
+<script src="js/cotizaciones.js?v=95"></script>
+<script src="js/confecciones.js?v=95"></script>
+<script src="js/cobros.js?v=95"></script>
+<script src="js/finanzas.js?v=95"></script>
+<script src="js/caja.js?v=95"></script>
+<script src="js/inventario.js?v=95"></script>
+<script src="js/tareas.js?v=95"></script>
+<script src="js/app.js?v=95"></script>
 </body>
 </html>

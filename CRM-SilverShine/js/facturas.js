@@ -246,11 +246,7 @@ const Facturas = (() => {
         <button class="btn-ghost btn-block" id="confVolver" style="margin-top:12px">← Volver a la factura</button>
       `);
       const crear = async dias => {
-        await crearTareaTaller(`Confección (${dias} días)`, [
-          { titulo: 'Enviar orden al taller', fecha: enDias(0),        hecho: false },
-          { titulo: 'Seguimiento',            fecha: enDias(dias),     hecho: false },
-          { titulo: 'Seguimiento final',      fecha: enDias(dias + 1), hecho: false },
-        ]);
+        await Confecciones.iniciar(f, dias);   // estampa f.confeccion + crea la tarea de taller
         detalle(f.id);
       };
       $('#conf5').addEventListener('click', () => crear(5));
