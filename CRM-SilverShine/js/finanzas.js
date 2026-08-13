@@ -635,7 +635,7 @@ const Finanzas = (() => {
         const enRD = f.moneda === 'USD' && tasa ? a.monto * tasa : a.monto;
         totalRD += enRD;
         movs.push({ fecha: a.fecha, fila: [UI.fmtFecha(a.fecha), f.clienteNombre,
-          f.orden ? '#' + f.orden : (f.numero || ''), a.metodo || '', n2(a.monto),
+          f.orden ? '#' + f.orden : (f.numero || ''), a.metodo || '', a.cuentaNombre || '', n2(a.monto),
           f.moneda === 'USD' ? 'US$' : 'RD$', n2(enRD)] });
       }
     }
@@ -644,12 +644,12 @@ const Finanzas = (() => {
       titulo: 'Reporte de cobros (pagos recibidos)',
       seccion: {
         columnas: [
-          { t: 'Fecha', w: 62 }, { t: 'Cliente', w: 168 }, { t: 'Factura', w: 78 },
-          { t: 'Método', w: 82 }, { t: 'Monto', w: 62, a: 'right' }, { t: 'Mon.', w: 32 },
-          { t: 'En RD$', w: 62, a: 'right' },
+          { t: 'Fecha', w: 60 }, { t: 'Cliente', w: 140 }, { t: 'Factura', w: 70 },
+          { t: 'Método', w: 70 }, { t: 'Cuenta', w: 95 }, { t: 'Monto', w: 60, a: 'right' },
+          { t: 'Mon.', w: 30 }, { t: 'En RD$', w: 62, a: 'right' },
         ],
         filas: movs.map(m => m.fila),
-        totales: ['TOTAL', `${movs.length} pagos`, '', '', '', '', n2(totalRD)],
+        totales: ['TOTAL', `${movs.length} pagos`, '', '', '', '', '', n2(totalRD)],
       },
     };
   }

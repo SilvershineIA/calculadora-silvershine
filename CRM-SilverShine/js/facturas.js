@@ -519,8 +519,11 @@ const Facturas = (() => {
       const fd = new FormData(e.target);
       const monto = Math.min(Number(fd.get('monto')), f.saldo);
       if (!(monto > 0)) return;
+      const cuentaId = fd.get('cuenta') || null;
+      const cuentaSel = cuentaId ? cuentas.find(c => c.id === cuentaId) : null;
       f.abonos = f.abonos || [];
-      f.abonos.push({ fecha: fd.get('fecha'), monto, metodo: fd.get('metodo') });
+      f.abonos.push({ fecha: fd.get('fecha'), monto, metodo: fd.get('metodo'),
+        cuenta: cuentaId, cuentaNombre: cuentaSel ? cuentaSel.nombre : null });
       f.saldo = Math.round((f.saldo - monto) * 100) / 100;
       if (f.saldo <= 0.005) { f.saldo = 0; f.estado = 'pagada'; delete f.proxCobro; }
       else actualizarProxCobro(f);      // el plan EasyPay avanza a la siguiente cuota

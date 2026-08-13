@@ -6,6 +6,8 @@ const Cobros = (() => {
   const { $, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, esc } = UI;
 
   const hoyISO = () => UI.fechaISO();
+  let modo = 'pendientes';    // 'pendientes' (por cobrar) · 'recibidos' (con su cuenta)
+  let rangoRec = 'mes';       // filtro de fecha de los recibidos
 
   /* Urgencia de un cobro:
      - Con próximo cobro programado: vencido si la fecha ya pasó.
@@ -79,6 +81,15 @@ const Cobros = (() => {
 
   /* ── Lista ── */
   async function render() {
+    $('#cobrosTabs').innerHTML = `
+      <button class="chip-tab ${modo === 'pendientes' ? 'on' : ''}" data-modo="pendientes">💰 Por cobrar</button>
+      <button class="chip-tab ${modo === 'recibidos' ? 'on' : ''}" data-modo="recibidos">💵 Recibidos · por cuenta</button>`;
+    UI.$$('#cobrosTabs .chip-tab').forEach(b => b.addEventListener('click', () => {
+      modo = b.dataset.modo;
+      render();
+    }));
+    if (modo === 'recibidos') return renderRecibidos();
+
     const cont = $('#listaCobros');
     const lista = await pendientes();
 
@@ -123,6 +134,7 @@ const Cobros = (() => {
       else if (e <= 90) tramo.c += f.saldo;
       else tramo.d += f.saldo;
     }
+    $('#cobrosAgingTitulo').textContent = 'Antigüedad de la deuda';
     $('#cobrosAging').innerHTML =
       UI.statTile(UI.fmtDinero(tramo.a), '0–30 días') +
       UI.statTile(UI.fmtDinero(tramo.b), '31–60 días') +
@@ -172,6 +184,73 @@ const Cobros = (() => {
 
     cont.querySelectorAll('.cobro').forEach(el =>
       el.addEventListener('click', () => detalle(el.dataset.id)));
+  }
+
+  /* ── Recibidos: todos los cobros con su cuenta bancaria ──
+     Fuente: los abonos de las facturas (desde v94 guardan la cuenta
+     elegida) + los pagos históricos de QuickBooks (sin cuenta). Los
+     US$ se convierten con la tasa viva para los totales. */
+  async function renderRecibidos() {
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    const conv = (m, mon) => (mon === 'USD' && tasa ? m * tasa : m) || 0;
+    const facturas = (await DB.facturas.list()).filter(f => f.estado !== 'anulada');
+
+    const movs = [];
+    for (const f of facturas) {
+      for (const a of (f.abonos || [])) {
+        movs.push({ fecha: a.fecha, cliente: f.clienteNombre, ref: f.orden ? '#' + f.orden : (f.numero || ''),
+          metodo: a.metodo || 'Pago', cuenta: a.cuentaNombre || null, monto: a.monto, moneda: f.moneda || 'DOP', fid: f.id });
+      }
+    }
+    for (const p of (await DB.pagos.list()).filter(x => !x.facturaId && x.fecha)) {
+      movs.push({ fecha: p.fecha, cliente: p.clienteNombre || '', ref: '',
+        metodo: (p.metodo || 'Pago') + ' · QuickBooks', cuenta: null, monto: p.monto, moneda: 'DOP', fid: null });
+    }
+
+    const enR = movs.filter(m => UI.enRango(m.fecha, rangoRec))
+      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    const totalRD = enR.reduce((s, m) => s + conv(m.monto, m.moneda), 0);
+
+    // Desglose por cuenta bancaria
+    const porCuenta = new Map();
+    for (const m of enR) {
+      const k = m.cuenta || 'Sin cuenta asignada';
+      porCuenta.set(k, (porCuenta.get(k) || 0) + conv(m.monto, m.moneda));
+    }
+    const cuentasOrden = [...porCuenta.entries()].sort((a, b) => b[1] - a[1]);
+    const reales = cuentasOrden.filter(([n]) => n !== 'Sin cuenta asignada');
+    const mayor = reales[0];
+
+    $('#cobrosResumen').innerHTML =
+      UI.statTile(UI.fmtDinero(totalRD), 'Recibido', 'verde') +
+      UI.statTile(enR.length, 'Cobros') +
+      UI.statTile(mayor ? UI.fmtDinero(mayor[1]) : '—', mayor ? `Mayor: ${mayor[0]}` : 'Mayor cuenta') +
+      UI.statTile(reales.length, 'Cuentas usadas');
+
+    $('#cobrosAgingTitulo').textContent = '🏦 Por cuenta bancaria';
+    $('#cobrosAging').innerHTML = cuentasOrden.length
+      ? cuentasOrden.map(([nombre, monto]) => UI.statTile(UI.fmtDinero(monto), nombre)).join('')
+      : UI.statTile('—', 'Sin cobros en el rango');
+
+    const cont = $('#listaCobros');
+    cont.innerHTML = UI.chipsRango(rangoRec) + (enR.slice(0, 60).map((m, i) => `
+      <div class="item rec-fila" data-fid="${m.fid || ''}" style="${m.fid ? 'cursor:pointer' : ''}">
+        <div class="item-info">
+          <div class="item-name">${esc(m.cliente)}${m.ref ? ` <span class="muted">${esc(m.ref)}</span>` : ''}</div>
+          <div class="item-sub">${fmtFecha(m.fecha)} · ${esc(m.metodo)} · ${
+            m.cuenta ? `🏦 <b>${esc(m.cuenta)}</b>` : '<span class="muted">sin cuenta asignada</span>'}</div>
+        </div>
+        <b class="verde">${fmtMoneda(m.monto, m.moneda)}</b>
+      </div>`).join('') || '<div class="empty"><span>💵</span>Sin cobros en este rango.</div>') +
+      (enR.length > 60 ? `<p class="muted" style="text-align:center;padding:10px">Mostrando 60 de ${enR.length} — el reporte 📤 de Finanzas los trae todos.</p>` : '');
+
+    UI.$$('#listaCobros .chip-rango').forEach(b => b.addEventListener('click', () => {
+      rangoRec = b.dataset.rango;
+      render();
+    }));
+    UI.$$('#listaCobros .rec-fila[data-fid]').forEach(el => {
+      if (el.dataset.fid) el.addEventListener('click', () => Facturas.detalle(el.dataset.fid));
+    });
   }
 
   /* ── Detalle de cobro ── */
