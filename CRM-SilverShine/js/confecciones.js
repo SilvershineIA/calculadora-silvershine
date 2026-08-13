@@ -18,12 +18,13 @@ const Confecciones = (() => {
   /* Pipeline interno de la pieza, del taller al cliente */
   const ESTADOS = {
     pendiente: '📋 Por enviar al taller',
-    taller:    '🧵 En el taller',
+    taller:    '🧵 Enviada al taller',
+    recibida:  '📥 Recibida por el taller',
     camino:    '✈️ Despachada — en camino',
     lista:     '📦 En almacén — lista para entregar',
     entregada: '✅ Entregada',
   };
-  const BADGE = { pendiente: 'b-roja', taller: 'b-pend', camino: 'b-pend', lista: 'b-pag', entregada: 'b-anu' };
+  const BADGE = { pendiente: 'b-roja', taller: 'b-pend', recibida: 'b-pend', camino: 'b-pend', lista: 'b-pag', entregada: 'b-anu' };
 
   let filtro = 'proceso';   // proceso · entregadas · todas
 
@@ -45,20 +46,26 @@ const Confecciones = (() => {
 
   const atrasada = f => f.confeccion.estado !== 'entregada' && diasHasta(f.confeccion.entrega) < 0;
 
-  /* Transición de estado: cada etapa deja su fecha la primera vez */
+  /* Transición de estado: cada etapa deja su fecha la primera vez.
+     OJO nombres: recibidaTallerEl = el TALLER confirmó que le llegó;
+     recibidaEl = llegó a MI almacén. */
   function estampar(c, nuevo) {
     if (nuevo === 'taller' && !c.enviadaEl) c.enviadaEl = hoyISO();
+    if (nuevo === 'recibida' && !c.recibidaTallerEl) { c.enviadaEl = c.enviadaEl || hoyISO(); c.recibidaTallerEl = hoyISO(); }
     if (nuevo === 'camino' && !c.despachadaEl) { c.enviadaEl = c.enviadaEl || c.inicio; c.despachadaEl = hoyISO(); }
     if ((nuevo === 'lista' || nuevo === 'entregada') && !c.recibidaEl) c.recibidaEl = hoyISO();
     if (nuevo === 'entregada') c.entregadaEl = hoyISO(); else delete c.entregadaEl;
     c.estado = nuevo;
   }
 
-  /* Cuántos días lleva (o estuvo) la pieza en el taller */
+  /* Cuántos días lleva (o estuvo) la pieza en el taller: cuenta desde
+     que el taller la RECIBIÓ (o desde el envío si no hay confirmación) */
   function diasEnTaller(c) {
-    if (!c.enviadaEl) return null;
-    const fin = c.despachadaEl || (c.estado === 'taller' ? hoyISO() : c.recibidaEl || hoyISO());
-    return Math.max(0, Math.round((new Date(fin + 'T00:00:00') - new Date(c.enviadaEl + 'T00:00:00')) / 864e5));
+    const desde = c.recibidaTallerEl || c.enviadaEl;
+    if (!desde) return null;
+    const enTaller = c.estado === 'taller' || c.estado === 'recibida';
+    const fin = c.despachadaEl || (enTaller ? hoyISO() : c.recibidaEl || hoyISO());
+    return Math.max(0, Math.round((new Date(fin + 'T00:00:00') - new Date(desde + 'T00:00:00')) / 864e5));
   }
 
   /* Etiqueta de plazo: cuánto falta (o cuánto se pasó) para la entrega */
@@ -118,7 +125,7 @@ const Confecciones = (() => {
 
     $('#confStats').innerHTML =
       UI.statTile(cuenta('pendiente'), 'Por enviar al taller', cuenta('pendiente') ? 'rojo' : '') +
-      UI.statTile(cuenta('taller'), 'En el taller') +
+      UI.statTile(cuenta('taller') + cuenta('recibida'), 'En el taller') +
       UI.statTile(cuenta('camino') + cuenta('lista'), 'En camino / almacén') +
       UI.statTile(atrasadas.length, 'Atrasadas', atrasadas.length ? 'rojo' : '') +
       UI.statTile(fmtMoneda(porPagarUSD, 'USD'), 'Por pagar al taller', porPagarUSD > 0 ? 'rojo' : '') +
@@ -135,7 +142,7 @@ const Confecciones = (() => {
       const debe = f.saldo > 0;
       const dt = diasEnTaller(c);
       const extra =
-        (c.estado === 'taller' && dt !== null ? ` · 🧵 lleva ${dt} día${dt === 1 ? '' : 's'} en el taller` : '') +
+        ((c.estado === 'taller' || c.estado === 'recibida') && dt !== null ? ` · 🧵 lleva ${dt} día${dt === 1 ? '' : 's'} en el taller` : '') +
         (c.estado === 'camino' && c.tracking ? ` · 📦 ${esc(c.tracking)}` : '') +
         (c.grupo && filtro !== 'grupos' ? ` · 🗂 ${esc(c.grupo)}` : '') +
         (c.notas ? ' · ⚠ hay temas anotados' : '');
@@ -220,7 +227,8 @@ const Confecciones = (() => {
         seccion('📋 Por enviar al taller', enEstado('pendiente')) +
         seccion('✈️ En camino', enEstado('camino')) +
         seccion('📦 En almacén — listas para entregar', enEstado('lista')) +
-        seccion('🧵 En el taller', enEstado('taller')) +
+        seccion('📥 Recibidas por el taller', enEstado('recibida')) +
+        seccion('🧵 Enviadas al taller (sin confirmar recibo)', enEstado('taller')) +
         (filtro === 'todas' ? seccion('✅ Entregadas', base.filter(f => f.confeccion.estado === 'entregada')
           .sort((a, b) => (b.confeccion.entregadaEl || b.confeccion.entrega).localeCompare(a.confeccion.entregadaEl || a.confeccion.entrega)).slice(0, 30)) : '');
     }
@@ -266,7 +274,7 @@ const Confecciones = (() => {
         <div><label>Mover TODO el grupo a</label>
           <select id="grpEstado">
             <option value="">— sin cambio —</option>
-            ${['taller', 'camino', 'lista'].map(k => `<option value="${k}">${ESTADOS[k]}</option>`).join('')}
+            ${['taller', 'recibida', 'camino', 'lista'].map(k => `<option value="${k}">${ESTADOS[k]}</option>`).join('')}
           </select></div>
         <div><label>📦 Tracking del envío (para todas)</label>
           <input id="grpTracking" placeholder="Una guía para el lote"></div>
@@ -353,7 +361,8 @@ const Confecciones = (() => {
       .map(x => x.confeccion.grupo).filter(Boolean))].sort();
     const viaje = [
       c.enviadaEl ? `enviada al taller el ${fmtFecha(c.enviadaEl)}` : 'aún NO se ha enviado al taller',
-      dt !== null ? `${c.estado === 'taller' ? 'lleva' : 'estuvo'} ${dt} día${dt === 1 ? '' : 's'} en el taller` : '',
+      c.recibidaTallerEl ? `el taller la recibió el ${fmtFecha(c.recibidaTallerEl)}` : '',
+      dt !== null ? `${c.estado === 'taller' || c.estado === 'recibida' ? 'lleva' : 'estuvo'} ${dt} día${dt === 1 ? '' : 's'} en el taller` : '',
       c.despachadaEl ? `despachada el ${fmtFecha(c.despachadaEl)}` : '',
       c.recibidaEl ? `recibida en almacén el ${fmtFecha(c.recibidaEl)}` : '',
     ].filter(Boolean).join(' · ');
@@ -459,7 +468,8 @@ const Confecciones = (() => {
     const dt = diasEnTaller(c);
     const viaje = [
       c.enviadaEl ? `enviada al taller el ${fmtFecha(c.enviadaEl)}` : 'aún NO se ha enviado al taller',
-      dt !== null ? `${c.estado === 'taller' ? 'lleva' : 'estuvo'} ${dt} día${dt === 1 ? '' : 's'} en el taller` : '',
+      c.recibidaTallerEl ? `el taller la recibió el ${fmtFecha(c.recibidaTallerEl)}` : '',
+      dt !== null ? `${c.estado === 'taller' || c.estado === 'recibida' ? 'lleva' : 'estuvo'} ${dt} día${dt === 1 ? '' : 's'} en el taller` : '',
       c.despachadaEl ? `despachada el ${fmtFecha(c.despachadaEl)}` : '',
       c.recibidaEl ? `recibida en almacén el ${fmtFecha(c.recibidaEl)}` : '',
     ].filter(Boolean).join(' · ');
