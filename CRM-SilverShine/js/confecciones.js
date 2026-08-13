@@ -37,7 +37,7 @@ const Confecciones = (() => {
     const stock = (await DB.config.list())
       .filter(d => d.tipo === 'conf-stock' && d.confeccion)
       .map(d => ({ id: d.id, esStock: true, doc: d, destino: d.destino || 'stock',
-        clienteNombre: `${d.destino === 'etsy' ? '🛍 Etsy' : '🏪 Stock'} — ${d.descripcion}`,
+        clienteNombre: `${d.destino === 'etsy' ? '🛍 Etsy' : d.destino === 'rd' ? '🇩🇴 Taller RD' : '🏪 Stock'} — ${d.descripcion}`,
         saldo: 0, total: 0, moneda: 'DOP', orden: null, numero: '', confeccion: d.confeccion }));
     return [...deFacturas, ...stock];
   }
@@ -116,11 +116,14 @@ const Confecciones = (() => {
     const cuenta = e => proceso.filter(f => f.confeccion.estado === e).length;
     const atrasadas = proceso.filter(atrasada);
     const deudaProceso = proceso.reduce((s, f) => s + (f.saldo > 0 ? conv(f) : 0), 0);
-    /* Lo que falta pagarle al taller (US$): costo final menos pago inicial.
-       Solo suma piezas con costo final conocido. */
+    /* Lo que falta pagarle a los talleres (en US$): costo final menos pago
+       inicial, solo piezas con costo final conocido. Lo del taller RD (en
+       pesos) entra convertido con la tasa viva. */
     const porPagarUSD = proceso.reduce((s, f) => {
       const c = f.confeccion;
-      return s + (c.costoFinalUSD ? Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0), 0) : 0);
+      let v = c.costoFinalUSD ? Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0), 0) : 0;
+      if (c.costoFinalRD && tasa) v += Math.max(c.costoFinalRD - (c.costoInicialRD || 0), 0) / tasa;
+      return s + v;
     }, 0);
 
     $('#confStats').innerHTML =
@@ -154,7 +157,7 @@ const Confecciones = (() => {
           <div class="item-sub">pactada a ${c.dias} días · <b class="${atrasada(f) ? 'rojo' : ''}">${plazoTxt(c)}</b>${extra}</div>
         </div>
         ${f.esStock
-          ? `<b class="muted">${f.destino === 'etsy' ? '🛍 etsy' : '🏪 stock'}</b>`
+          ? `<b class="muted">${f.destino === 'etsy' ? '🛍 etsy' : f.destino === 'rd' ? '🇩🇴 taller RD' : '🏪 stock'}</b>`
           : `<b class="${debe ? 'rojo' : 'verde'}">${debe ? fmtMoneda(f.saldo, f.moneda) : '✓ pagada'}</b>`}
       </div>`;
     };
@@ -368,7 +371,12 @@ const Confecciones = (() => {
     ].filter(Boolean).join(' · ');
 
     const esEtsy = doc.destino === 'etsy';
-    abrirModal(esEtsy ? 'Confección para Etsy 🛍' : 'Confección para stock 🏪', `
+    const esRD = doc.destino === 'rd';
+    /* El taller de China cobra en US$; el taller local en Dominicana, en pesos */
+    const MON = esRD ? 'RD$' : 'US$';
+    const CAMPO_INI = esRD ? 'costoInicialRD' : 'costoInicialUSD';
+    const CAMPO_FIN = esRD ? 'costoFinalRD' : 'costoFinalUSD';
+    abrirModal(esEtsy ? 'Confección para Etsy 🛍' : esRD ? 'Confección — taller en Dominicana 🇩🇴' : 'Confección para stock 🏪', `
       <div class="row"><div>
         <label>¿Qué es?</label>
         <input id="stkDesc" value="${esc(doc.descripcion || '')}">
@@ -377,17 +385,17 @@ const Confecciones = (() => {
       <div class="row">
         <div><label>Estado</label>
           <select id="confEstado">
-            ${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${c.estado === k ? 'selected' : ''}>${k === 'entregada' ? (esEtsy ? '✅ Enviada al cliente de Etsy' : '✅ En vitrina / inventario') : v}</option>`).join('')}
+            ${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${c.estado === k ? 'selected' : ''}>${k === 'entregada' ? (esEtsy ? '✅ Enviada al cliente de Etsy' : esRD ? '✅ Trabajo completado y recibido' : '✅ En vitrina / inventario') : v}</option>`).join('')}
           </select></div>
         <div><label>Fecha de entrega pactada</label><input type="date" id="confEntrega" value="${c.entrega}"></div>
       </div>
-      <h3 class="sub-h">🏭 Taller / proveedor (US$)</h3>
+      <h3 class="sub-h">${esRD ? '🇩🇴 Taller en Dominicana (RD$)' : `🏭 Taller / proveedor (${MON})`}</h3>
       <p class="muted" style="margin-bottom:10px">${viaje}</p>
       <div class="row">
-        <div><label>Pago inicial al taller (US$)</label>
-          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c.costoInicialUSD ?? ''}"></div>
-        <div><label>Costo final (US$)</label>
-          <input type="number" id="confCostoFin" min="0" step="0.01" value="${c.costoFinalUSD ?? ''}" placeholder="Se define al despachar"></div>
+        <div><label>Pago inicial al taller (${MON})</label>
+          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c[CAMPO_INI] ?? ''}"></div>
+        <div><label>Costo final (${MON})</label>
+          <input type="number" id="confCostoFin" min="0" step="0.01" value="${c[CAMPO_FIN] ?? ''}" placeholder="Se define al ${esRD ? 'terminar' : 'despachar'}"></div>
       </div>
       <p class="muted" id="confSaldoProv" style="margin:-4px 0 10px"></p>
       <div class="row">
@@ -405,13 +413,13 @@ const Confecciones = (() => {
     `);
 
     const guardar = async () => { await DB.config.upsert(doc); render(); };
-    const usd = v => fmtMoneda(v, 'USD');
+    const fmtT = v => esRD ? UI.fmtDinero(v) : fmtMoneda(v, 'USD');
     const pintarSaldoProv = () => {
       const ini = Number($('#confCostoIni').value) || 0;
       const fin = Number($('#confCostoFin').value) || 0;
       $('#confSaldoProv').innerHTML = fin
-        ? `Falta por pagar: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${usd(Math.max(fin - ini, 0))}</b> — inversión en stock (no toca la ganancia de Finanzas).`
-        : (ini ? `Inicial dado: ${usd(ini)}.` : 'El costo final se define al despachar.');
+        ? `Falta por pagar: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${fmtT(Math.max(fin - ini, 0))}</b> — inversión del negocio (no toca la ganancia de Finanzas).`
+        : (ini ? `Inicial dado: ${fmtT(ini)}.` : `El costo final se define al ${esRD ? 'terminar el trabajo' : 'despachar'}.`);
     };
     pintarSaldoProv();
     $('#stkDesc').addEventListener('change', e => { doc.descripcion = e.target.value.trim() || doc.descripcion; guardar(); });
@@ -427,12 +435,12 @@ const Confecciones = (() => {
     });
     $('#confCostoIni').addEventListener('change', e => {
       const v = Number(e.target.value);
-      if (v > 0) c.costoInicialUSD = v; else delete c.costoInicialUSD;
+      if (v > 0) c[CAMPO_INI] = v; else delete c[CAMPO_INI];
       guardar(); pintarSaldoProv();
     });
     $('#confCostoFin').addEventListener('change', e => {
       const v = Number(e.target.value);
-      if (v > 0) c.costoFinalUSD = v; else delete c.costoFinalUSD;
+      if (v > 0) c[CAMPO_FIN] = v; else delete c[CAMPO_FIN];
       guardar(); pintarSaldoProv();
     });
     $('#confGrupo').addEventListener('change', e => {
@@ -594,6 +602,7 @@ const Confecciones = (() => {
       <div class="row" style="margin-bottom:14px">
         <button class="btn-ghost btn-block" id="confParaStock">🏪 Para el stock del negocio</button>
         <button class="btn-ghost btn-block" id="confParaEtsy">🛍 Para Etsy</button>
+        <button class="btn-ghost btn-block" id="confParaRD">🇩🇴 Taller en Dominicana</button>
       </div>
       <p class="muted" style="margin-bottom:10px">¿De qué factura es la pieza? (si no existe, créala primero en Facturas)</p>
       <input type="search" id="confBuscar" class="search" placeholder="Buscar por cliente, # de orden o NCF…">
@@ -601,6 +610,7 @@ const Confecciones = (() => {
     `);
     $('#confParaStock').addEventListener('click', () => formStock('stock'));
     $('#confParaEtsy').addEventListener('click', () => formStock('etsy'));
+    $('#confParaRD').addEventListener('click', () => formStock('rd'));
 
     const pintar = q => {
       const txt = q.trim().toLowerCase();
@@ -623,13 +633,14 @@ const Confecciones = (() => {
     const plazo = async id => pactar(await DB.facturas.get(id));
   }
 
-  /* ── Confección sin cliente: para el stock del negocio o para Etsy ── */
+  /* ── Confección sin cliente: stock del negocio, Etsy o taller local RD ── */
   function formStock(destino = 'stock') {
     const esEtsy = destino === 'etsy';
-    abrirModal(esEtsy ? 'Confección para Etsy 🛍' : 'Confección para stock 🏪', `
+    const esRD = destino === 'rd';
+    abrirModal(esEtsy ? 'Confección para Etsy 🛍' : esRD ? 'Confección — taller en Dominicana 🇩🇴' : 'Confección para stock 🏪', `
       <div class="row"><div>
         <label>¿Qué se va a confeccionar? *</label>
-        <input id="stkDescNueva" placeholder="${esEtsy ? 'Ej: pedido Etsy #3021 — anillo 14k talla 7' : 'Ej: 3 tríos oro 14k surtidos'}" autocomplete="off">
+        <input id="stkDescNueva" placeholder="${esEtsy ? 'Ej: pedido Etsy #3021 — anillo 14k talla 7' : esRD ? 'Ej: montura del solitario — taller de Rubén' : 'Ej: 3 tríos oro 14k surtidos'}" autocomplete="off">
       </div></div>
       <p class="muted" style="margin-bottom:14px">¿Para cuándo está pactada?</p>
       <button class="btn-gold btn-block" id="stk5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
@@ -650,9 +661,11 @@ const Confecciones = (() => {
       /* Tarea de taller igual que las de clientes ("Stock:"/"Etsy:" en el
          título para que la migración de facturas nunca la toque) */
       await DB.tareas.upsert({
-        titulo: `Confección (${dias} días) — ${esEtsy ? 'Etsy' : 'Stock'}: ${desc}`,
+        titulo: `Confección (${dias} días) — ${esEtsy ? 'Etsy' : esRD ? 'Taller RD' : 'Stock'}: ${desc}`,
         fecha: hoy,
-        notas: esEtsy ? 'Pedido de Etsy (sin cliente del CRM)' : 'Pieza para el stock del negocio (sin cliente)',
+        notas: esEtsy ? 'Pedido de Etsy (sin cliente del CRM)'
+          : esRD ? 'Trabajo en el taller local de Dominicana (se paga en RD$)'
+          : 'Pieza para el stock del negocio (sin cliente)',
         pasos: [
           { titulo: 'Enviar orden al taller', fecha: hoy,                   hecho: false },
           { titulo: 'Seguimiento',            fecha: enDias(hoy, dias),     hecho: false },
@@ -660,7 +673,7 @@ const Confecciones = (() => {
         ],
         hecha: false,
       });
-      toast(`${esEtsy ? '🛍 Confección para Etsy' : '🏪 Confección de stock'} a ${dias} días registrada`);
+      toast(`${esEtsy ? '🛍 Confección para Etsy' : esRD ? '🇩🇴 Confección en el taller RD' : '🏪 Confección de stock'} a ${dias} días registrada`);
       Tareas.render();
       cerrarModal();
       render();
