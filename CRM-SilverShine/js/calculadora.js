@@ -279,12 +279,116 @@ const Calculadora = (() => {
   function pasarA(destino) {
     const c = calcular();
     if (!(c.total > 0) || !(c.peso > 0)) { UI.toast('Calcula la pieza primero (peso y precio)'); return; }
+    /* Foto del cálculo: viaja invisible en la línea hasta la factura para
+       medir después qué tan certera fue la calculadora (todo en RD$). */
+    const t = tasaNum() || 0;
+    const enRD = v => enPesosMode() ? v : (t ? v * t : v);
+    const calculo = {
+      fecha: UI.fechaISO(),
+      metal: c.metal.texto, kilate: c.metal.id, gramos: c.peso,
+      spot: Number(c.metal.metal === 'plata' ? state.spotPlata : state.spot) || 0,
+      tasa: t,
+      ajustePct: Number(state.ajusteOro) || 0,
+      margenPct: Number(state.margen) || 0,
+      metalRD: round2(enRD(c.oro)),
+      piedrasRD: round2(enRD(c.piedras)),
+      manoObraRD: round2(enRD(c.mano)),
+      costoEstimadoRD: round2(enRD(c.costo)),
+      descuentoRD: round2(enRD(c.descuento)),
+      sugeridoRD: round2(enRD(c.total)),
+    };
     const obj = {
       moneda: enPesosMode() ? 'DOP' : 'USD',
-      lineas: [{ descripcion: descripcionPieza(c), cantidad: 1, precio: round2(c.total) }],
+      lineas: [{ descripcion: descripcionPieza(c), cantidad: 1, precio: round2(c.total), calculo }],
     };
     if (destino === 'factura') Facturas.formulario(obj);
     else Cotizaciones.formulario({ ...obj, peso: c.peso || null });
+  }
+
+  /* ── 🎯 Precisión: la foto del cálculo vs la vida real ──
+     Compara, por factura nacida de la calculadora: precio sugerido vs
+     cobrado, costo estimado vs costo real (el de Confecciones/Finanzas)
+     y margen configurado vs real. Medianas para que una pieza rara no
+     dañe la lectura. */
+  const mediana = arr => {
+    if (!arr.length) return null;
+    const s = [...arr].sort((a, b) => a - b);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  const pctTxt = v => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
+
+  async function renderPrecision() {
+    const cont = $id('calcPrecision');
+    if (!cont) return;
+    const FEE = 'Tarifa administrativa EasyPay';
+    const fmtRD = v => UI.fmtDinero(v);
+    const facturas = (await DB.facturas.list()).filter(f => f.estado !== 'anulada');
+
+    const piezas = [];
+    for (const f of facturas) {
+      const conFoto = (f.lineas || []).filter(l => l.calculo);
+      if (!conFoto.length) continue;
+      const sinFoto = (f.lineas || []).filter(l => !l.calculo && !String(l.descripcion || '').startsWith(FEE));
+      const aRD = v => f.moneda === 'USD' ? v * (conFoto[0].calculo.tasa || tasaNum() || 0) : v;
+      piezas.push({
+        f,
+        fecha: conFoto[0].calculo.fecha,
+        sugerido: conFoto.reduce((s, l) => s + (l.calculo.sugeridoRD || 0), 0),
+        facturado: aRD(conFoto.reduce((s, l) => s + l.cantidad * l.precio, 0)),
+        costoEst: conFoto.reduce((s, l) => s + (l.calculo.costoEstimadoRD || 0), 0),
+        // El costo real (f.costo) es de la factura completa: solo compara
+        // cuando TODAS sus líneas salieron de la calculadora
+        costoReal: !sinFoto.length && f.costo > 0 ? f.costo : null,
+        calculos: conFoto.map(l => l.calculo),
+      });
+    }
+
+    if (!piezas.length) {
+      cont.innerHTML = '<p class="muted">Aún no hay piezas para comparar. Desde ahora, cada pieza que pases a factura o cotización viaja con la foto de su cálculo; cuando se facture y tenga su costo real (el que anotas en Confecciones o Finanzas), aquí aparecen la comparación y las sugerencias de ajuste.</p>';
+      return;
+    }
+    piezas.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+    const dPrecio = piezas.filter(p => p.sugerido > 0).map(p => (p.facturado - p.sugerido) / p.sugerido);
+    const cerradas = piezas.filter(p => p.costoReal && p.costoEst > 0);
+    const dCosto = cerradas.map(p => (p.costoReal - p.costoEst) / p.costoEst);
+    /* Qué % de ajuste (merma/manufactura) habría cuadrado el costo real:
+       se despeja del metal sin ajuste (piedras y mano de obra fijas) */
+    const ajustes = cerradas.map(p => {
+      const metalBase = p.calculos.reduce((s, c) => s + (c.metalRD || 0) / (1 + (c.ajustePct || 0) / 100), 0);
+      const resto = p.calculos.reduce((s, c) => s + (c.piedrasRD || 0) + (c.manoObraRD || 0), 0);
+      return metalBase > 0 ? ((p.costoReal - resto) / metalBase - 1) * 100 : null;
+    }).filter(v => v !== null && isFinite(v));
+    const margenes = cerradas.map(p => (p.facturado - p.costoReal) / p.costoReal * 100);
+    const margenConfig = mediana(piezas.map(p => p.calculos[0].margenPct || 0));
+
+    const mp = mediana(dPrecio), mc = mediana(dCosto), ma = mediana(ajustes), mm = mediana(margenes);
+    const ajusteActual = Number(state.ajusteOro) || 0;
+    const lineas = [];
+    if (mp !== null) lineas.push(`💬 Precio: cierras a <b>${pctTxt(mp)}</b> del sugerido (mediana de ${dPrecio.length} pieza${dPrecio.length === 1 ? '' : 's'}).`);
+    if (mc !== null) {
+      lineas.push(`🏭 Costo: el real del taller sale <b class="${mc > 0.03 ? 'rojo' : mc < -0.03 ? 'verde' : ''}">${pctTxt(mc)}</b> frente a tu estimado (${cerradas.length} pieza${cerradas.length === 1 ? '' : 's'} con costo real).`);
+      if (ma !== null && Math.abs(ma - ajusteActual) >= 2)
+        lineas.push(`👉 Sugerencia: con un <b>ajuste de merma/manufactura de ~${Math.round(ma)}%</b> tu costo estimado cuadraría con el real (hoy usas ${ajusteActual}%).`);
+    } else {
+      lineas.push('🏭 Costo: aún ninguna de estas piezas tiene su costo real anotado — ponlo en Confecciones (US$) o Finanzas y aquí sale la comparación.');
+    }
+    if (mm !== null && margenConfig !== null)
+      lineas.push(`💰 Margen real: <b>${Math.round(mm)}%</b> (configurado: ${Math.round(margenConfig)}%).`);
+
+    const filas = piezas.slice(0, 8).map(p => {
+      const dev = p.sugerido > 0 ? (p.facturado - p.sugerido) / p.sugerido : 0;
+      const costoTxt = p.costoReal
+        ? `costo est. ${fmtRD(p.costoEst)} → real ${fmtRD(p.costoReal)}`
+        : (p.costoEst ? `costo est. ${fmtRD(p.costoEst)} · <i>sin costo real aún</i>` : '');
+      return `<div class="item"><div class="item-info">
+        <div class="item-name">${UI.esc(p.f.clienteNombre || '')} <span class="muted">${p.f.orden ? '#' + p.f.orden : (p.f.numero || '')}</span></div>
+        <div class="item-sub">${UI.fmtFecha(p.fecha)} · sugerido ${fmtRD(p.sugerido)} → cobrado ${fmtRD(p.facturado)} (${pctTxt(dev)})${costoTxt ? ' · ' + costoTxt : ''}</div>
+      </div></div>`;
+    }).join('');
+
+    cont.innerHTML = `<p style="margin-bottom:10px">${lineas.join('<br>')}</p><div class="list">${filas}</div>`;
   }
 
   /* ── Eventos ── */
@@ -351,6 +455,7 @@ const Calculadora = (() => {
   /* Al abrir la vista: refrescar precios en línea la primera vez */
   function abrir() {
     render();
+    renderPrecision();
     if (!fetchHecho) { fetchHecho = true; fetchOro(); fetchTasa(); }
   }
 

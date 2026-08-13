@@ -733,7 +733,7 @@ const Facturas = (() => {
       if (!clienteSel) { toast('Selecciona un cliente de la lista'); inpCli.focus(); return; }
       const fd = new FormData(e.target);
       const lineasOk = lineas
-        .map(l => ({ descripcion: l.descripcion.trim(), cantidad: Number(l.cantidad) || 1, precio: Number(l.precio) || 0 }))
+        .map(l => ({ ...l, descripcion: l.descripcion.trim(), cantidad: Number(l.cantidad) || 1, precio: Number(l.precio) || 0 }))
         .filter(l => l.descripcion && l.precio > 0);
       if (!lineasOk.length) { toast('Agrega al menos una línea con precio'); return; }
       const { imp, total } = totalDe(lineasOk, fd.get('itbis') === 'si');
