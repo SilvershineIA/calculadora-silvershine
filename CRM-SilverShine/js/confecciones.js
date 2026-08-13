@@ -14,8 +14,15 @@ const Confecciones = (() => {
   const enDias = (base, n) => { const d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + n); return UI.fechaISO(d); };
   const diasHasta = fecha => Math.round((new Date(fecha + 'T00:00:00') - new Date(hoyISO() + 'T00:00:00')) / 864e5);
 
-  const ESTADOS = { taller: '🧵 En taller', lista: '📦 Lista para entregar', entregada: '✅ Entregada' };
-  const BADGE   = { taller: 'b-pend', lista: 'b-pag', entregada: 'b-anu' };
+  /* Pipeline interno de la pieza, del taller al cliente */
+  const ESTADOS = {
+    pendiente: '📋 Por enviar al taller',
+    taller:    '🧵 En el taller',
+    camino:    '✈️ Despachada — en camino',
+    lista:     '📦 En almacén — lista para entregar',
+    entregada: '✅ Entregada',
+  };
+  const BADGE = { pendiente: 'b-roja', taller: 'b-pend', camino: 'b-pend', lista: 'b-pag', entregada: 'b-anu' };
 
   let filtro = 'proceso';   // proceso · entregadas · todas
 
@@ -23,7 +30,14 @@ const Confecciones = (() => {
     return (await DB.facturas.list()).filter(f => f.estado !== 'anulada' && f.confeccion);
   }
 
-  const atrasada = f => f.confeccion.estado === 'taller' && diasHasta(f.confeccion.entrega) < 0;
+  const atrasada = f => f.confeccion.estado !== 'entregada' && diasHasta(f.confeccion.entrega) < 0;
+
+  /* Cuántos días lleva (o estuvo) la pieza en el taller */
+  function diasEnTaller(c) {
+    if (!c.enviadaEl) return null;
+    const fin = c.despachadaEl || (c.estado === 'taller' ? hoyISO() : c.recibidaEl || hoyISO());
+    return Math.max(0, Math.round((new Date(fin + 'T00:00:00') - new Date(c.enviadaEl + 'T00:00:00')) / 864e5));
+  }
 
   /* Etiqueta de plazo: cuánto falta (o cuánto se pasó) para la entrega */
   function plazoTxt(c) {
@@ -41,7 +55,7 @@ const Confecciones = (() => {
     if (f.confeccion && f.confeccion.estado !== 'entregada' &&
         !confirm(`La factura ${rotulo(f)} ya tiene una confección en proceso (entrega ${fmtFecha(f.confeccion.entrega)}). ¿Reemplazar el plazo?`)) return false;
     const hoy = hoyISO();
-    f.confeccion = { inicio: hoy, dias, entrega: enDias(hoy, dias), estado: 'taller' };
+    f.confeccion = { inicio: hoy, dias, entrega: enDias(hoy, dias), estado: 'pendiente' };
     await DB.facturas.upsert(f);
     await DB.tareas.upsert({
       titulo: `Confección (${dias} días) — Factura ${rotulo(f)}`,
@@ -67,14 +81,20 @@ const Confecciones = (() => {
     const conv = f => (f.moneda === 'USD' && tasa ? f.saldo * tasa : f.saldo) || 0;
 
     const proceso = lista.filter(f => f.confeccion.estado !== 'entregada');
-    const listas = proceso.filter(f => f.confeccion.estado === 'lista');
+    const cuenta = e => proceso.filter(f => f.confeccion.estado === e).length;
     const atrasadas = proceso.filter(atrasada);
     const deudaProceso = proceso.reduce((s, f) => s + (f.saldo > 0 ? conv(f) : 0), 0);
+    /* Lo que falta pagarle al taller: costo final (f.costo, el mismo de
+       Finanzas) menos el pago inicial. Solo suma piezas con costo conocido. */
+    const porPagarTaller = proceso.reduce((s, f) =>
+      s + (f.costo ? Math.max(f.costo - (f.confeccion.costoInicial || 0), 0) : 0), 0);
 
     $('#confStats').innerHTML =
-      UI.statTile(proceso.length, 'En proceso') +
-      UI.statTile(listas.length, 'Listas para entregar', listas.length ? 'verde' : '') +
+      UI.statTile(cuenta('pendiente'), 'Por enviar al taller', cuenta('pendiente') ? 'rojo' : '') +
+      UI.statTile(cuenta('taller'), 'En el taller') +
+      UI.statTile(cuenta('camino') + cuenta('lista'), 'En camino / almacén') +
       UI.statTile(atrasadas.length, 'Atrasadas', atrasadas.length ? 'rojo' : '') +
+      UI.statTile(UI.fmtDinero(porPagarTaller), 'Por pagar al taller', porPagarTaller > 0 ? 'rojo' : '') +
       UI.statTile(UI.fmtDinero(deudaProceso), 'Por cobrar al entregar', deudaProceso > 0 ? 'rojo' : 'verde');
 
     const FILTROS = [['proceso', '🧵 En proceso'], ['entregadas', '✅ Entregadas'], ['todas', 'Todas']];
@@ -86,12 +106,17 @@ const Confecciones = (() => {
     const fila = f => {
       const c = f.confeccion;
       const debe = f.saldo > 0;
+      const dt = diasEnTaller(c);
+      const extra =
+        (c.estado === 'taller' && dt !== null ? ` · 🧵 lleva ${dt} día${dt === 1 ? '' : 's'} en el taller` : '') +
+        (c.estado === 'camino' && c.tracking ? ` · 📦 ${esc(c.tracking)}` : '') +
+        (c.notas ? ' · ⚠ hay temas anotados' : '');
       return `
       <div class="item" data-id="${f.id}">
         <div class="item-info">
           <div class="item-name">${esc(f.clienteNombre)} <span class="muted">${esc(rotulo(f))}</span>
             <span class="badge ${BADGE[c.estado]}">${ESTADOS[c.estado]}</span></div>
-          <div class="item-sub">pactada a ${c.dias} días · encargada ${fmtFecha(c.inicio)} · <b class="${atrasada(f) ? 'rojo' : ''}">${plazoTxt(c)}</b></div>
+          <div class="item-sub">pactada a ${c.dias} días · <b class="${atrasada(f) ? 'rojo' : ''}">${plazoTxt(c)}</b>${extra}</div>
         </div>
         <b class="${debe ? 'rojo' : 'verde'}">${debe ? fmtMoneda(f.saldo, f.moneda) : '✓ pagada'}</b>
       </div>`;
@@ -108,10 +133,13 @@ const Confecciones = (() => {
     } else {
       const base = filtro === 'todas' ? lista : proceso;
       const porEntrega = arr => arr.sort((a, b) => a.confeccion.entrega.localeCompare(b.confeccion.entrega));
+      const enEstado = e => porEntrega(base.filter(f => f.confeccion.estado === e && !atrasada(f)));
       html =
-        seccion('🔴 Atrasadas — dar la cara al cliente', porEntrega(base.filter(atrasada))) +
-        seccion('📦 Listas para entregar', porEntrega(base.filter(f => f.confeccion.estado === 'lista'))) +
-        seccion('🧵 En el taller', porEntrega(base.filter(f => f.confeccion.estado === 'taller' && !atrasada(f)))) +
+        seccion('🔴 Atrasadas — mover ya', porEntrega(base.filter(atrasada))) +
+        seccion('📋 Por enviar al taller', enEstado('pendiente')) +
+        seccion('✈️ En camino', enEstado('camino')) +
+        seccion('📦 En almacén — listas para entregar', enEstado('lista')) +
+        seccion('🧵 En el taller', enEstado('taller')) +
         (filtro === 'todas' ? seccion('✅ Entregadas', base.filter(f => f.confeccion.estado === 'entregada')
           .sort((a, b) => (b.confeccion.entregadaEl || b.confeccion.entrega).localeCompare(a.confeccion.entregadaEl || a.confeccion.entrega)).slice(0, 30)) : '');
     }
@@ -153,6 +181,14 @@ const Confecciones = (() => {
     const t = f.moneda || 'DOP';
     const debe = f.saldo > 0;
 
+    const dt = diasEnTaller(c);
+    const viaje = [
+      c.enviadaEl ? `enviada al taller el ${fmtFecha(c.enviadaEl)}` : 'aún NO se ha enviado al taller',
+      dt !== null ? `${c.estado === 'taller' ? 'lleva' : 'estuvo'} ${dt} día${dt === 1 ? '' : 's'} en el taller` : '',
+      c.despachadaEl ? `despachada el ${fmtFecha(c.despachadaEl)}` : '',
+      c.recibidaEl ? `recibida en almacén el ${fmtFecha(c.recibidaEl)}` : '',
+    ].filter(Boolean).join(' · ');
+
     abrirModal(`Confección — ${rotulo(f)}`, `
       <div class="item-name" style="margin-bottom:4px">${esc(f.clienteNombre)}
         <span class="badge ${BADGE[c.estado]}">${ESTADOS[c.estado]}</span></div>
@@ -165,17 +201,56 @@ const Confecciones = (() => {
           <select id="confEstado">
             ${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${c.estado === k ? 'selected' : ''}>${v}</option>`).join('')}
           </select></div>
-        <div><label>Fecha de entrega</label><input type="date" id="confEntrega" value="${c.entrega}"></div>
+        <div><label>Fecha de entrega al cliente</label><input type="date" id="confEntrega" value="${c.entrega}"></div>
       </div>
+
+      <h3 class="sub-h">🏭 Taller / proveedor</h3>
+      <p class="muted" style="margin-bottom:10px">${viaje}</p>
+      <div class="row">
+        <div><label>Pago inicial al taller (RD$)</label>
+          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c.costoInicial ?? ''}" placeholder="Lo que pidió para comenzar"></div>
+        <div><label>Costo final de la pieza (RD$)</label>
+          <input type="number" id="confCostoFin" min="0" step="0.01" value="${f.costo ?? ''}" placeholder="Se define al despachar"></div>
+      </div>
+      <p class="muted" id="confSaldoProv" style="margin:-4px 0 10px"></p>
       <div class="row"><div>
-        <label>Notas del taller</label>
-        <textarea id="confNotas" placeholder="Ej: falta engaste de la piedra central…">${esc(c.notas || '')}</textarea>
+        <label>📦 Tracking (número(s) de guía)</label>
+        <input id="confTracking" value="${esc(c.tracking || '')}" placeholder="Ej: 1Z999AA10123456784">
+      </div></div>
+      <div class="row"><div>
+        <label>⚠ Problemas / temas</label>
+        <textarea id="confNotas" placeholder="Ej: el proveedor avisa 3 días extra por el engaste…">${esc(c.notas || '')}</textarea>
       </div></div>
       ${UI.tieneWhatsApp(cliente) ? `<button class="btn-gold btn-block" id="confWA">💬 Avisar al cliente por WhatsApp</button>` : ''}
       <button class="btn-ghost btn-block" id="confFactura" style="margin-top:10px">🧾 Ver factura / registrar abono</button>
     `);
 
     const guardar = async () => { await DB.facturas.upsert(f); render(); };
+
+    /* Lo que falta pagarle al taller, en vivo según los dos campos */
+    const pintarSaldoProv = () => {
+      const ini = Number($('#confCostoIni').value) || 0;
+      const fin = Number($('#confCostoFin').value) || 0;
+      $('#confSaldoProv').innerHTML = fin
+        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${fmtMoneda(Math.max(fin - ini, 0))}</b>${ini ? ` (inicial ${fmtMoneda(ini)} ya dado)` : ''}`
+        : (ini ? `Inicial dado: ${fmtMoneda(ini)} — el costo final se define al despachar.` : 'El proveedor fija el costo final al despachar.');
+    };
+    pintarSaldoProv();
+    $('#confCostoIni').addEventListener('change', async e => {
+      const v = Number(e.target.value);
+      if (v > 0) c.costoInicial = v; else delete c.costoInicial;
+      await guardar(); pintarSaldoProv();
+    });
+    $('#confCostoFin').addEventListener('change', async e => {
+      const v = Number(e.target.value);
+      if (v > 0) { f.costo = v; toast('🔒 Costo guardado — Finanzas lo usa para la ganancia'); }
+      else delete f.costo;
+      await guardar(); pintarSaldoProv();
+    });
+    $('#confTracking').addEventListener('change', async e => {
+      c.tracking = e.target.value.trim();
+      await guardar();
+    });
     $('#confEstado').addEventListener('change', async e => {
       const nuevo = e.target.value;
       if (nuevo === 'entregada') {
@@ -184,6 +259,10 @@ const Confecciones = (() => {
         }
         c.entregadaEl = hoyISO();
       } else delete c.entregadaEl;
+      /* Cada etapa deja su fecha la primera vez que se pisa */
+      if (nuevo === 'taller' && !c.enviadaEl) c.enviadaEl = hoyISO();
+      if (nuevo === 'camino' && !c.despachadaEl) { c.enviadaEl = c.enviadaEl || c.inicio; c.despachadaEl = hoyISO(); }
+      if ((nuevo === 'lista' || nuevo === 'entregada') && !c.recibidaEl) c.recibidaEl = hoyISO();
       c.estado = nuevo;
       await guardar();
       toast(`${ESTADOS[nuevo]}`);

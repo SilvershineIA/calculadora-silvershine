@@ -885,7 +885,7 @@
       const dias = Number(m[1]);
       const inicio = (t.pasos && t.pasos[0] && t.pasos[0].fecha) || t.fecha || UI.fechaISO();
       const d = new Date(inicio + 'T00:00:00'); d.setDate(d.getDate() + dias);
-      f.confeccion = { inicio, dias, entrega: UI.fechaISO(d), estado: t.hecha ? 'entregada' : 'taller' };
+      f.confeccion = { inicio, dias, entrega: UI.fechaISO(d), estado: t.hecha ? 'entregada' : 'taller', enviadaEl: inicio };
       if (t.hecha) f.confeccion.entregadaEl = f.confeccion.entrega;
       await DB.facturas.upsert(f);
     }
