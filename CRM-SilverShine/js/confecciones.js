@@ -10,7 +10,8 @@ const Confecciones = (() => {
   const { $, abrirModal, cerrarModal, toast, fmtMoneda, fmtFecha, esc } = UI;
 
   const hoyISO = () => UI.fechaISO();
-  const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+  // Las piezas sin factura (stock/Etsy) ya llevan su etiqueta en el nombre
+  const rotulo = f => f.esStock ? '' : (f.orden ? `#${f.orden}` : (f.numero || 's/n'));
   const enDias = (base, n) => { const d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + n); return UI.fechaISO(d); };
   const diasHasta = fecha => Math.round((new Date(fecha + 'T00:00:00') - new Date(hoyISO() + 'T00:00:00')) / 864e5);
 
@@ -26,9 +27,21 @@ const Confecciones = (() => {
 
   let filtro = 'proceso';   // proceso · entregadas · todas
 
+  /* Piezas del taller: las de clientes (viven en su factura) y las de
+     STOCK del negocio (docs 'cstock-*' en config, sin cliente ni deuda).
+     El envoltorio de stock imita una factura para que toda la vista
+     funcione igual; x.confeccion comparte referencia con el doc. */
   async function activas() {
-    return (await DB.facturas.list()).filter(f => f.estado !== 'anulada' && f.confeccion);
+    const deFacturas = (await DB.facturas.list()).filter(f => f.estado !== 'anulada' && f.confeccion);
+    const stock = (await DB.config.list())
+      .filter(d => d.tipo === 'conf-stock' && d.confeccion)
+      .map(d => ({ id: d.id, esStock: true, doc: d, destino: d.destino || 'stock',
+        clienteNombre: `${d.destino === 'etsy' ? '🛍 Etsy' : '🏪 Stock'} — ${d.descripcion}`,
+        saldo: 0, total: 0, moneda: 'DOP', orden: null, numero: '', confeccion: d.confeccion }));
+    return [...deFacturas, ...stock];
   }
+
+  const guardarPieza = x => x.esStock ? DB.config.upsert(x.doc) : DB.facturas.upsert(x);
 
   const atrasada = f => f.confeccion.estado !== 'entregada' && diasHasta(f.confeccion.entrega) < 0;
 
@@ -130,7 +143,9 @@ const Confecciones = (() => {
             <span class="badge ${BADGE[c.estado]}">${ESTADOS[c.estado]}</span></div>
           <div class="item-sub">pactada a ${c.dias} días · <b class="${atrasada(f) ? 'rojo' : ''}">${plazoTxt(c)}</b>${extra}</div>
         </div>
-        <b class="${debe ? 'rojo' : 'verde'}">${debe ? fmtMoneda(f.saldo, f.moneda) : '✓ pagada'}</b>
+        ${f.esStock
+          ? `<b class="muted">${f.destino === 'etsy' ? '🛍 etsy' : '🏪 stock'}</b>`
+          : `<b class="${debe ? 'rojo' : 'verde'}">${debe ? fmtMoneda(f.saldo, f.moneda) : '✓ pagada'}</b>`}
       </div>`;
     };
     const seccion = (titulo, arr) => !arr.length ? '' :
@@ -148,17 +163,31 @@ const Confecciones = (() => {
       }
       const nombres = [...porGrupo.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
       if (porGrupo.has('')) nombres.push('');
+      const gdocs = new Map((await DB.config.list())
+        .filter(d => d.tipo === 'conf-grupo').map(d => [d.nombre, d]));
       html = nombres.map(g => {
         const arr = porGrupo.get(g).sort((a, b) => a.confeccion.entrega.localeCompare(b.confeccion.entrega));
-        const conCosto = arr.filter(x => x.confeccion.costoFinalUSD);
-        const totalUSD = conCosto.reduce((s, x) => s + x.confeccion.costoFinalUSD, 0);
-        const iniUSD = arr.reduce((s, x) => s + (x.confeccion.costoInicialUSD || 0), 0);
-        const sinCosto = arr.length - conCosto.length;
-        const resumen = [
-          totalUSD ? `costo ${fmtMoneda(totalUSD, 'USD')}` : '',
-          iniUSD ? `inicial ${fmtMoneda(iniUSD, 'USD')} dado` : '',
-          sinCosto && arr.length > sinCosto ? `${sinCosto} sin costo aún` : '',
-        ].filter(Boolean).join(' · ');
+        const doc = gdocs.get(g);
+        let resumen;
+        if (doc && (doc.exigidoUSD || doc.pagadoUSD)) {
+          /* La cuenta del lote manda sobre el resumen por pieza */
+          const ex = doc.exigidoUSD || 0, pa = doc.pagadoUSD || 0;
+          resumen = [
+            ex ? `taller exige ${fmtMoneda(ex, 'USD')}` : '',
+            pa ? `pagado ${fmtMoneda(pa, 'USD')}` : '',
+            ex - pa > 0 ? `<b class="rojo">falta ${fmtMoneda(ex - pa, 'USD')}</b>` : (ex ? '✓ saldado' : ''),
+          ].filter(Boolean).join(' · ');
+        } else {
+          const conCosto = arr.filter(x => x.confeccion.costoFinalUSD);
+          const totalUSD = conCosto.reduce((s, x) => s + x.confeccion.costoFinalUSD, 0);
+          const iniUSD = arr.reduce((s, x) => s + (x.confeccion.costoInicialUSD || 0), 0);
+          const sinCosto = arr.length - conCosto.length;
+          resumen = [
+            totalUSD ? `costo ${fmtMoneda(totalUSD, 'USD')}` : '',
+            iniUSD ? `inicial ${fmtMoneda(iniUSD, 'USD')} dado` : '',
+            sinCosto && arr.length > sinCosto ? `${sinCosto} sin costo aún` : '',
+          ].filter(Boolean).join(' · ');
+        }
         return `
         <h3 class="sub-h" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span>${g ? `🗂 ${esc(g)}` : 'Sueltas — sin grupo'} (${arr.length})${resumen ? ` · ${resumen}` : ''}</span>
@@ -193,15 +222,32 @@ const Confecciones = (() => {
       b.addEventListener('click', e => { e.stopPropagation(); accionesGrupo(b.dataset.grupo); }));
   }
 
+  /* La cuenta del lote vive en un doc de config sincronizado:
+     'cgrupo-<slug>' {tipo:'conf-grupo', nombre, exigidoUSD, pagadoUSD} */
+  const idGrupo = nombre => 'cgrupo-' + nombre.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
   /* ── Acciones sobre un lote completo: cuando el taller despacha,
      despacha el grupo entero con una sola guía ── */
   async function accionesGrupo(nombre) {
     const piezas = (await activas())
       .filter(f => f.confeccion.grupo === nombre && f.confeccion.estado !== 'entregada');
     if (!piezas.length) return;
+    const doc = (await DB.config.get(idGrupo(nombre))) ||
+      { id: idGrupo(nombre), tipo: 'conf-grupo', nombre };
     abrirModal(`🗂 ${nombre}`, `
       <p class="muted" style="margin-bottom:12px">${piezas.map(f =>
         `${esc(f.clienteNombre)} ${esc(rotulo(f))} — ${ESTADOS[f.confeccion.estado]}`).join('<br>')}</p>
+      <h3 class="sub-h">💵 Cuenta con el taller por este lote (US$)</h3>
+      <div class="row">
+        <div><label>Monto exigido por el taller</label>
+          <input type="number" id="grpExigido" min="0" step="0.01" value="${doc.exigidoUSD ?? ''}" placeholder="A veces lo pide completo"></div>
+        <div><label>Lo que se ha pagado</label>
+          <input type="number" id="grpPagado" min="0" step="0.01" value="${doc.pagadoUSD ?? ''}" placeholder="Lo que se terminó pagando"></div>
+      </div>
+      <p class="muted" id="grpFalta" style="margin:-4px 0 12px"></p>
+      <h3 class="sub-h">🚚 Mover el lote</h3>
       <div class="row">
         <div><label>Mover TODO el grupo a</label>
           <select id="grpEstado">
@@ -213,6 +259,29 @@ const Confecciones = (() => {
       </div>
       <button class="btn-gold btn-block" id="grpAplicar">Aplicar a las ${piezas.length} piezas</button>
     `);
+
+    const usd = v => fmtMoneda(v, 'USD');
+    const pintarFalta = () => {
+      const ex = Number($('#grpExigido').value) || 0;
+      const pa = Number($('#grpPagado').value) || 0;
+      $('#grpFalta').innerHTML = ex || pa
+        ? (ex - pa > 0
+          ? `Falta por pagarle al taller: <b class="rojo">${usd(ex - pa)}</b>`
+          : `✓ Lote saldado con el taller${pa - ex > 0.005 ? ` (se pagó ${usd(pa - ex)} de más)` : ''}`)
+        : 'Anota lo que exige el taller y lo que se ha ido pagando.';
+    };
+    pintarFalta();
+    const guardarDoc = async () => { await DB.config.upsert(doc); pintarFalta(); };
+    $('#grpExigido').addEventListener('change', e => {
+      const v = Number(e.target.value);
+      if (v > 0) doc.exigidoUSD = v; else delete doc.exigidoUSD;
+      guardarDoc();
+    });
+    $('#grpPagado').addEventListener('change', e => {
+      const v = Number(e.target.value);
+      if (v > 0) doc.pagadoUSD = v; else delete doc.pagadoUSD;
+      guardarDoc();
+    });
     $('#grpAplicar').addEventListener('click', async () => {
       const nuevo = $('#grpEstado').value;
       const trk = $('#grpTracking').value.trim();
@@ -220,7 +289,7 @@ const Confecciones = (() => {
       for (const f of piezas) {
         if (nuevo) estampar(f.confeccion, nuevo);
         if (trk) f.confeccion.tracking = trk;
-        await DB.facturas.upsert(f);
+        await guardarPieza(f);
       }
       toast(`🗂 ${piezas.length} pieza${piezas.length === 1 ? '' : 's'} del lote actualizadas${nuevo ? ` → ${ESTADOS[nuevo]}` : ''}`);
       cerrarModal();
@@ -250,8 +319,109 @@ const Confecciones = (() => {
     return saludo + cuerpo + pie;
   }
 
+  /* ── Detalle de una pieza de STOCK: sin cliente, sin deuda; el costo
+     es inversión en inventario (no toca la ganancia de Finanzas) ── */
+  async function detalleStock(id) {
+    const doc = await DB.config.get(id);
+    if (!doc || !doc.confeccion) return;
+    const c = doc.confeccion;
+    const dt = diasEnTaller(c);
+    const gruposExistentes = [...new Set((await activas())
+      .map(x => x.confeccion.grupo).filter(Boolean))].sort();
+    const viaje = [
+      c.enviadaEl ? `enviada al taller el ${fmtFecha(c.enviadaEl)}` : 'aún NO se ha enviado al taller',
+      dt !== null ? `${c.estado === 'taller' ? 'lleva' : 'estuvo'} ${dt} día${dt === 1 ? '' : 's'} en el taller` : '',
+      c.despachadaEl ? `despachada el ${fmtFecha(c.despachadaEl)}` : '',
+      c.recibidaEl ? `recibida en almacén el ${fmtFecha(c.recibidaEl)}` : '',
+    ].filter(Boolean).join(' · ');
+
+    const esEtsy = doc.destino === 'etsy';
+    abrirModal(esEtsy ? 'Confección para Etsy 🛍' : 'Confección para stock 🏪', `
+      <div class="row"><div>
+        <label>¿Qué es?</label>
+        <input id="stkDesc" value="${esc(doc.descripcion || '')}">
+      </div></div>
+      <p class="muted" style="margin:4px 0 14px">Pactada a <b>${c.dias} días</b> · encargada el ${fmtFecha(c.inicio)} · <b class="${c.estado !== 'entregada' && diasHasta(c.entrega) < 0 ? 'rojo' : ''}">${plazoTxt(c)}</b></p>
+      <div class="row">
+        <div><label>Estado</label>
+          <select id="confEstado">
+            ${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${c.estado === k ? 'selected' : ''}>${k === 'entregada' ? (esEtsy ? '✅ Enviada al cliente de Etsy' : '✅ En vitrina / inventario') : v}</option>`).join('')}
+          </select></div>
+        <div><label>Fecha de entrega pactada</label><input type="date" id="confEntrega" value="${c.entrega}"></div>
+      </div>
+      <h3 class="sub-h">🏭 Taller / proveedor (US$)</h3>
+      <p class="muted" style="margin-bottom:10px">${viaje}</p>
+      <div class="row">
+        <div><label>Pago inicial al taller (US$)</label>
+          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c.costoInicialUSD ?? ''}"></div>
+        <div><label>Costo final (US$)</label>
+          <input type="number" id="confCostoFin" min="0" step="0.01" value="${c.costoFinalUSD ?? ''}" placeholder="Se define al despachar"></div>
+      </div>
+      <p class="muted" id="confSaldoProv" style="margin:-4px 0 10px"></p>
+      <div class="row">
+        <div><label>🗂 Grupo / lote del taller</label>
+          <input id="confGrupo" list="confGruposList" value="${esc(c.grupo || '')}" autocomplete="off">
+          <datalist id="confGruposList">${gruposExistentes.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>
+        <div><label>📦 Tracking</label>
+          <input id="confTracking" value="${esc(c.tracking || '')}"></div>
+      </div>
+      <div class="row"><div>
+        <label>⚠ Problemas / temas</label>
+        <textarea id="confNotas">${esc(c.notas || '')}</textarea>
+      </div></div>
+      <button class="btn-ghost btn-block" id="stkEliminar" style="margin-top:6px;color:var(--red)">🗑 Eliminar esta confección</button>
+    `);
+
+    const guardar = async () => { await DB.config.upsert(doc); render(); };
+    const usd = v => fmtMoneda(v, 'USD');
+    const pintarSaldoProv = () => {
+      const ini = Number($('#confCostoIni').value) || 0;
+      const fin = Number($('#confCostoFin').value) || 0;
+      $('#confSaldoProv').innerHTML = fin
+        ? `Falta por pagar: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${usd(Math.max(fin - ini, 0))}</b> — inversión en stock (no toca la ganancia de Finanzas).`
+        : (ini ? `Inicial dado: ${usd(ini)}.` : 'El costo final se define al despachar.');
+    };
+    pintarSaldoProv();
+    $('#stkDesc').addEventListener('change', e => { doc.descripcion = e.target.value.trim() || doc.descripcion; guardar(); });
+    $('#confEstado').addEventListener('change', async e => {
+      estampar(c, e.target.value);
+      await guardar();
+      toast(ESTADOS[c.estado]);
+      detalleStock(id);
+    });
+    $('#confEntrega').addEventListener('change', e => {
+      if (!e.target.value) { e.target.value = c.entrega; return; }
+      c.entrega = e.target.value; guardar();
+    });
+    $('#confCostoIni').addEventListener('change', e => {
+      const v = Number(e.target.value);
+      if (v > 0) c.costoInicialUSD = v; else delete c.costoInicialUSD;
+      guardar(); pintarSaldoProv();
+    });
+    $('#confCostoFin').addEventListener('change', e => {
+      const v = Number(e.target.value);
+      if (v > 0) c.costoFinalUSD = v; else delete c.costoFinalUSD;
+      guardar(); pintarSaldoProv();
+    });
+    $('#confGrupo').addEventListener('change', e => {
+      const g = e.target.value.trim();
+      if (g) c.grupo = g; else delete c.grupo;
+      guardar();
+    });
+    $('#confTracking').addEventListener('change', e => { c.tracking = e.target.value.trim(); guardar(); });
+    $('#confNotas').addEventListener('change', e => { c.notas = e.target.value.trim(); guardar(); });
+    $('#stkEliminar').addEventListener('click', async () => {
+      if (!confirm(`¿Eliminar la confección de stock "${doc.descripcion}"?`)) return;
+      await DB.config.remove(doc.id);
+      toast('🗑 Confección de stock eliminada');
+      cerrarModal();
+      render();
+    });
+  }
+
   /* ── Detalle ── */
   async function detalle(fid) {
+    if (String(fid).startsWith('cstock-')) return detalleStock(fid);
     const f = await DB.facturas.get(fid);
     if (!f || !f.confeccion) return;
     const c = f.confeccion;
@@ -388,10 +558,16 @@ const Confecciones = (() => {
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
 
     abrirModal('Nueva confección', `
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn-ghost btn-block" id="confParaStock">🏪 Para el stock del negocio</button>
+        <button class="btn-ghost btn-block" id="confParaEtsy">🛍 Para Etsy</button>
+      </div>
       <p class="muted" style="margin-bottom:10px">¿De qué factura es la pieza? (si no existe, créala primero en Facturas)</p>
       <input type="search" id="confBuscar" class="search" placeholder="Buscar por cliente, # de orden o NCF…">
       <div id="confResultados" class="list" style="margin-top:10px"></div>
     `);
+    $('#confParaStock').addEventListener('click', () => formStock('stock'));
+    $('#confParaEtsy').addEventListener('click', () => formStock('etsy'));
 
     const pintar = q => {
       const txt = q.trim().toLowerCase();
@@ -412,6 +588,56 @@ const Confecciones = (() => {
     pintar('');
 
     const plazo = async id => pactar(await DB.facturas.get(id));
+  }
+
+  /* ── Confección sin cliente: para el stock del negocio o para Etsy ── */
+  function formStock(destino = 'stock') {
+    const esEtsy = destino === 'etsy';
+    abrirModal(esEtsy ? 'Confección para Etsy 🛍' : 'Confección para stock 🏪', `
+      <div class="row"><div>
+        <label>¿Qué se va a confeccionar? *</label>
+        <input id="stkDescNueva" placeholder="${esEtsy ? 'Ej: pedido Etsy #3021 — anillo 14k talla 7' : 'Ej: 3 tríos oro 14k surtidos'}" autocomplete="off">
+      </div></div>
+      <p class="muted" style="margin-bottom:14px">¿Para cuándo está pactada?</p>
+      <button class="btn-gold btn-block" id="stk5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
+      <button class="btn-gold btn-block" id="stk20">🗓 Confección a 20 días</button>
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <div><label>U otro plazo (días)</label><input type="number" id="stkOtro" min="1" step="1" placeholder="Ej: 10"></div>
+        <div style="flex:0 0 auto"><button class="btn-ghost" id="stkOtroOk">Pactar</button></div>
+      </div>
+    `);
+    const arrancar = async dias => {
+      const desc = $('#stkDescNueva').value.trim();
+      if (!desc) { toast('Escribe qué se va a confeccionar'); $('#stkDescNueva').focus(); return; }
+      const hoy = hoyISO();
+      await DB.config.upsert({
+        id: `cstock-${Date.now()}`, tipo: 'conf-stock', destino, descripcion: desc,
+        confeccion: { inicio: hoy, dias, entrega: enDias(hoy, dias), estado: 'pendiente' },
+      });
+      /* Tarea de taller igual que las de clientes ("Stock:"/"Etsy:" en el
+         título para que la migración de facturas nunca la toque) */
+      await DB.tareas.upsert({
+        titulo: `Confección (${dias} días) — ${esEtsy ? 'Etsy' : 'Stock'}: ${desc}`,
+        fecha: hoy,
+        notas: esEtsy ? 'Pedido de Etsy (sin cliente del CRM)' : 'Pieza para el stock del negocio (sin cliente)',
+        pasos: [
+          { titulo: 'Enviar orden al taller', fecha: hoy,                   hecho: false },
+          { titulo: 'Seguimiento',            fecha: enDias(hoy, dias),     hecho: false },
+          { titulo: 'Seguimiento final',      fecha: enDias(hoy, dias + 1), hecho: false },
+        ],
+        hecha: false,
+      });
+      toast(`${esEtsy ? '🛍 Confección para Etsy' : '🏪 Confección de stock'} a ${dias} días registrada`);
+      Tareas.render();
+      cerrarModal();
+      render();
+    };
+    $('#stk5').addEventListener('click', () => arrancar(5));
+    $('#stk20').addEventListener('click', () => arrancar(20));
+    $('#stkOtroOk').addEventListener('click', () => {
+      const d = Number($('#stkOtro').value);
+      if (d >= 1) arrancar(Math.round(d));
+    });
   }
 
   /* ── Detección automática: una factura "lleva confección" si alguna
