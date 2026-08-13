@@ -315,7 +315,8 @@ const Cotizaciones = (() => {
       await DB.cotizaciones.upsert(c);
       cerrarModal();
       toast(`Factura #${orden} · ${numero} creada desde la cotización`);
-      Facturas.detalle(fact.id);
+      if (Confecciones.esDeConfeccion(fact)) Confecciones.pactar(fact, () => Facturas.detalle(fact.id));
+      else Facturas.detalle(fact.id);
     });
 
     /* La factura ya existe (se hizo a mano): elegirla y quedar vinculada */

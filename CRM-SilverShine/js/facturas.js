@@ -829,6 +829,10 @@ const Facturas = (() => {
       cerrarModal();
       toast(esNueva ? `Factura ${numeroF} creada` : 'Factura actualizada');
       render();
+      // Si la factura lleva una línea de confección, la confección se pacta sola
+      if (esNueva && !guardada.confeccion && Confecciones.esDeConfeccion(guardada)) {
+        Confecciones.pactar(guardada, () => detalle(guardada.id));
+      }
     });
   }
 

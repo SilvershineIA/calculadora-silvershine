@@ -234,30 +234,42 @@ const Confecciones = (() => {
     $('#confBuscar').addEventListener('input', e => pintar(e.target.value));
     pintar('');
 
-    const plazo = async id => {
-      const f = await DB.facturas.get(id);
-      abrirModal(`Confección — ${rotulo(f)}`, `
-        <p class="muted" style="margin-bottom:14px">¿Para cuándo está pactada la confección de ${esc(f.clienteNombre)}?</p>
-        <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
-        <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
-        <div class="row" style="margin-top:12px;align-items:flex-end">
-          <div><label>U otro plazo (días)</label><input type="number" id="confOtro" min="1" step="1" placeholder="Ej: 10"></div>
-          <div style="flex:0 0 auto"><button class="btn-ghost" id="confOtroOk">Pactar</button></div>
-        </div>
-      `);
-      const arrancar = async dias => { if (await iniciar(f, dias)) { cerrarModal(); render(); } };
-      $('#conf5').addEventListener('click', () => arrancar(5));
-      $('#conf20').addEventListener('click', () => arrancar(20));
-      $('#confOtroOk').addEventListener('click', () => {
-        const d = Number($('#confOtro').value);
-        if (d >= 1) arrancar(Math.round(d));
-      });
-    };
+    const plazo = async id => pactar(await DB.facturas.get(id));
+  }
+
+  /* ── Detección automática: una factura "lleva confección" si alguna
+     de sus líneas menciona confección (p. ej. el producto del catálogo
+     "Confección personalizada") ── */
+  const esDeConfeccion = f =>
+    (f.lineas || []).some(l => /confecci/i.test(l.descripcion || ''));
+
+  /* Modal de plazo compartido: lo usan "+ Nueva confección", la factura
+     recién creada y la conversión de cotización */
+  function pactar(f, alListo) {
+    const listo = () => { if (alListo) alListo(); else { cerrarModal(); render(); } };
+    abrirModal(`Confección — ${rotulo(f)}`, `
+      <p class="muted" style="margin-bottom:14px">Esta pieza es de confección 🧵 ¿Para cuándo está pactada la de ${esc(f.clienteNombre)}?</p>
+      <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
+      <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <div><label>U otro plazo (días)</label><input type="number" id="confOtro" min="1" step="1" placeholder="Ej: 10"></div>
+        <div style="flex:0 0 auto"><button class="btn-ghost" id="confOtroOk">Pactar</button></div>
+      </div>
+      <button class="btn-ghost btn-block" id="confLuego" style="margin-top:12px">Ahora no — la registro luego</button>
+    `);
+    const arrancar = async dias => { if (await iniciar(f, dias)) listo(); };
+    $('#conf5').addEventListener('click', () => arrancar(5));
+    $('#conf20').addEventListener('click', () => arrancar(20));
+    $('#confOtroOk').addEventListener('click', () => {
+      const d = Number($('#confOtro').value);
+      if (d >= 1) arrancar(Math.round(d));
+    });
+    $('#confLuego').addEventListener('click', listo);
   }
 
   function init() {
     $('#btnNuevaConfeccion').addEventListener('click', nueva);
   }
 
-  return { init, render, detalle, iniciar, nueva };
+  return { init, render, detalle, iniciar, nueva, pactar, esDeConfeccion };
 })();

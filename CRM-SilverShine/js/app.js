@@ -857,6 +857,7 @@
     if (!confirm('Esto REEMPLAZA el catálogo actual con los productos publicados en silvershine.com.do. ¿Continuar?')) return;
     try {
       const n = await DB.cargarCatalogoShopify();
+      await seedProductoConfeccion();   // la recarga reemplaza el catálogo: reponer el producto
       toast(`🛍 Catálogo recargado: ${n} diseños`);
       if (Sync.conectado()) { pintarEstadoNube('Subiendo catálogo…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('catalogo');
@@ -890,6 +891,24 @@
     }
   }
 
+  /* ── Producto "Confección personalizada" en el catálogo ──
+     Al facturarlo, el CRM detecta la línea y pacta la confección solo.
+     Auto-reparable: se repone si falta (p. ej. tras recargar el catálogo
+     de Shopify, que REEMPLAZA los productos). Corre DESPUÉS de
+     cargarCatalogoSiVacio para no bloquear la carga inicial de Shopify. */
+  async function seedProductoConfeccion() {
+    const prods = await DB.productos.list();
+    if (!prods.length) return;   // catálogo aún sin cargar: no estorbar
+    if (prods.some(p => /confecci/i.test(`${p.nombre || ''} ${p.categoria || ''}`))) return;
+    await DB.productos.upsert({
+      id: 'prod-confeccion',
+      nombre: 'Confección personalizada',
+      categoria: 'Confecciones',
+      precio: 0, moneda: 'DOP',
+      notas: 'Pieza por encargo: al facturar este producto, el CRM registra la confección automáticamente.',
+    });
+  }
+
   // Al abrir: vaciar cambios pendientes, bajar lo último y asignar órdenes si faltan
   Sync.alAbrir().then(async ok => {
     await migrarOrdenes();
@@ -902,6 +921,7 @@
     await migrarConfecciones();
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
+    await seedProductoConfeccion();
     if (ok) pintarEstadoNube();
     renderPanel();
   });
