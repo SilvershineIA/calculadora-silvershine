@@ -139,17 +139,54 @@ const UI = (() => {
   const usuarioWAValido = u => /^[a-z0-9._]{3,35}$/.test(u) && /[a-z]/.test(u) && !u.startsWith('www.');
   const tieneWhatsApp = c => !!(c && ((c.telefono || '').trim() || c.usuarioWA));
 
+  const copiarTexto = async txt => {
+    try { await navigator.clipboard.writeText(txt); return true; } catch { return false; }
+  };
+
+  /* En ESCRITORIO no se navega a wa.me: eso pisa/cierra el WhatsApp Web
+     que el usuario mantiene abierto. En su lugar, panel flotante para
+     copiar número o @usuario (y el mensaje) y buscarlo directo en su
+     pestaña de WhatsApp Web. En el celular, wa.me sigue siendo lo mejor. */
+  function panelWhatsApp(cliente, mensaje) {
+    const previo = document.getElementById('waPanel');
+    if (previo) previo.remove();
+    const telCrudo = (cliente.telefono || '').trim();
+    const user = cliente.usuarioWA ? '@' + cliente.usuarioWA : '';
+    const div = document.createElement('div');
+    div.id = 'waPanel';
+    div.innerHTML = `
+      <div class="wa-info"><b>💬 ${esc(cliente.nombre || '')}</b>
+        <span class="muted">${esc(telCrudo || user)} · mensaje ya copiado</span></div>
+      ${telCrudo ? `<button type="button" class="btn-gold btn-sm" data-c="tel">📋 Copiar número</button>` : ''}
+      ${user ? `<button type="button" class="btn-gold btn-sm" data-c="user">📋 Copiar ${esc(user)}</button>` : ''}
+      <button type="button" class="btn-ghost btn-sm" data-c="msg">📋 Mensaje otra vez</button>
+      <button type="button" class="btn-x" data-cerrar>✕</button>`;
+    document.body.appendChild(div);
+    copiarTexto(mensaje);
+    div.querySelectorAll('[data-c]').forEach(b => b.addEventListener('click', async () => {
+      const q = b.dataset.c;
+      const ok = await copiarTexto(q === 'tel' ? telCrudo.replace(/\D/g, '') : q === 'user' ? user : mensaje);
+      const original = b.textContent;
+      b.textContent = ok ? '✓ Copiado' : '⚠ No se pudo';
+      setTimeout(() => { b.textContent = original; }, 1400);
+    }));
+    div.querySelector('[data-cerrar]').addEventListener('click', () => div.remove());
+  }
+
   async function abrirWhatsApp(cliente, mensaje) {
+    const movil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const tel = (cliente.telefono || '').replace(/\D/g, '');
-    if (tel) {
+    if (movil && tel) {
       const num = tel.length === 10 ? '1' + tel : tel;
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje)}`, '_blank');
       return;
     }
-    if (cliente.usuarioWA) {
-      try { await navigator.clipboard.writeText(mensaje); } catch { /* sin permiso: igual avisamos */ }
+    if (movil && cliente.usuarioWA) {
+      await copiarTexto(mensaje);
       toast(`📋 Mensaje copiado — en WhatsApp busca a @${cliente.usuarioWA} y pégaselo`);
+      return;
     }
+    panelWhatsApp(cliente, mensaje);   // escritorio: copiar, nunca navegar
   }
 
   /* ── Buscador de clientes con creación rápida en el mismo campo ──
