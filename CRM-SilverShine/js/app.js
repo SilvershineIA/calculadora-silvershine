@@ -155,6 +155,21 @@
       });
     }
 
+    // 5) Respaldo mensual: si no hay copia en 30 días, entra a la cola
+    const resp = await DB.config.get('respaldo');
+    const diasResp = resp && resp.ultimo
+      ? Math.round((new Date(hoy + 'T00:00:00') - new Date(resp.ultimo + 'T00:00:00')) / 864e5) : 999;
+    if (diasResp >= 30) {
+      items.push({
+        grupo: 4, monto: 0, hecho: false,
+        icono: '🗄', titulo: 'Respaldo mensual del CRM',
+        sub: resp && resp.ultimo
+          ? `Última copia hace ${diasResp} días — toca 💾 y se descarga`
+          : 'Nunca se ha descargado una copia de seguridad — toca 💾',
+        accion: 'respaldo', id: 'respaldo', btn: '💾', rojo: diasResp >= 45,
+      });
+    }
+
     // Pendientes arriba (leads → cobros → cotizaciones → taller, mayor monto
     // primero); las despachadas de hoy quedan al final con su ✓
     items.sort((a, b) => (a.hecho - b.hecho) || (a.grupo - b.grupo) || (b.monto - a.monto));
@@ -178,11 +193,11 @@
         ${x.hecho
           ? `<div style="display:flex;gap:6px;align-items:center;flex:0 0 auto">
               <span class="verde" style="font-size:1.15rem">✓</span>${
-              x.accion !== 'tarea' ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué respondió?">⋯</button>` : ''}
+              ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué respondió?">⋯</button>` : ''}
             </div>`
           : `<div style="display:flex;gap:6px;flex:0 0 auto">
               <button class="btn-gold btn-sm dia-btn" data-acc="${i}" title="Acción en 1 toque">${x.btn}</button>${
-              x.accion !== 'tarea' ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué pasó con este?">⋯</button>` : ''}
+              ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué pasó con este?">⋯</button>` : ''}
             </div>`}
       </div>`).join('')
       : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
@@ -193,6 +208,7 @@
       if (x.accion === 'lead' || x.accion === 'cot') await Cotizaciones.seguimientoRapido(x.id);
       else if (x.accion === 'cobro') await Cobros.recordatorioRapido(x.id);
       else if (x.accion === 'tarea') await Tareas.marcarPaso(x.id, x.paso);
+      else if (x.accion === 'respaldo') await descargarRespaldo();
       renderPanel();
     }));
     cont.querySelectorAll('.dia-mas').forEach(b => b.addEventListener('click', e => {
@@ -298,7 +314,9 @@
   }
 
   /* ── Ajustes: respaldo ── */
-  $('#btnExportar').addEventListener('click', async () => {
+  /* Descargar respaldo completo y anotar la fecha (sincronizada):
+     Mi Día lo recuerda solo cuando pasa un mes sin copia */
+  async function descargarRespaldo() {
     const data = await DB.exportar();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -306,8 +324,10 @@
     a.download = `respaldo-crm-silvershine-${UI.fechaISO()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
-    toast('Respaldo descargado');
-  });
+    await DB.config.upsert({ id: 'respaldo', ultimo: UI.fechaISO() });
+    toast('🗄 Respaldo descargado — guárdalo en un lugar seguro (correo, Drive…)');
+  }
+  $('#btnExportar').addEventListener('click', descargarRespaldo);
 
   $('#btnImportar').addEventListener('click', () => $('#fileImportar').click());
   $('#fileImportar').addEventListener('change', async e => {

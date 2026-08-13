@@ -105,7 +105,10 @@ const Caja = (() => {
       </div>`).join('');
 
     $('#cuadreGrupos').innerHTML = `
-      <button class="btn-gold btn-block" id="btnGasto" style="margin-bottom:14px">💸 Registrar gasto — negocio o personal</button>` + `
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn-gold btn-block" id="btnGasto">💸 Registrar gasto</button>
+        <button class="btn-ghost btn-block" id="btnArqueo">🔒 Arqueo de caja</button>
+      </div>` + `
       <div class="card">
         <h2>🏦 Efectivo, caja y bancos</h2>
         ${filas(bancos)}
@@ -151,6 +154,63 @@ const Caja = (() => {
 
     UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => detalleCuenta(el.dataset.id)));
     $('#btnGasto').addEventListener('click', () => formGasto());
+    $('#btnArqueo').addEventListener('click', () => formArqueo());
+  }
+
+  /* ── Arqueo de caja: contar el efectivo físico, comparar con el
+     sistema y dejar la diferencia registrada con el saldo ajustado ── */
+  async function formArqueo() {
+    const { base, saldos } = await getEstado();
+    const c = base.cuentas.find(x => x.id === 'efectivo');
+    if (!c) { toast('No existe la cuenta Efectivo (caja)'); return; }
+    const sistema = saldos[c.id];
+
+    abrirModal('🔒 Arqueo de caja', `
+      <p class="muted" style="margin-bottom:12px">Cuenta el efectivo físico y compáralo con el sistema — la diferencia queda anotada y el saldo ajustado.</p>
+      <div class="abono-row"><span>Efectivo según el sistema</span><b>${fmt(sistema, 'DOP')}</b></div>
+      <form id="formArqueo" style="margin-top:10px">
+        <div class="row"><div>
+          <label>Efectivo contado (RD$) *</label>
+          <input name="contado" type="text" inputmode="decimal" required placeholder="0.00" autocomplete="off">
+        </div></div>
+        <p id="arqueoDif" style="margin:2px 0 10px" class="muted">Escribe lo contado y te muestro la diferencia…</p>
+        <div class="row"><div>
+          <label>Nota (opcional)</label>
+          <input name="nota" placeholder="Ej: se pagó mensajería en efectivo" autocomplete="off">
+        </div></div>
+        <button type="submit" class="btn-gold btn-block">🔒 Cerrar el día</button>
+      </form>
+    `);
+
+    const form = $('#formArqueo');
+    const pintaDif = () => {
+      const v = Number(String(form.contado.value).replace(/,/g, ''));
+      if (form.contado.value === '' || Number.isNaN(v)) { $('#arqueoDif').textContent = 'Escribe lo contado y te muestro la diferencia…'; return; }
+      const dif = r2(v - sistema);
+      $('#arqueoDif').innerHTML = dif === 0 ? '✅ <b class="verde">Cuadre exacto</b>'
+        : dif > 0 ? `<b class="verde">Sobrante de ${fmt(dif, 'DOP')}</b> — el saldo subirá`
+        : `<b class="rojo">Faltante de ${fmt(-dif, 'DOP')}</b> — el saldo bajará`;
+    };
+    form.contado.addEventListener('input', pintaDif);
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const v = Number(String(form.contado.value).replace(/,/g, ''));
+      if (Number.isNaN(v) || v < 0) { toast('Monto no válido'); return; }
+      const dif = r2(v - sistema);
+      const nota = form.nota.value.trim();
+      const etiqueta = dif === 0 ? 'cuadre exacto'
+        : dif > 0 ? `sobrante ${fmt(dif, 'DOP')}` : `faltante ${fmt(-dif, 'DOP')}`;
+      await DB.config.upsert({
+        id: uidMov(), tipo: 'cuadre-mov', ts: Date.now(), fecha: hoyISO(),
+        desc: `🔒 Arqueo de caja — ${etiqueta}${nota ? ' — ' + nota : ''}`,
+        cambios: [{ cuenta: 'efectivo', delta: dif }],
+        monto: Math.abs(dif), moneda: 'DOP', signo: dif < 0 ? -1 : 1, arqueo: true,
+      });
+      cerrarModal();
+      toast(dif === 0 ? '✅ Caja cuadrada exacta — ¡buen cierre!' : '🔒 Arqueo registrado y saldo ajustado');
+      render();
+    });
   }
 
   /* ── Detalle de una cuenta: saldo, acciones y SU historial con saldo
