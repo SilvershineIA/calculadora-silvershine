@@ -172,14 +172,21 @@ const Confecciones = (() => {
         const arr = porGrupo.get(g).sort((a, b) => a.confeccion.entrega.localeCompare(b.confeccion.entrega));
         const doc = gdocs.get(g);
         let resumen;
-        if (doc && (doc.exigidoUSD || doc.pagadoUSD)) {
+        if (doc && (doc.exigidoUSD || doc.pagadoUSD || doc.finalUSD)) {
           /* La cuenta del lote manda sobre el resumen por pieza */
-          const ex = doc.exigidoUSD || 0, pa = doc.pagadoUSD || 0;
-          resumen = [
-            ex ? `taller exige ${fmtMoneda(ex, 'USD')}` : '',
-            pa ? `pagado ${fmtMoneda(pa, 'USD')}` : '',
-            ex - pa > 0 ? `<b class="rojo">falta ${fmtMoneda(ex - pa, 'USD')}</b>` : (ex ? '✓ saldado' : ''),
-          ].filter(Boolean).join(' · ');
+          const ex = doc.exigidoUSD || 0, pa = doc.pagadoUSD || 0, fin = doc.finalUSD || 0;
+          resumen = fin
+            ? [
+              `costo final ${fmtMoneda(fin, 'USD')}`,
+              pa ? `pagado ${fmtMoneda(pa, 'USD')}` : '',
+              fin - pa > 0 ? `<b class="rojo">falta ${fmtMoneda(fin - pa, 'USD')}</b>` : '✓ saldado',
+            ].filter(Boolean).join(' · ')
+            : [
+              ex ? `pidió ${fmtMoneda(ex, 'USD')} para comenzar` : '',
+              pa ? `pagado ${fmtMoneda(pa, 'USD')}` : '',
+              ex - pa > 0 ? `<b class="rojo">faltan ${fmtMoneda(ex - pa, 'USD')} del arranque</b>` : (ex ? '✓ arranque cubierto' : ''),
+              'final al despachar',
+            ].filter(Boolean).join(' · ');
         } else {
           const conCosto = arr.filter(x => x.confeccion.costoFinalUSD);
           const totalUSD = conCosto.reduce((s, x) => s + x.confeccion.costoFinalUSD, 0);
@@ -244,11 +251,15 @@ const Confecciones = (() => {
         `${esc(f.clienteNombre)} ${esc(rotulo(f))} — ${ESTADOS[f.confeccion.estado]}`).join('<br>')}</p>
       <h3 class="sub-h">💵 Cuenta con el taller por este lote (US$)</h3>
       <div class="row">
-        <div><label>Monto exigido por el taller</label>
+        <div><label>Exigido para comenzar</label>
           <input type="number" id="grpExigido" min="0" step="0.01" value="${doc.exigidoUSD ?? ''}" placeholder="A veces lo pide completo"></div>
         <div><label>Lo que se ha pagado</label>
           <input type="number" id="grpPagado" min="0" step="0.01" value="${doc.pagadoUSD ?? ''}" placeholder="Lo que se terminó pagando"></div>
       </div>
+      <div class="row"><div>
+        <label>Costo final del lote</label>
+        <input type="number" id="grpFinal" min="0" step="0.01" value="${doc.finalUSD ?? ''}" placeholder="Se sabe al despachar — puede cambiar del exigido">
+      </div></div>
       <p class="muted" id="grpFalta" style="margin:-4px 0 12px"></p>
       <h3 class="sub-h">🚚 Mover el lote</h3>
       <div class="row">
@@ -264,27 +275,36 @@ const Confecciones = (() => {
     `);
 
     const usd = v => fmtMoneda(v, 'USD');
+    /* La deuda REAL solo se conoce con el costo final; antes de eso, lo
+       único exigible es el arranque — no se pinta como deuda del lote */
     const pintarFalta = () => {
       const ex = Number($('#grpExigido').value) || 0;
       const pa = Number($('#grpPagado').value) || 0;
-      $('#grpFalta').innerHTML = ex || pa
-        ? (ex - pa > 0
-          ? `Falta por pagarle al taller: <b class="rojo">${usd(ex - pa)}</b>`
-          : `✓ Lote saldado con el taller${pa - ex > 0.005 ? ` (se pagó ${usd(pa - ex)} de más)` : ''}`)
-        : 'Anota lo que exige el taller y lo que se ha ido pagando.';
+      const fin = Number($('#grpFinal').value) || 0;
+      let txt;
+      if (fin) {
+        txt = fin - pa > 0
+          ? `Falta por pagarle al taller: <b class="rojo">${usd(fin - pa)}</b> (costo final ${usd(fin)} − pagado ${usd(pa)})`
+          : `✓ Lote saldado con el taller${pa - fin > 0.005 ? ` (se pagó ${usd(pa - fin)} de más)` : ''}`;
+      } else if (ex || pa) {
+        txt = ex - pa > 0
+          ? `Para comenzar faltan <b class="rojo">${usd(ex - pa)}</b> (pidió ${usd(ex)} · pagado ${usd(pa)}). El costo final se sabe al despachar.`
+          : `✓ Arranque cubierto (${usd(pa)} pagado). El costo final se sabe al despachar.`;
+      } else {
+        txt = 'Anota lo que pidió para comenzar y lo que se ha ido pagando; el costo final va cuando el taller despache.';
+      }
+      $('#grpFalta').innerHTML = txt;
     };
     pintarFalta();
     const guardarDoc = async () => { await DB.config.upsert(doc); pintarFalta(); };
-    $('#grpExigido').addEventListener('change', e => {
+    const campoDoc = (sel, campo) => $(sel).addEventListener('change', e => {
       const v = Number(e.target.value);
-      if (v > 0) doc.exigidoUSD = v; else delete doc.exigidoUSD;
+      if (v > 0) doc[campo] = v; else delete doc[campo];
       guardarDoc();
     });
-    $('#grpPagado').addEventListener('change', e => {
-      const v = Number(e.target.value);
-      if (v > 0) doc.pagadoUSD = v; else delete doc.pagadoUSD;
-      guardarDoc();
-    });
+    campoDoc('#grpExigido', 'exigidoUSD');
+    campoDoc('#grpPagado', 'pagadoUSD');
+    campoDoc('#grpFinal', 'finalUSD');
     $('#grpAplicar').addEventListener('click', async () => {
       const nuevo = $('#grpEstado').value;
       const trk = $('#grpTracking').value.trim();
