@@ -32,6 +32,15 @@ const Confecciones = (() => {
 
   const atrasada = f => f.confeccion.estado !== 'entregada' && diasHasta(f.confeccion.entrega) < 0;
 
+  /* Transición de estado: cada etapa deja su fecha la primera vez */
+  function estampar(c, nuevo) {
+    if (nuevo === 'taller' && !c.enviadaEl) c.enviadaEl = hoyISO();
+    if (nuevo === 'camino' && !c.despachadaEl) { c.enviadaEl = c.enviadaEl || c.inicio; c.despachadaEl = hoyISO(); }
+    if ((nuevo === 'lista' || nuevo === 'entregada') && !c.recibidaEl) c.recibidaEl = hoyISO();
+    if (nuevo === 'entregada') c.entregadaEl = hoyISO(); else delete c.entregadaEl;
+    c.estado = nuevo;
+  }
+
   /* Cuántos días lleva (o estuvo) la pieza en el taller */
   function diasEnTaller(c) {
     if (!c.enviadaEl) return null;
@@ -84,20 +93,22 @@ const Confecciones = (() => {
     const cuenta = e => proceso.filter(f => f.confeccion.estado === e).length;
     const atrasadas = proceso.filter(atrasada);
     const deudaProceso = proceso.reduce((s, f) => s + (f.saldo > 0 ? conv(f) : 0), 0);
-    /* Lo que falta pagarle al taller: costo final (f.costo, el mismo de
-       Finanzas) menos el pago inicial. Solo suma piezas con costo conocido. */
-    const porPagarTaller = proceso.reduce((s, f) =>
-      s + (f.costo ? Math.max(f.costo - (f.confeccion.costoInicial || 0), 0) : 0), 0);
+    /* Lo que falta pagarle al taller (US$): costo final menos pago inicial.
+       Solo suma piezas con costo final conocido. */
+    const porPagarUSD = proceso.reduce((s, f) => {
+      const c = f.confeccion;
+      return s + (c.costoFinalUSD ? Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0), 0) : 0);
+    }, 0);
 
     $('#confStats').innerHTML =
       UI.statTile(cuenta('pendiente'), 'Por enviar al taller', cuenta('pendiente') ? 'rojo' : '') +
       UI.statTile(cuenta('taller'), 'En el taller') +
       UI.statTile(cuenta('camino') + cuenta('lista'), 'En camino / almacén') +
       UI.statTile(atrasadas.length, 'Atrasadas', atrasadas.length ? 'rojo' : '') +
-      UI.statTile(UI.fmtDinero(porPagarTaller), 'Por pagar al taller', porPagarTaller > 0 ? 'rojo' : '') +
+      UI.statTile(fmtMoneda(porPagarUSD, 'USD'), 'Por pagar al taller', porPagarUSD > 0 ? 'rojo' : '') +
       UI.statTile(UI.fmtDinero(deudaProceso), 'Por cobrar al entregar', deudaProceso > 0 ? 'rojo' : 'verde');
 
-    const FILTROS = [['proceso', '🧵 En proceso'], ['entregadas', '✅ Entregadas'], ['todas', 'Todas']];
+    const FILTROS = [['proceso', '🧵 En proceso'], ['grupos', '🗂 Por grupo'], ['entregadas', '✅ Entregadas'], ['todas', 'Todas']];
     $('#confFiltros').innerHTML = FILTROS.map(([k, t]) =>
       `<button class="chip-tab ${filtro === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('');
     UI.$$('#confFiltros .chip-tab').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; render(); }));
@@ -110,6 +121,7 @@ const Confecciones = (() => {
       const extra =
         (c.estado === 'taller' && dt !== null ? ` · 🧵 lleva ${dt} día${dt === 1 ? '' : 's'} en el taller` : '') +
         (c.estado === 'camino' && c.tracking ? ` · 📦 ${esc(c.tracking)}` : '') +
+        (c.grupo && filtro !== 'grupos' ? ` · 🗂 ${esc(c.grupo)}` : '') +
         (c.notas ? ' · ⚠ hay temas anotados' : '');
       return `
       <div class="item" data-id="${f.id}">
@@ -125,7 +137,37 @@ const Confecciones = (() => {
       `<h3 class="sub-h">${titulo} (${arr.length})</h3>${arr.map(fila).join('')}`;
 
     let html = '';
-    if (filtro === 'entregadas') {
+    if (filtro === 'grupos') {
+      /* Como trabaja el taller: varias piezas (aunque sean de fechas
+         distintas) van juntas en una misma cotización/lote */
+      const porGrupo = new Map();
+      for (const f of proceso) {
+        const g = f.confeccion.grupo || '';
+        if (!porGrupo.has(g)) porGrupo.set(g, []);
+        porGrupo.get(g).push(f);
+      }
+      const nombres = [...porGrupo.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
+      if (porGrupo.has('')) nombres.push('');
+      html = nombres.map(g => {
+        const arr = porGrupo.get(g).sort((a, b) => a.confeccion.entrega.localeCompare(b.confeccion.entrega));
+        const conCosto = arr.filter(x => x.confeccion.costoFinalUSD);
+        const totalUSD = conCosto.reduce((s, x) => s + x.confeccion.costoFinalUSD, 0);
+        const iniUSD = arr.reduce((s, x) => s + (x.confeccion.costoInicialUSD || 0), 0);
+        const sinCosto = arr.length - conCosto.length;
+        const resumen = [
+          totalUSD ? `costo ${fmtMoneda(totalUSD, 'USD')}` : '',
+          iniUSD ? `inicial ${fmtMoneda(iniUSD, 'USD')} dado` : '',
+          sinCosto && arr.length > sinCosto ? `${sinCosto} sin costo aún` : '',
+        ].filter(Boolean).join(' · ');
+        return `
+        <h3 class="sub-h" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>${g ? `🗂 ${esc(g)}` : 'Sueltas — sin grupo'} (${arr.length})${resumen ? ` · ${resumen}` : ''}</span>
+          ${g ? `<button class="btn-ghost btn-sm" type="button" data-grupo="${esc(g)}">⚙ Mover el grupo</button>` : ''}
+        </h3>
+        ${arr.map(fila).join('')}`;
+      }).join('');
+      if (!proceso.length) html = '';
+    } else if (filtro === 'entregadas') {
       const ent = lista.filter(f => f.confeccion.estado === 'entregada')
         .sort((a, b) => ((b.confeccion.entregadaEl || b.confeccion.entrega)).localeCompare(a.confeccion.entregadaEl || a.confeccion.entrega));
       html = seccion('✅ Entregadas', ent.slice(0, 30)) +
@@ -147,6 +189,43 @@ const Confecciones = (() => {
       '<div class="empty"><span>🧵</span>Sin confecciones aquí. Se crean con el botón 🧵 de la factura o con “+ Nueva confección”.</div>';
     UI.$$('#listaConfecciones .item[data-id]').forEach(el =>
       el.addEventListener('click', () => detalle(el.dataset.id)));
+    UI.$$('#listaConfecciones [data-grupo]').forEach(b =>
+      b.addEventListener('click', e => { e.stopPropagation(); accionesGrupo(b.dataset.grupo); }));
+  }
+
+  /* ── Acciones sobre un lote completo: cuando el taller despacha,
+     despacha el grupo entero con una sola guía ── */
+  async function accionesGrupo(nombre) {
+    const piezas = (await activas())
+      .filter(f => f.confeccion.grupo === nombre && f.confeccion.estado !== 'entregada');
+    if (!piezas.length) return;
+    abrirModal(`🗂 ${nombre}`, `
+      <p class="muted" style="margin-bottom:12px">${piezas.map(f =>
+        `${esc(f.clienteNombre)} ${esc(rotulo(f))} — ${ESTADOS[f.confeccion.estado]}`).join('<br>')}</p>
+      <div class="row">
+        <div><label>Mover TODO el grupo a</label>
+          <select id="grpEstado">
+            <option value="">— sin cambio —</option>
+            ${['taller', 'camino', 'lista'].map(k => `<option value="${k}">${ESTADOS[k]}</option>`).join('')}
+          </select></div>
+        <div><label>📦 Tracking del envío (para todas)</label>
+          <input id="grpTracking" placeholder="Una guía para el lote"></div>
+      </div>
+      <button class="btn-gold btn-block" id="grpAplicar">Aplicar a las ${piezas.length} piezas</button>
+    `);
+    $('#grpAplicar').addEventListener('click', async () => {
+      const nuevo = $('#grpEstado').value;
+      const trk = $('#grpTracking').value.trim();
+      if (!nuevo && !trk) { cerrarModal(); return; }
+      for (const f of piezas) {
+        if (nuevo) estampar(f.confeccion, nuevo);
+        if (trk) f.confeccion.tracking = trk;
+        await DB.facturas.upsert(f);
+      }
+      toast(`🗂 ${piezas.length} pieza${piezas.length === 1 ? '' : 's'} del lote actualizadas${nuevo ? ` → ${ESTADOS[nuevo]}` : ''}`);
+      cerrarModal();
+      render();
+    });
   }
 
   /* ── Mensaje de WhatsApp según el momento de la confección ── */
@@ -180,6 +259,9 @@ const Confecciones = (() => {
     const emp = await UI.getEmpresa();
     const t = f.moneda || 'DOP';
     const debe = f.saldo > 0;
+    const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    const gruposExistentes = [...new Set((await activas())
+      .map(x => x.confeccion.grupo).filter(Boolean))].sort();
 
     const dt = diasEnTaller(c);
     const viaje = [
@@ -204,19 +286,22 @@ const Confecciones = (() => {
         <div><label>Fecha de entrega al cliente</label><input type="date" id="confEntrega" value="${c.entrega}"></div>
       </div>
 
-      <h3 class="sub-h">🏭 Taller / proveedor</h3>
+      <h3 class="sub-h">🏭 Taller / proveedor (se maneja en US$)</h3>
       <p class="muted" style="margin-bottom:10px">${viaje}</p>
       <div class="row">
-        <div><label>Pago inicial al taller (RD$)</label>
-          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c.costoInicial ?? ''}" placeholder="Lo que pidió para comenzar"></div>
-        <div><label>Costo final de la pieza (RD$)</label>
-          <input type="number" id="confCostoFin" min="0" step="0.01" value="${f.costo ?? ''}" placeholder="Se define al despachar"></div>
+        <div><label>Pago inicial al taller (US$)</label>
+          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c.costoInicialUSD ?? ''}" placeholder="Lo que pidió para comenzar"></div>
+        <div><label>Costo final de la pieza (US$)</label>
+          <input type="number" id="confCostoFin" min="0" step="0.01" value="${c.costoFinalUSD ?? ''}" placeholder="Se define al despachar"></div>
       </div>
       <p class="muted" id="confSaldoProv" style="margin:-4px 0 10px"></p>
-      <div class="row"><div>
-        <label>📦 Tracking (número(s) de guía)</label>
-        <input id="confTracking" value="${esc(c.tracking || '')}" placeholder="Ej: 1Z999AA10123456784">
-      </div></div>
+      <div class="row">
+        <div><label>🗂 Grupo / lote del taller</label>
+          <input id="confGrupo" list="confGruposList" value="${esc(c.grupo || '')}" placeholder="Ej: cotización taller 15-ago" autocomplete="off">
+          <datalist id="confGruposList">${gruposExistentes.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>
+        <div><label>📦 Tracking (número(s) de guía)</label>
+          <input id="confTracking" value="${esc(c.tracking || '')}" placeholder="Ej: 1Z999AA10123456784"></div>
+      </div>
       <div class="row"><div>
         <label>⚠ Problemas / temas</label>
         <textarea id="confNotas" placeholder="Ej: el proveedor avisa 3 días extra por el engaste…">${esc(c.notas || '')}</textarea>
@@ -227,25 +312,44 @@ const Confecciones = (() => {
 
     const guardar = async () => { await DB.facturas.upsert(f); render(); };
 
-    /* Lo que falta pagarle al taller, en vivo según los dos campos */
+    /* Lo que falta pagarle al taller (US$), en vivo según los dos campos */
+    const usd = v => fmtMoneda(v, 'USD');
     const pintarSaldoProv = () => {
       const ini = Number($('#confCostoIni').value) || 0;
       const fin = Number($('#confCostoFin').value) || 0;
+      const enRD = fin && tasa ? ` ≈ ${fmtMoneda(fin * tasa)} (a ${tasa}) — guardado como costo en Finanzas` : '';
       $('#confSaldoProv').innerHTML = fin
-        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${fmtMoneda(Math.max(fin - ini, 0))}</b>${ini ? ` (inicial ${fmtMoneda(ini)} ya dado)` : ''}`
-        : (ini ? `Inicial dado: ${fmtMoneda(ini)} — el costo final se define al despachar.` : 'El proveedor fija el costo final al despachar.');
+        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${usd(Math.max(fin - ini, 0))}</b>${ini ? ` (inicial ${usd(ini)} ya dado)` : ''}${enRD}`
+        : (ini ? `Inicial dado: ${usd(ini)} — el costo final se define al despachar.` : 'El proveedor fija el costo final al despachar.');
     };
     pintarSaldoProv();
     $('#confCostoIni').addEventListener('change', async e => {
       const v = Number(e.target.value);
-      if (v > 0) c.costoInicial = v; else delete c.costoInicial;
+      if (v > 0) c.costoInicialUSD = v; else delete c.costoInicialUSD;
       await guardar(); pintarSaldoProv();
     });
+    /* El costo final en US$ alimenta f.costo (RD$, el de Finanzas) con la
+       tasa viva. Solo se borra f.costo si lo puso este flujo (costoDeUSD),
+       para no pisar costos en pesos anotados a mano. */
     $('#confCostoFin').addEventListener('change', async e => {
       const v = Number(e.target.value);
-      if (v > 0) { f.costo = v; toast('🔒 Costo guardado — Finanzas lo usa para la ganancia'); }
-      else delete f.costo;
+      if (v > 0) {
+        c.costoFinalUSD = v;
+        if (tasa) {
+          f.costo = Math.round(v * tasa * 100) / 100;
+          c.costoDeUSD = true;
+          toast(`🔒 Costo ${usd(v)} ≈ ${fmtMoneda(f.costo)} — Finanzas lo usa para la ganancia`);
+        } else toast('⚠ Sin tasa del dólar a mano: abre la Calculadora para actualizarla');
+      } else {
+        delete c.costoFinalUSD;
+        if (c.costoDeUSD) { delete f.costo; delete c.costoDeUSD; }
+      }
       await guardar(); pintarSaldoProv();
+    });
+    $('#confGrupo').addEventListener('change', async e => {
+      const g = e.target.value.trim();
+      if (g) c.grupo = g; else delete c.grupo;
+      await guardar();
     });
     $('#confTracking').addEventListener('change', async e => {
       c.tracking = e.target.value.trim();
@@ -253,17 +357,11 @@ const Confecciones = (() => {
     });
     $('#confEstado').addEventListener('change', async e => {
       const nuevo = e.target.value;
-      if (nuevo === 'entregada') {
-        if (debe && !confirm(`El cliente aún debe ${fmtMoneda(f.saldo, t)}. ¿Marcar entregada de todos modos?`)) {
-          e.target.value = c.estado; return;
-        }
-        c.entregadaEl = hoyISO();
-      } else delete c.entregadaEl;
-      /* Cada etapa deja su fecha la primera vez que se pisa */
-      if (nuevo === 'taller' && !c.enviadaEl) c.enviadaEl = hoyISO();
-      if (nuevo === 'camino' && !c.despachadaEl) { c.enviadaEl = c.enviadaEl || c.inicio; c.despachadaEl = hoyISO(); }
-      if ((nuevo === 'lista' || nuevo === 'entregada') && !c.recibidaEl) c.recibidaEl = hoyISO();
-      c.estado = nuevo;
+      if (nuevo === 'entregada' && debe &&
+          !confirm(`El cliente aún debe ${fmtMoneda(f.saldo, t)}. ¿Marcar entregada de todos modos?`)) {
+        e.target.value = c.estado; return;
+      }
+      estampar(c, nuevo);
       await guardar();
       toast(`${ESTADOS[nuevo]}`);
       detalle(fid);
