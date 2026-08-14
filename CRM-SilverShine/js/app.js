@@ -881,7 +881,7 @@
       const f = facturas.find(x => ref.startsWith('#')
         ? String(x.orden || '') === ref.slice(1)
         : (x.numero || '') === ref);
-      if (!f || f.confeccion || f.estado === 'anulada') continue;
+      if (!f || f.confeccion || f.confeccionBorrada || f.estado === 'anulada') continue;
       const dias = Number(m[1]);
       const inicio = (t.pasos && t.pasos[0] && t.pasos[0].fecha) || t.fecha || UI.fechaISO();
       const d = new Date(inicio + 'T00:00:00'); d.setDate(d.getDate() + dias);

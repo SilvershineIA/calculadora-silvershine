@@ -92,6 +92,7 @@ const Confecciones = (() => {
        cliente), no desde el día en que se registra la confección */
     const base = f.fecha || hoy;
     f.confeccion = { inicio: base, dias, entrega: enDias(base, dias), estado: 'pendiente' };
+    delete f.confeccionBorrada;   // si se borró por error, volver a crearla la reactiva
     await DB.facturas.upsert(f);
     await DB.tareas.upsert({
       titulo: `Confección (${dias} días) — Factura ${rotulo(f)}`,
@@ -616,7 +617,23 @@ const Confecciones = (() => {
       </div></div>
       ${UI.tieneWhatsApp(cliente) ? `<button class="btn-gold btn-block" id="confWA">💬 Avisar al cliente por WhatsApp</button>` : ''}
       <button class="btn-ghost btn-block" id="confFactura" style="margin-top:10px">🧾 Ver factura / registrar abono</button>
+      <button class="btn-ghost btn-block" id="confQuitar" style="margin-top:10px;color:var(--red)">🗑 Quitar esta confección (error)</button>
     `);
+
+    $('#confQuitar').addEventListener('click', async () => {
+      if (!confirm(`¿Quitar la confección de la factura ${rotulo(f)}? La factura NO se toca — solo se borra el seguimiento del taller y su tarea.`)) return;
+      delete f.confeccion;
+      f.confeccionBorrada = true;   // para que la migración no la resucite desde la tarea
+      await DB.facturas.upsert(f);
+      const patron = new RegExp(`^Confección \\(\\d+ días\\) — Factura ${rotulo(f).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+      for (const t of (await DB.tareas.list()).filter(x => patron.test(x.titulo || ''))) {
+        await DB.tareas.remove(t.id);
+      }
+      toast('🗑 Confección quitada (la factura sigue intacta)');
+      cerrarModal();
+      render();
+      Tareas.render();
+    });
 
     const guardar = async () => { await DB.facturas.upsert(f); render(); };
 
