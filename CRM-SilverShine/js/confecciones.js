@@ -44,6 +44,10 @@ const Confecciones = (() => {
 
   const guardarPieza = x => x.esStock ? DB.config.upsert(x.doc) : DB.facturas.upsert(x);
 
+  /* Suma de abonos al taller de UNA pieza (c.abonosTaller, en la moneda
+     de su taller). El viejo campo "pago inicial" cuenta hasta migrarse. */
+  const abonadoTaller = c => (c.abonosTaller || []).reduce((s, a) => s + (a.monto || 0), 0);
+
   const atrasada = f => f.confeccion.estado !== 'entregada' && diasHasta(f.confeccion.entrega) < 0;
 
   /* Transición de estado: cada etapa deja su fecha la primera vez.
@@ -121,8 +125,10 @@ const Confecciones = (() => {
        pesos) entra convertido con la tasa viva. */
     const porPagarUSD = proceso.reduce((s, f) => {
       const c = f.confeccion;
-      let v = c.costoFinalUSD ? Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0), 0) : 0;
-      if (c.costoFinalRD && tasa) v += Math.max(c.costoFinalRD - (c.costoInicialRD || 0), 0) / tasa;
+      const esRD = f.esStock && f.destino === 'rd';
+      let v = 0;
+      if (!esRD && c.costoFinalUSD) v = Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0) - abonadoTaller(c), 0);
+      if (esRD && c.costoFinalRD && tasa) v = Math.max(c.costoFinalRD - (c.costoInicialRD || 0) - abonadoTaller(c), 0) / tasa;
       return s + v;
     }, 0);
 
@@ -183,7 +189,9 @@ const Confecciones = (() => {
         const doc = gdocs.get(g);
         let resumen;
         const cotH = doc ? (doc.cotizadoUSD || doc.exigidoUSD || 0) : 0;
-        const pagH = doc ? ((doc.abonos || []).reduce((s, a) => s + (a.monto || 0), 0) + (doc.pagadoUSD || 0)) : 0;
+        const pagH = (doc ? (doc.abonos || []).reduce((s, a) => s + (a.monto || 0), 0) + (doc.pagadoUSD || 0) : 0) +
+          arr.reduce((s, x) => s + ((x.esStock && x.destino === 'rd') ? 0
+            : abonadoTaller(x.confeccion) + (x.confeccion.costoInicialUSD || 0)), 0);
         const finH = doc ? (doc.finalUSD || 0) : 0;
         if (cotH || pagH || finH) {
           /* La cuenta del lote manda sobre el resumen por pieza */
@@ -299,17 +307,33 @@ const Confecciones = (() => {
     `);
 
     const usd = v => fmtMoneda(v, 'USD');
-    const pagadoTotal = () => doc.abonos.reduce((s, a) => s + (a.monto || 0), 0);
+    /* Los abonos anotados EN cada pieza del lote también cuentan aquí
+       (se editan desde su pieza; el taller local RD$ va aparte) */
+    const piezasGrupo = (await activas()).filter(f => f.confeccion.grupo === nombre);
+    const abonosPiezas = piezasGrupo.flatMap(f => {
+      if (f.esStock && f.destino === 'rd') return [];
+      const via = rotulo(f) || f.clienteNombre;
+      const arr = (f.confeccion.abonosTaller || []).map(a => ({ fecha: a.fecha, monto: a.monto, via }));
+      if (f.confeccion.costoInicialUSD) arr.unshift({ fecha: f.confeccion.inicio, monto: f.confeccion.costoInicialUSD, via });
+      return arr;
+    });
+    const pagadoTotal = () => doc.abonos.reduce((s, a) => s + (a.monto || 0), 0) +
+      abonosPiezas.reduce((s, a) => s + (a.monto || 0), 0);
 
     /* La cuenta del lote: cotización inicial → abonos → adeudado; con la
        factura final, saldar y ver la DIFERENCIA contra lo cotizado */
     const pintarCuenta = () => {
-      $('#grpAbonos').innerHTML = doc.abonos.length
+      $('#grpAbonos').innerHTML = (doc.abonos.length || abonosPiezas.length)
         ? doc.abonos.map((a, i) => `
           <div class="item" style="padding:8px 12px">
-            <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)}</div></div>
+            <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)} · al lote</div></div>
             <b>${usd(a.monto)}</b>
             <button type="button" class="btn-x" data-abx="${i}">✕</button>
+          </div>`).join('') +
+          abonosPiezas.map(a => `
+          <div class="item" style="padding:8px 12px">
+            <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)} · vía ${esc(String(a.via))}</div></div>
+            <b>${usd(a.monto)}</b>
           </div>`).join('')
         : '<p class="muted" style="margin:2px 0 4px">Sin abonos todavía.</p>';
       UI.$$('#grpAbonos [data-abx]').forEach(b => b.addEventListener('click', async () => {
@@ -418,6 +442,13 @@ const Confecciones = (() => {
     const MON = esRD ? 'RD$' : 'US$';
     const CAMPO_INI = esRD ? 'costoInicialRD' : 'costoInicialUSD';
     const CAMPO_FIN = esRD ? 'costoFinalRD' : 'costoFinalUSD';
+    /* El viejo "pago inicial" pasa a ser el primer abono al taller */
+    if (c[CAMPO_INI] && !(c.abonosTaller || []).length) {
+      c.abonosTaller = [{ fecha: c.enviadaEl || c.inicio, monto: c[CAMPO_INI] }];
+      delete c[CAMPO_INI];
+      await DB.config.upsert(doc);
+    }
+    c.abonosTaller = c.abonosTaller || [];
     abrirModal(esEtsy ? 'Confección para Etsy 🛍' : esRD ? 'Confección — taller en Dominicana 🇩🇴' : 'Confección para stock 🏪', `
       <div class="row"><div>
         <label>¿Qué es?</label>
@@ -433,13 +464,15 @@ const Confecciones = (() => {
       </div>
       <h3 class="sub-h">${esRD ? '🇩🇴 Taller en Dominicana (RD$)' : `🏭 Taller / proveedor (${MON})`}</h3>
       <p class="muted" style="margin-bottom:10px">${viaje}</p>
-      <div class="row">
-        <div><label>Pago inicial al taller (${MON})</label>
-          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c[CAMPO_INI] ?? ''}"></div>
+      <div class="row" style="align-items:flex-end">
         <div><label>Costo final (${MON})</label>
           <input type="number" id="confCostoFin" min="0" step="0.01" value="${c[CAMPO_FIN] ?? ''}" placeholder="Se define al ${esRD ? 'terminar' : 'despachar'}"></div>
+        <div><label>Nuevo abono al taller (${MON})</label>
+          <input type="number" id="confAbonoMonto" min="0" step="0.01"></div>
+        <div style="flex:0 0 auto"><button type="button" class="btn-ghost" id="confAbonar">➕ Abonar</button></div>
       </div>
-      <p class="muted" id="confSaldoProv" style="margin:-4px 0 10px"></p>
+      <div id="confAbonos" class="list" style="margin:6px 0 4px"></div>
+      <p class="muted" id="confSaldoProv" style="margin:0 0 10px"></p>
       <div class="row">
         <div><label>🗂 Grupo / lote del taller</label>
           <input id="confGrupo" list="confGruposList" value="${esc(c.grupo || '')}" autocomplete="off">
@@ -457,13 +490,31 @@ const Confecciones = (() => {
     const guardar = async () => { await DB.config.upsert(doc); render(); };
     const fmtT = v => esRD ? UI.fmtDinero(v) : fmtMoneda(v, 'USD');
     const pintarSaldoProv = () => {
-      const ini = Number($('#confCostoIni').value) || 0;
+      $('#confAbonos').innerHTML = c.abonosTaller.map((a, i) => `
+        <div class="item" style="padding:8px 12px">
+          <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)} · abono al taller</div></div>
+          <b>${fmtT(a.monto)}</b>
+          <button type="button" class="btn-x" data-abx="${i}">✕</button>
+        </div>`).join('');
+      UI.$$('#confAbonos [data-abx]').forEach(b => b.addEventListener('click', async () => {
+        c.abonosTaller.splice(Number(b.dataset.abx), 1);
+        await guardar(); pintarSaldoProv();
+      }));
+      const ini = abonadoTaller(c);
       const fin = Number($('#confCostoFin').value) || 0;
       $('#confSaldoProv').innerHTML = fin
-        ? `Falta por pagar: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${fmtT(Math.max(fin - ini, 0))}</b> — inversión del negocio (no toca la ganancia de Finanzas).`
-        : (ini ? `Inicial dado: ${fmtT(ini)}.` : `El costo final se define al ${esRD ? 'terminar el trabajo' : 'despachar'}.`);
+        ? `Falta por pagar: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${fmtT(Math.max(fin - ini, 0))}</b>${ini ? ` (abonado ${fmtT(ini)})` : ''} — inversión del negocio (no toca la ganancia de Finanzas).`
+        : (ini ? `Abonado: ${fmtT(ini)}.` : `El costo final se define al ${esRD ? 'terminar el trabajo' : 'despachar'}.`);
     };
     pintarSaldoProv();
+    $('#confAbonar').addEventListener('click', async () => {
+      const v = Number($('#confAbonoMonto').value);
+      if (!(v > 0)) { toast('Pon el monto del abono'); return; }
+      c.abonosTaller.push({ fecha: hoyISO(), monto: v });
+      $('#confAbonoMonto').value = '';
+      await guardar(); pintarSaldoProv();
+      toast(`💵 Abono de ${fmtT(v)} anotado${c.grupo ? ` — suma al lote ${c.grupo}` : ''}`);
+    });
     $('#stkDesc').addEventListener('change', e => { doc.descripcion = e.target.value.trim() || doc.descripcion; guardar(); });
     $('#confEstado').addEventListener('change', async e => {
       estampar(c, e.target.value);
@@ -474,11 +525,6 @@ const Confecciones = (() => {
     $('#confEntrega').addEventListener('change', e => {
       if (!e.target.value) { e.target.value = c.entrega; return; }
       c.entrega = e.target.value; guardar();
-    });
-    $('#confCostoIni').addEventListener('change', e => {
-      const v = Number(e.target.value);
-      if (v > 0) c[CAMPO_INI] = v; else delete c[CAMPO_INI];
-      guardar(); pintarSaldoProv();
     });
     $('#confCostoFin').addEventListener('change', e => {
       const v = Number(e.target.value);
@@ -507,6 +553,13 @@ const Confecciones = (() => {
     const f = await DB.facturas.get(fid);
     if (!f || !f.confeccion) return;
     const c = f.confeccion;
+    /* El viejo "pago inicial" pasa a ser el primer abono al taller */
+    if (c.costoInicialUSD && !(c.abonosTaller || []).length) {
+      c.abonosTaller = [{ fecha: c.enviadaEl || c.inicio, monto: c.costoInicialUSD }];
+      delete c.costoInicialUSD;
+      await DB.facturas.upsert(f);
+    }
+    c.abonosTaller = c.abonosTaller || [];
     const cliente = f.clienteId ? await DB.clientes.get(f.clienteId) : null;
     const emp = await UI.getEmpresa();
     const t = f.moneda || 'DOP';
@@ -541,13 +594,15 @@ const Confecciones = (() => {
 
       <h3 class="sub-h">🏭 Taller / proveedor (se maneja en US$)</h3>
       <p class="muted" style="margin-bottom:10px">${viaje}</p>
-      <div class="row">
-        <div><label>Pago inicial al taller (US$)</label>
-          <input type="number" id="confCostoIni" min="0" step="0.01" value="${c.costoInicialUSD ?? ''}" placeholder="Lo que pidió para comenzar"></div>
+      <div class="row" style="align-items:flex-end">
         <div><label>Costo final de la pieza (US$)</label>
           <input type="number" id="confCostoFin" min="0" step="0.01" value="${c.costoFinalUSD ?? ''}" placeholder="Se define al despachar"></div>
+        <div><label>Nuevo abono al taller (US$)</label>
+          <input type="number" id="confAbonoMonto" min="0" step="0.01" placeholder="Ej: el pago para comenzar"></div>
+        <div style="flex:0 0 auto"><button type="button" class="btn-ghost" id="confAbonar">➕ Abonar</button></div>
       </div>
-      <p class="muted" id="confSaldoProv" style="margin:-4px 0 10px"></p>
+      <div id="confAbonos" class="list" style="margin:6px 0 4px"></div>
+      <p class="muted" id="confSaldoProv" style="margin:0 0 10px"></p>
       <div class="row">
         <div><label>🗂 Grupo / lote del taller</label>
           <input id="confGrupo" list="confGruposList" value="${esc(c.grupo || '')}" placeholder="Ej: cotización taller 15-ago" autocomplete="off">
@@ -565,21 +620,34 @@ const Confecciones = (() => {
 
     const guardar = async () => { await DB.facturas.upsert(f); render(); };
 
-    /* Lo que falta pagarle al taller (US$), en vivo según los dos campos */
+    /* Cuenta de la pieza con el taller: abonos con fecha + costo final */
     const usd = v => fmtMoneda(v, 'USD');
     const pintarSaldoProv = () => {
-      const ini = Number($('#confCostoIni').value) || 0;
+      $('#confAbonos').innerHTML = c.abonosTaller.map((a, i) => `
+        <div class="item" style="padding:8px 12px">
+          <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)} · abono al taller</div></div>
+          <b>${usd(a.monto)}</b>
+          <button type="button" class="btn-x" data-abx="${i}">✕</button>
+        </div>`).join('');
+      UI.$$('#confAbonos [data-abx]').forEach(b => b.addEventListener('click', async () => {
+        c.abonosTaller.splice(Number(b.dataset.abx), 1);
+        await guardar(); pintarSaldoProv();
+      }));
+      const ini = abonadoTaller(c);
       const fin = Number($('#confCostoFin').value) || 0;
       const enRD = fin && tasa ? ` ≈ ${fmtMoneda(fin * tasa)} (a ${tasa}) — guardado como costo en Finanzas` : '';
       $('#confSaldoProv').innerHTML = fin
-        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${usd(Math.max(fin - ini, 0))}</b>${ini ? ` (inicial ${usd(ini)} ya dado)` : ''}${enRD}`
-        : (ini ? `Inicial dado: ${usd(ini)} — el costo final se define al despachar.` : 'El proveedor fija el costo final al despachar.');
+        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${usd(Math.max(fin - ini, 0))}</b>${ini ? ` (abonado ${usd(ini)})` : ''}${enRD}`
+        : (ini ? `Abonado al taller: ${usd(ini)} — el costo final se define al despachar.` : 'El proveedor fija el costo final al despachar.');
     };
     pintarSaldoProv();
-    $('#confCostoIni').addEventListener('change', async e => {
-      const v = Number(e.target.value);
-      if (v > 0) c.costoInicialUSD = v; else delete c.costoInicialUSD;
+    $('#confAbonar').addEventListener('click', async () => {
+      const v = Number($('#confAbonoMonto').value);
+      if (!(v > 0)) { toast('Pon el monto del abono'); return; }
+      c.abonosTaller.push({ fecha: hoyISO(), monto: v });
+      $('#confAbonoMonto').value = '';
       await guardar(); pintarSaldoProv();
+      toast(`💵 Abono de ${usd(v)} anotado${c.grupo ? ` — suma al lote ${c.grupo}` : ''}`);
     });
     /* El costo final en US$ alimenta f.costo (RD$, el de Finanzas) con la
        tasa viva. Solo se borra f.costo si lo puso este flujo (costoDeUSD),
