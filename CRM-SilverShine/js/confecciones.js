@@ -182,20 +182,24 @@ const Confecciones = (() => {
         const arr = porGrupo.get(g).sort((a, b) => a.confeccion.entrega.localeCompare(b.confeccion.entrega));
         const doc = gdocs.get(g);
         let resumen;
-        if (doc && (doc.exigidoUSD || doc.pagadoUSD || doc.finalUSD)) {
+        const cotH = doc ? (doc.cotizadoUSD || doc.exigidoUSD || 0) : 0;
+        const pagH = doc ? ((doc.abonos || []).reduce((s, a) => s + (a.monto || 0), 0) + (doc.pagadoUSD || 0)) : 0;
+        const finH = doc ? (doc.finalUSD || 0) : 0;
+        if (cotH || pagH || finH) {
           /* La cuenta del lote manda sobre el resumen por pieza */
-          const ex = doc.exigidoUSD || 0, pa = doc.pagadoUSD || 0, fin = doc.finalUSD || 0;
-          resumen = fin
+          const difH = finH && cotH ? finH - cotH : 0;
+          resumen = finH
             ? [
-              `costo final ${fmtMoneda(fin, 'USD')}`,
-              pa ? `pagado ${fmtMoneda(pa, 'USD')}` : '',
-              fin - pa > 0 ? `<b class="rojo">falta ${fmtMoneda(fin - pa, 'USD')}</b>` : '✓ saldado',
+              `factura final ${fmtMoneda(finH, 'USD')}`,
+              Math.abs(difH) > 0.005 ? `<b class="${difH > 0 ? 'rojo' : 'verde'}">${difH > 0 ? '+' : '−'}${fmtMoneda(Math.abs(difH), 'USD')} vs cotización</b>` : (cotH ? 'igual a la cotización' : ''),
+              pagH ? `abonado ${fmtMoneda(pagH, 'USD')}` : '',
+              finH - pagH > 0.005 ? `<b class="rojo">falta ${fmtMoneda(finH - pagH, 'USD')}</b>` : '✓ saldado',
             ].filter(Boolean).join(' · ')
             : [
-              ex ? `pidió ${fmtMoneda(ex, 'USD')} para comenzar` : '',
-              pa ? `pagado ${fmtMoneda(pa, 'USD')}` : '',
-              ex - pa > 0 ? `<b class="rojo">faltan ${fmtMoneda(ex - pa, 'USD')} del arranque</b>` : (ex ? '✓ arranque cubierto' : ''),
-              'final al despachar',
+              cotH ? `cotizado ${fmtMoneda(cotH, 'USD')}` : '',
+              pagH ? `abonado ${fmtMoneda(pagH, 'USD')}` : '',
+              cotH - pagH > 0.005 ? `<b class="rojo">debe ${fmtMoneda(cotH - pagH, 'USD')}</b>` : (cotH ? '✓ cotización cubierta' : ''),
+              'factura final pendiente',
             ].filter(Boolean).join(' · ');
         } else {
           const conCosto = arr.filter(x => x.confeccion.costoFinalUSD);
@@ -257,21 +261,30 @@ const Confecciones = (() => {
     if (!piezas.length) return;
     const doc = (await DB.config.get(idGrupo(nombre))) ||
       { id: idGrupo(nombre), tipo: 'conf-grupo', nombre };
+    /* Compatibilidad con los campos de v103: exigido → cotizado, y el
+       "pagado" suelto se convierte en el primer abono */
+    if (doc.exigidoUSD && !doc.cotizadoUSD) { doc.cotizadoUSD = doc.exigidoUSD; delete doc.exigidoUSD; }
+    if (doc.pagadoUSD && !(doc.abonos || []).length) { doc.abonos = [{ fecha: hoyISO(), monto: doc.pagadoUSD }]; delete doc.pagadoUSD; }
+    doc.abonos = doc.abonos || [];
+
     abrirModal(`🗂 ${nombre}`, `
       <p class="muted" style="margin-bottom:12px">${piezas.map(f =>
         `${esc(f.clienteNombre)} ${esc(rotulo(f))} — ${ESTADOS[f.confeccion.estado]}`).join('<br>')}</p>
       <h3 class="sub-h">💵 Cuenta con el taller por este lote (US$)</h3>
       <div class="row">
-        <div><label>Exigido para comenzar</label>
-          <input type="number" id="grpExigido" min="0" step="0.01" value="${doc.exigidoUSD ?? ''}" placeholder="A veces lo pide completo"></div>
-        <div><label>Lo que se ha pagado</label>
-          <input type="number" id="grpPagado" min="0" step="0.01" value="${doc.pagadoUSD ?? ''}" placeholder="Lo que se terminó pagando"></div>
+        <div><label>Cotización inicial del taller</label>
+          <input type="number" id="grpCotizado" min="0" step="0.01" value="${doc.cotizadoUSD ?? ''}" placeholder="El monto cotizado al inicio"></div>
+        <div><label>Factura final del taller</label>
+          <input type="number" id="grpFinal" min="0" step="0.01" value="${doc.finalUSD ?? ''}" placeholder="Al terminar — puede variar"></div>
       </div>
-      <div class="row"><div>
-        <label>Costo final del lote</label>
-        <input type="number" id="grpFinal" min="0" step="0.01" value="${doc.finalUSD ?? ''}" placeholder="Se sabe al despachar — puede cambiar del exigido">
-      </div></div>
-      <p class="muted" id="grpFalta" style="margin:-4px 0 12px"></p>
+      <label style="margin-top:2px">Abonos al taller</label>
+      <div id="grpAbonos" class="list" style="margin:4px 0 8px"></div>
+      <div class="row" style="align-items:flex-end">
+        <div><label>Nuevo abono (US$)</label>
+          <input type="number" id="grpAbonoMonto" min="0" step="0.01" placeholder="Ej: el pago para comenzar"></div>
+        <div style="flex:0 0 auto"><button type="button" class="btn-ghost" id="grpAbonar">➕ Abonar</button></div>
+      </div>
+      <p class="muted" id="grpFalta" style="margin:2px 0 12px"></p>
       <h3 class="sub-h">🚚 Mover el lote</h3>
       <div class="row">
         <div><label>Mover TODO el grupo a</label>
@@ -286,36 +299,65 @@ const Confecciones = (() => {
     `);
 
     const usd = v => fmtMoneda(v, 'USD');
-    /* La deuda REAL solo se conoce con el costo final; antes de eso, lo
-       único exigible es el arranque — no se pinta como deuda del lote */
-    const pintarFalta = () => {
-      const ex = Number($('#grpExigido').value) || 0;
-      const pa = Number($('#grpPagado').value) || 0;
-      const fin = Number($('#grpFinal').value) || 0;
-      let txt;
+    const pagadoTotal = () => doc.abonos.reduce((s, a) => s + (a.monto || 0), 0);
+
+    /* La cuenta del lote: cotización inicial → abonos → adeudado; con la
+       factura final, saldar y ver la DIFERENCIA contra lo cotizado */
+    const pintarCuenta = () => {
+      $('#grpAbonos').innerHTML = doc.abonos.length
+        ? doc.abonos.map((a, i) => `
+          <div class="item" style="padding:8px 12px">
+            <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)}</div></div>
+            <b>${usd(a.monto)}</b>
+            <button type="button" class="btn-x" data-abx="${i}">✕</button>
+          </div>`).join('')
+        : '<p class="muted" style="margin:2px 0 4px">Sin abonos todavía.</p>';
+      UI.$$('#grpAbonos [data-abx]').forEach(b => b.addEventListener('click', async () => {
+        doc.abonos.splice(Number(b.dataset.abx), 1);
+        await guardarDoc();
+      }));
+
+      const cot = doc.cotizadoUSD || 0;
+      const fin = doc.finalUSD || 0;
+      const pa = pagadoTotal();
+      const lineas = [];
       if (fin) {
-        txt = fin - pa > 0
-          ? `Falta por pagarle al taller: <b class="rojo">${usd(fin - pa)}</b> (costo final ${usd(fin)} − pagado ${usd(pa)})`
-          : `✓ Lote saldado con el taller${pa - fin > 0.005 ? ` (se pagó ${usd(pa - fin)} de más)` : ''}`;
-      } else if (ex || pa) {
-        txt = ex - pa > 0
-          ? `Para comenzar faltan <b class="rojo">${usd(ex - pa)}</b> (pidió ${usd(ex)} · pagado ${usd(pa)}). El costo final se sabe al despachar.`
-          : `✓ Arranque cubierto (${usd(pa)} pagado). El costo final se sabe al despachar.`;
+        lineas.push(fin - pa > 0.005
+          ? `Falta para saldar la factura final: <b class="rojo">${usd(fin - pa)}</b> (factura ${usd(fin)} − abonado ${usd(pa)})`
+          : `✓ Lote saldado con el taller (${usd(pa)} pagado${pa - fin > 0.005 ? `, ${usd(pa - fin)} de más` : ''})`);
+        if (cot) {
+          const dif = fin - cot;
+          lineas.push(Math.abs(dif) > 0.005
+            ? `📊 Diferencia vs la cotización inicial (${usd(cot)}): <b class="${dif > 0 ? 'rojo' : 'verde'}">${dif > 0 ? '+' : '−'}${usd(Math.abs(dif))}</b> (${dif > 0 ? 'subió' : 'bajó'} ${Math.round(Math.abs(dif) / cot * 100)}%)`
+            : `📊 La factura final quedó igual a la cotización inicial (${usd(cot)}).`);
+        }
+      } else if (cot || pa) {
+        lineas.push(cot - pa > 0.005
+          ? `Adeudado según la cotización: <b class="rojo">${usd(cot - pa)}</b> (cotizado ${usd(cot)} · abonado ${usd(pa)})`
+          : `✓ Cotización cubierta (${usd(pa)} abonado) — pendiente la factura final del taller.`);
       } else {
-        txt = 'Anota lo que pidió para comenzar y lo que se ha ido pagando; el costo final va cuando el taller despache.';
+        lineas.push('Anota la cotización inicial y ve registrando los abonos; al terminar, la factura final cierra la cuenta.');
       }
-      $('#grpFalta').innerHTML = txt;
+      $('#grpFalta').innerHTML = lineas.join('<br>');
     };
-    pintarFalta();
-    const guardarDoc = async () => { await DB.config.upsert(doc); pintarFalta(); };
+    const guardarDoc = async () => { await DB.config.upsert(doc); pintarCuenta(); };
+    pintarCuenta();
+
     const campoDoc = (sel, campo) => $(sel).addEventListener('change', e => {
       const v = Number(e.target.value);
       if (v > 0) doc[campo] = v; else delete doc[campo];
       guardarDoc();
     });
-    campoDoc('#grpExigido', 'exigidoUSD');
-    campoDoc('#grpPagado', 'pagadoUSD');
+    campoDoc('#grpCotizado', 'cotizadoUSD');
     campoDoc('#grpFinal', 'finalUSD');
+    $('#grpAbonar').addEventListener('click', async () => {
+      const v = Number($('#grpAbonoMonto').value);
+      if (!(v > 0)) { toast('Pon el monto del abono'); return; }
+      doc.abonos.push({ fecha: hoyISO(), monto: v });
+      $('#grpAbonoMonto').value = '';
+      await guardarDoc();
+      toast(`💵 Abono de ${usd(v)} registrado al lote`);
+    });
     $('#grpAplicar').addEventListener('click', async () => {
       const nuevo = $('#grpEstado').value;
       const trk = $('#grpTracking').value.trim();
