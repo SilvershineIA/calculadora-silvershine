@@ -104,6 +104,92 @@ const Tareas = (() => {
   }
 
   /* ── Crear / editar ── */
+  /* ── Dictado por voz: "llamar a Yeuri mañana" → tarea con fecha ──
+     Entiende hoy/mañana/pasado mañana, "en N días", días de la semana
+     y "el 20 (de agosto)". Lo dictado abre el formulario YA LLENO para
+     confirmar o corregir antes de guardar. */
+  function interpretarDictado(txt) {
+    let t = txt.replace(/[.,;]+$/, '').trim();
+    const hoy = new Date(hoyISO() + 'T00:00:00');
+    const en = n => { const d = new Date(hoy); d.setDate(d.getDate() + n); return UI.fechaISO(d); };
+    const DIAS = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, 'miércoles': 3, jueves: 4, viernes: 5, sabado: 6, 'sábado': 6 };
+    const MESES = { enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5, julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11 };
+    const proxDia = nombre => {
+      const d = new Date(hoy);
+      let delta = (DIAS[nombre.toLowerCase()] - d.getDay() + 7) % 7;
+      if (!delta) delta = 7;
+      d.setDate(d.getDate() + delta);
+      return UI.fechaISO(d);
+    };
+    const fechaMes = (dia, mes) => {
+      const d = new Date(hoy.getFullYear(), MESES[mes.toLowerCase()], Number(dia));
+      if (d < hoy) d.setFullYear(d.getFullYear() + 1);
+      return UI.fechaISO(d);
+    };
+    const diaDelMes = dia => {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth(), dia);
+      if (d < hoy) d.setMonth(d.getMonth() + 1);
+      return UI.fechaISO(d);
+    };
+    let fecha = null;
+    const reglas = [
+      [/\bpasado\s+ma[ñn]ana\b/i, () => en(2)],
+      [/\bma[ñn]ana\b/i, () => en(1)],
+      [/\bhoy\b/i, () => en(0)],
+      [/\ben\s+(\d{1,2})\s+d[ií]as?\b/i, m => en(Number(m[1]))],
+      [/\b(?:el|este|pr[oó]ximo)\s+(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b/i, m => proxDia(m[1])],
+      [/\bel\s+(?:d[ií]a\s+)?(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i, m => fechaMes(m[1], m[2])],
+      [/\bel\s+(?:d[ií]a\s+)?(\d{1,2})\b/i, m => diaDelMes(Number(m[1]))],
+    ];
+    for (const [re, fn] of reglas) {
+      const m = t.match(re);
+      if (m) { fecha = fn(m); t = t.replace(re, '').replace(/\s{2,}/g, ' ').replace(/\s+(para|el)$/i, '').trim(); break; }
+    }
+    t = t.replace(/^(recu[eé]rdame|recordarme|recordar|tarea|anotar|anota|apuntar|apunta)\s+(que\s+)?/i, '').trim();
+    if (t) t = t.charAt(0).toUpperCase() + t.slice(1);
+    return { titulo: t, fecha: fecha || hoyISO() };
+  }
+
+  function porVoz() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      toast('🎤 Este navegador no dicta directo — usa el micrófono del teclado en el formulario');
+      formulario();
+      return;
+    }
+    abrirModal('🎤 Dictar tarea', `
+      <p style="text-align:center;font-size:2.4rem;margin:8px 0">🎤</p>
+      <p class="muted" style="text-align:center">Te escucho… di la tarea con su fecha.<br>
+        Ej: «Llamar a Yeuri mañana» · «Recoger piezas el viernes»</p>
+      <p id="vozParcial" style="text-align:center;min-height:24px;margin-top:12px;font-weight:600"></p>
+      <button type="button" class="btn-ghost btn-block" id="vozCancelar" style="margin-top:10px">Cancelar</button>
+    `);
+    const rec = new SR();
+    rec.lang = 'es-DO';
+    rec.interimResults = true;
+    let final = '', cancelado = false;
+    rec.onresult = e => {
+      let interim = '';
+      for (const r of e.results) { if (r.isFinal) final += r[0].transcript; else interim += r[0].transcript; }
+      const el = $('#vozParcial');
+      if (el) el.textContent = (final + ' ' + interim).trim();
+    };
+    rec.onerror = e => {
+      cancelado = true;
+      toast(e.error === 'not-allowed'
+        ? '🎤 Permite el micrófono en el navegador para poder dictar'
+        : '🎤 No se escuchó nada — intenta de nuevo');
+      cerrarModal();
+    };
+    rec.onend = () => {
+      if (cancelado || !final.trim()) { if (!cancelado) cerrarModal(); return; }
+      const pre = interpretarDictado(final.trim());
+      formulario(pre);
+    };
+    $('#vozCancelar').addEventListener('click', () => { cancelado = true; rec.abort(); cerrarModal(); });
+    rec.start();
+  }
+
   async function formulario(t) {
     const esNueva = !t || !t.id;
     t = t || {};
@@ -211,6 +297,7 @@ const Tareas = (() => {
 
   function init() {
     $('#btnNuevaTarea').addEventListener('click', () => formulario());
+    $('#btnTareaVoz').addEventListener('click', porVoz);
   }
 
   return { init, render, formulario, fechaEfectiva, proximoPaso, marcarPaso };
