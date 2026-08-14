@@ -126,7 +126,7 @@ const Confecciones = (() => {
        pesos) entra convertido con la tasa viva. */
     const porPagarUSD = proceso.reduce((s, f) => {
       const c = f.confeccion;
-      const esRD = f.esStock && f.destino === 'rd';
+      const esRD = (f.esStock && f.destino === 'rd') || c.taller === 'rd';
       let v = 0;
       if (!esRD && c.costoFinalUSD) v = Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0) - abonadoTaller(c), 0);
       if (esRD && c.costoFinalRD && tasa) v = Math.max(c.costoFinalRD - (c.costoInicialRD || 0) - abonadoTaller(c), 0) / tasa;
@@ -154,6 +154,7 @@ const Confecciones = (() => {
       const extra =
         ((c.estado === 'taller' || c.estado === 'recibida') && dt !== null ? ` · 🧵 lleva ${dt} día${dt === 1 ? '' : 's'} en el taller` : '') +
         (c.estado === 'camino' && c.tracking ? ` · 📦 ${esc(c.tracking)}` : '') +
+        (c.taller === 'rd' ? ' · 🇩🇴 taller RD' : '') +
         (c.grupo && filtro !== 'grupos' ? ` · 🗂 ${esc(c.grupo)}` : '') +
         (c.notas ? ' · ⚠ hay temas anotados' : '');
       return `
@@ -191,7 +192,7 @@ const Confecciones = (() => {
         let resumen;
         const cotH = doc ? (doc.cotizadoUSD || doc.exigidoUSD || 0) : 0;
         const pagH = (doc ? (doc.abonos || []).reduce((s, a) => s + (a.monto || 0), 0) + (doc.pagadoUSD || 0) : 0) +
-          arr.reduce((s, x) => s + ((x.esStock && x.destino === 'rd') ? 0
+          arr.reduce((s, x) => s + (((x.esStock && x.destino === 'rd') || x.confeccion.taller === 'rd') ? 0
             : abonadoTaller(x.confeccion) + (x.confeccion.costoInicialUSD || 0)), 0);
         const finH = doc ? (doc.finalUSD || 0) : 0;
         if (cotH || pagH || finH) {
@@ -312,7 +313,7 @@ const Confecciones = (() => {
        (se editan desde su pieza; el taller local RD$ va aparte) */
     const piezasGrupo = (await activas()).filter(f => f.confeccion.grupo === nombre);
     const abonosPiezas = piezasGrupo.flatMap(f => {
-      if (f.esStock && f.destino === 'rd') return [];
+      if ((f.esStock && f.destino === 'rd') || f.confeccion.taller === 'rd') return [];
       const via = rotulo(f) || f.clienteNombre;
       const arr = (f.confeccion.abonosTaller || []).map(a => ({ fecha: a.fecha, monto: a.monto, via }));
       if (f.confeccion.costoInicialUSD) arr.unshift({ fecha: f.confeccion.inicio, monto: f.confeccion.costoInicialUSD, via });
@@ -566,6 +567,12 @@ const Confecciones = (() => {
     const t = f.moneda || 'DOP';
     const debe = f.saldo > 0;
     const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
+    /* La pieza puede hacerla el taller de China (US$) o el local en
+       Dominicana (RD$, c.taller === 'rd') */
+    const esRD = c.taller === 'rd';
+    const MON = esRD ? 'RD$' : 'US$';
+    const CAMPO_FIN = esRD ? 'costoFinalRD' : 'costoFinalUSD';
+    const fmtT = v => esRD ? UI.fmtDinero(v) : fmtMoneda(v, 'USD');
     const gruposExistentes = [...new Set((await activas())
       .map(x => x.confeccion.grupo).filter(Boolean))].sort();
 
@@ -593,12 +600,19 @@ const Confecciones = (() => {
         <div><label>Fecha de entrega al cliente</label><input type="date" id="confEntrega" value="${c.entrega}"></div>
       </div>
 
-      <h3 class="sub-h">🏭 Taller / proveedor (se maneja en US$)</h3>
+      <h3 class="sub-h">${esRD ? '🇩🇴 Taller en Dominicana (RD$)' : '🏭 Taller / proveedor (US$)'}</h3>
       <p class="muted" style="margin-bottom:10px">${viaje}</p>
+      <div class="row">
+        <div><label>¿Qué taller la hace?</label>
+          <select id="confTaller">
+            <option value="">🏭 Taller de China (US$)</option>
+            <option value="rd" ${esRD ? 'selected' : ''}>🇩🇴 Taller en Dominicana (RD$)</option>
+          </select></div>
+        <div><label>Costo del taller (${MON})</label>
+          <input type="number" id="confCostoFin" min="0" step="0.01" value="${c[CAMPO_FIN] ?? ''}" placeholder="Se define al ${esRD ? 'terminar' : 'despachar'}"></div>
+      </div>
       <div class="row" style="align-items:flex-end">
-        <div><label>Costo final de la pieza (US$)</label>
-          <input type="number" id="confCostoFin" min="0" step="0.01" value="${c.costoFinalUSD ?? ''}" placeholder="Se define al despachar"></div>
-        <div><label>Nuevo abono al taller (US$)</label>
+        <div><label>Nuevo abono al taller (${MON})</label>
           <input type="number" id="confAbonoMonto" min="0" step="0.01" placeholder="Ej: el pago para comenzar"></div>
         <div style="flex:0 0 auto"><button type="button" class="btn-ghost" id="confAbonar">➕ Abonar</button></div>
       </div>
@@ -638,12 +652,11 @@ const Confecciones = (() => {
     const guardar = async () => { await DB.facturas.upsert(f); render(); };
 
     /* Cuenta de la pieza con el taller: abonos con fecha + costo final */
-    const usd = v => fmtMoneda(v, 'USD');
     const pintarSaldoProv = () => {
       $('#confAbonos').innerHTML = c.abonosTaller.map((a, i) => `
         <div class="item" style="padding:8px 12px">
           <div class="item-info"><div class="item-sub">${fmtFecha(a.fecha)} · abono al taller</div></div>
-          <b>${usd(a.monto)}</b>
+          <b>${fmtT(a.monto)}</b>
           <button type="button" class="btn-x" data-abx="${i}">✕</button>
         </div>`).join('');
       UI.$$('#confAbonos [data-abx]').forEach(b => b.addEventListener('click', async () => {
@@ -652,10 +665,12 @@ const Confecciones = (() => {
       }));
       const ini = abonadoTaller(c);
       const fin = Number($('#confCostoFin').value) || 0;
-      const enRD = fin && tasa ? ` ≈ ${fmtMoneda(fin * tasa)} (a ${tasa}) — guardado como costo en Finanzas` : '';
+      const nota = esRD
+        ? (fin ? ` — sumado al costo de la pieza en Finanzas (total ${UI.fmtDinero(f.costo || fin)})` : '')
+        : (fin && tasa ? ` ≈ ${fmtMoneda(fin * tasa)} (a ${tasa}) — guardado como costo en Finanzas` : '');
       $('#confSaldoProv').innerHTML = fin
-        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${usd(Math.max(fin - ini, 0))}</b>${ini ? ` (abonado ${usd(ini)})` : ''}${enRD}`
-        : (ini ? `Abonado al taller: ${usd(ini)} — el costo final se define al despachar.` : 'El proveedor fija el costo final al despachar.');
+        ? `Falta por pagar al taller: <b class="${fin - ini > 0 ? 'rojo' : 'verde'}">${fmtT(Math.max(fin - ini, 0))}</b>${ini ? ` (abonado ${fmtT(ini)})` : ''}${nota}`
+        : (ini ? `Abonado al taller: ${fmtT(ini)} — el costo final se define al ${esRD ? 'terminar' : 'despachar'}.` : `El taller fija el costo final al ${esRD ? 'terminar el trabajo' : 'despachar'}.`);
     };
     pintarSaldoProv();
     $('#confAbonar').addEventListener('click', async () => {
@@ -664,19 +679,49 @@ const Confecciones = (() => {
       c.abonosTaller.push({ fecha: hoyISO(), monto: v });
       $('#confAbonoMonto').value = '';
       await guardar(); pintarSaldoProv();
-      toast(`💵 Abono de ${usd(v)} anotado${c.grupo ? ` — suma al lote ${c.grupo}` : ''}`);
+      toast(`💵 Abono de ${fmtT(v)} anotado${c.grupo ? ` — suma al lote ${c.grupo}` : ''}`);
     });
-    /* El costo final en US$ alimenta f.costo (RD$, el de Finanzas) con la
-       tasa viva. Solo se borra f.costo si lo puso este flujo (costoDeUSD),
-       para no pisar costos en pesos anotados a mano. */
+
+    /* Cambiar de taller deshace el aporte del anterior a f.costo */
+    $('#confTaller').addEventListener('change', async e => {
+      if (c.costoAportadoRD) {
+        const resto = Math.round(((f.costo || 0) - c.costoAportadoRD) * 100) / 100;
+        if (resto > 0) f.costo = resto; else delete f.costo;
+        delete c.costoAportadoRD;
+      }
+      if (c.costoDeUSD) { delete f.costo; delete c.costoDeUSD; }
+      if (e.target.value === 'rd') c.taller = 'rd'; else delete c.taller;
+      await guardar();
+      detalle(fid);
+    });
+
+    /* China: el costo US$ se convierte con la tasa viva y REEMPLAZA
+       f.costo (el taller hace la pieza completa; flag costoDeUSD).
+       Taller RD: el costo en pesos SE SUMA a lo que ya tenga la pieza
+       (p. ej. el material de plata del cálculo automático); el delta
+       aportado queda en costoAportadoRD para no duplicarse al editar. */
     $('#confCostoFin').addEventListener('change', async e => {
       const v = Number(e.target.value);
-      if (v > 0) {
+      if (esRD) {
+        const base = Math.round(((f.costo || 0) - (c.costoAportadoRD || 0)) * 100) / 100;
+        if (v > 0) {
+          c.costoFinalRD = v;
+          f.costo = Math.round((base + v) * 100) / 100;
+          c.costoAportadoRD = v;
+          toast(base > 0
+            ? `🔒 Taller ${UI.fmtDinero(v)} + otros costos ${UI.fmtDinero(base)} → total ${UI.fmtDinero(f.costo)} en Finanzas`
+            : `🔒 Costo ${UI.fmtDinero(v)} — Finanzas lo usa para la ganancia`);
+        } else {
+          delete c.costoFinalRD;
+          delete c.costoAportadoRD;
+          if (base > 0) f.costo = base; else delete f.costo;
+        }
+      } else if (v > 0) {
         c.costoFinalUSD = v;
         if (tasa) {
           f.costo = Math.round(v * tasa * 100) / 100;
           c.costoDeUSD = true;
-          toast(`🔒 Costo ${usd(v)} ≈ ${fmtMoneda(f.costo)} — Finanzas lo usa para la ganancia`);
+          toast(`🔒 Costo ${fmtT(v)} ≈ ${fmtMoneda(f.costo)} — Finanzas lo usa para la ganancia`);
         } else toast('⚠ Sin tasa del dólar a mano: abre la Calculadora para actualizarla');
       } else {
         delete c.costoFinalUSD;
