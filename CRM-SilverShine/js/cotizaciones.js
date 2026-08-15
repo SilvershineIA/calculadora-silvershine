@@ -229,7 +229,16 @@ const Cotizaciones = (() => {
     const t = c.moneda || 'DOP';
     const abierta = ABIERTAS.includes(estadoDe(c));
 
+    /* Navegación cruzada a los módulos enlazados */
+    const factLig = c.facturaId ? await DB.facturas.get(c.facturaId) : null;
+    const nav = [
+      cliente && { t: '👤 Cliente', on: () => Clientes.ficha(cliente.id) },
+      factLig && { t: `🧾 Factura ${factLig.orden ? '#' + factLig.orden : factLig.numero || ''}`, on: () => Facturas.detalle(factLig.id) },
+      factLig && factLig.confeccion && { t: '🧵 Confección', on: () => Confecciones.detalle(factLig.id) },
+    ].filter(Boolean);
+
     abrirModal(`Cotización COT-${c.numero || 's/n'}`, `
+      ${UI.navChips(nav)}
       <div class="fact-head">
         <div><b>${esc(c.clienteNombre)}</b> ${badge(c)}${badgeSeguimiento(c)}<br>
         <span class="muted">${fmtFecha(c.fecha)}${c.vence ? ' · vence ' + fmtFecha(c.vence) : ''}</span></div>
@@ -274,6 +283,7 @@ const Cotizaciones = (() => {
     `);
 
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+    UI.navWire(nav);
 
     on('#cConvertir', async () => {
       const epConv = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;

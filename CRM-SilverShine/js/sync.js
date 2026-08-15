@@ -132,6 +132,16 @@ const Sync = (() => {
           porId.set(o.id, o);   // pase lo que pase, no se pierde localmente
         }
       }
+      /* Un cambio local hecho MIENTRAS bajábamos no debe ser pisado por
+         la copia (más vieja) de la nube: lo pendiente en cola manda.
+         Sin esto, editar durante la re-sincronización de foco "se
+         deshacía" en pantalla (la nube sí lo recibía por la cola) y
+         reaparecía al recargar. Se relee la cola justo antes de
+         reemplazar para cerrar la ventana al mínimo. */
+      for (const p of cola.leer().filter(x => x.tabla === tabla)) {
+        if (p.op === 'upsert' && p.data) porId.set(p.id, p.data);
+        else if (p.op === 'remove') porId.delete(p.id);
+      }
       await DB.reemplazar(tabla, [...porId.values()]);
       estadoUI(`Descargando… ${tabla} (${porId.size})`);
       } catch (e) {

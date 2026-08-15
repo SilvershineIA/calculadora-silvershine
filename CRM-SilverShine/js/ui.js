@@ -129,6 +129,16 @@ const UI = (() => {
   const chipsRango = activo => `<div class="chips" style="margin:8px 0">${
     RANGOS.map(([k, t]) => `<button type="button" class="chip-tab mini chip-rango ${k === activo ? 'on' : ''}" data-rango="${k}">${t}</button>`).join('')}</div>`;
 
+  /* ── Chips de navegación cruzada: saltar entre los detalles de los
+     módulos enlazados (cliente ↔ factura ↔ cotización ↔ confección ↔
+     cobro). navChips(items) da el HTML; navWire(items) conecta los
+     clics una vez insertado en el modal. items = [{t, on}] ── */
+  const navChips = items => !items.length ? '' :
+    `<div class="chips" style="margin:0 0 12px">${items.map((x, i) =>
+      `<button type="button" class="chip-tab mini" data-nav="${i}">${x.t} ›</button>`).join('')}</div>`;
+  const navWire = items => $$('[data-nav]').forEach(b =>
+    b.addEventListener('click', () => items[Number(b.dataset.nav)].on()));
+
   /* ── WhatsApp: teléfono o @usuario ──
      Los usernames de WhatsApp NO tienen enlace tipo wa.me (hay que buscar
      el @usuario exacto dentro de la app), así que sin teléfono copiamos
@@ -312,5 +322,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, fechaISO, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, fechaISO, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, navChips, navWire, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
 })();

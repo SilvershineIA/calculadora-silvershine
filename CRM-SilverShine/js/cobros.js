@@ -260,7 +260,15 @@ const Cobros = (() => {
     const cliente = f.clienteId ? await DB.clientes.get(f.clienteId) : null;
     const t = f.moneda || 'DOP';
 
+    /* Navegación cruzada a los módulos enlazados */
+    const nav = [
+      cliente && { t: '👤 Cliente', on: () => Clientes.ficha(cliente.id) },
+      { t: `🧾 Factura ${f.orden ? '#' + f.orden : f.numero || ''}`, on: () => Facturas.detalle(f.id) },
+      f.confeccion && { t: '🧵 Confección', on: () => Confecciones.detalle(f.id) },
+    ].filter(Boolean);
+
     abrirModal(`Cobro — ${f.clienteNombre}`, `
+      ${UI.navChips(nav)}
       <div class="deuda-banner">Debe <b>${fmtMoneda(f.saldo, t)}</b> de ${fmtMoneda(f.total, t)} · ${esc(f.numero || 's/n')}</div>
       <p class="muted" style="margin-bottom:12px">Factura del ${fmtFecha(f.fecha)}.
         ${f.planPago ? '📅 <b>Plan EasyPay</b> (' + esc(f.planPago.frecuencia) + '). ' : ''}
@@ -288,6 +296,7 @@ const Cobros = (() => {
     `);
 
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+    UI.navWire(nav);
     on('#coAbonar', () => Facturas.formAbono(f));
     on('#coVerFactura', () => Facturas.detalle(f.id));
 

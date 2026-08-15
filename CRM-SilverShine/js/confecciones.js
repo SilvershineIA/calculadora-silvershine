@@ -295,6 +295,8 @@ const Confecciones = (() => {
         <div style="flex:0 0 auto"><button type="button" class="btn-ghost" id="grpAbonar">➕ Abonar</button></div>
       </div>
       <p class="muted" id="grpFalta" style="margin:2px 0 12px"></p>
+      <h3 class="sub-h">📦 Shipping del lote</h3>
+      <button type="button" class="btn-ghost btn-block" id="grpShipping" style="margin-bottom:12px">💸 Registrar el envío como gasto del negocio (Envíos)</button>
       <h3 class="sub-h">🚚 Mover el lote</h3>
       <div class="row">
         <div><label>Mover TODO el grupo a</label>
@@ -376,6 +378,11 @@ const Confecciones = (() => {
     });
     campoDoc('#grpCotizado', 'cotizadoUSD');
     campoDoc('#grpFinal', 'finalUSD');
+    /* El envío del lote es un gasto del negocio (categoría Envíos):
+       abre el formulario del Cuadre ya perfilado — baja de la cuenta
+       elegida y cuenta en los gastos operativos de Finanzas */
+    $('#grpShipping').addEventListener('click', () =>
+      Caja.formGasto(null, { categoria: 'Envíos', nota: `Shipping lote ${nombre}` }));
     $('#grpAbonar').addEventListener('click', async () => {
       const v = Number($('#grpAbonoMonto').value);
       if (!(v > 0)) { toast('Pon el monto del abono'); return; }
@@ -585,7 +592,15 @@ const Confecciones = (() => {
       c.recibidaEl ? `recibida en almacén el ${fmtFecha(c.recibidaEl)}` : '',
     ].filter(Boolean).join(' · ');
 
+    /* Navegación cruzada a los módulos enlazados */
+    const nav = [
+      cliente && { t: '👤 Cliente', on: () => Clientes.ficha(cliente.id) },
+      { t: `🧾 Factura ${rotulo(f)}`, on: () => Facturas.detalle(f.id) },
+      f.estado === 'pendiente' && f.saldo > 0 && { t: '💰 Cobro', on: () => Cobros.detalle(f.id) },
+    ].filter(Boolean);
+
     abrirModal(`Confección — ${rotulo(f)}`, `
+      ${UI.navChips(nav)}
       <div class="item-name" style="margin-bottom:4px">${esc(f.clienteNombre)}
         <span class="badge ${BADGE[c.estado]}">${ESTADOS[c.estado]}</span></div>
       <div class="deuda-banner">${debe
@@ -634,6 +649,7 @@ const Confecciones = (() => {
       <button class="btn-ghost btn-block" id="confQuitar" style="margin-top:10px;color:var(--red)">🗑 Quitar esta confección (error)</button>
     `);
 
+    UI.navWire(nav);
     $('#confQuitar').addEventListener('click', async () => {
       if (!confirm(`¿Quitar la confección de la factura ${rotulo(f)}? La factura NO se toca — solo se borra el seguimiento del taller y su tarea.`)) return;
       delete f.confeccion;

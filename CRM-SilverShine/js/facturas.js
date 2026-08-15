@@ -145,7 +145,17 @@ const Facturas = (() => {
     const t = f.moneda || 'DOP';
     const abonado = f.total - f.saldo;
 
+    /* Navegación cruzada: saltar a los módulos enlazados de esta factura */
+    const cotLig = (await DB.cotizaciones.list()).find(c => c.facturaId === f.id);
+    const nav = [
+      cliente && { t: '👤 Cliente', on: () => Clientes.ficha(cliente.id) },
+      cotLig && { t: `📋 COT-${cotLig.numero}`, on: () => Cotizaciones.detalle(cotLig.id) },
+      f.confeccion && { t: '🧵 Confección', on: () => Confecciones.detalle(f.id) },
+      f.estado === 'pendiente' && f.saldo > 0 && { t: '💰 Cobro', on: () => Cobros.detalle(f.id) },
+    ].filter(Boolean);
+
     abrirModal(`Factura ${rotulo(f)}`, `
+      ${UI.navChips(nav)}
       <div class="fact-head">
         <div><b>${esc(f.clienteNombre)}</b> ${badge(f)}<br>
         <span class="muted">${fmtFecha(f.fecha)}${f.orden && f.numero ? ' · ' + esc(f.numero) : ''}${f.ncf && !f.orden ? ' · NCF: ' + esc(f.ncf) : ''}</span></div>
@@ -196,6 +206,7 @@ const Facturas = (() => {
     `);
 
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+    UI.navWire(nav);
     UI.$$('[data-abono]').forEach(el =>
       el.addEventListener('click', () => reciboOpciones(f, Number(el.dataset.abono))));
     on('#fAbonar', () => formAbono(f));

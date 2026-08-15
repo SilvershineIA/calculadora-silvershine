@@ -277,7 +277,9 @@ const Caja = (() => {
     'Local (renta, luz, agua)', 'Comisiones y fees', 'Otros negocio'];
   const CAT_PERSONAL = 'Personal / familia';
 
-  async function formGasto(cuentaPre) {
+  /* pre: {categoria, nota} para llegar con el gasto ya perfilado
+     (p. ej. el shipping de un lote de confecciones → Envíos) */
+  async function formGasto(cuentaPre, pre = {}) {
     const { base } = await getEstado();
     abrirModal('💸 Registrar gasto', `
       <form id="formGasto">
@@ -288,7 +290,7 @@ const Caja = (() => {
               <option value="personal">🏠 Personal</option>
             </select></div>
           <div id="gCatRow"><label>Categoría</label>
-            <select name="categoria">${CATS_NEGOCIO.map(c => `<option>${c}</option>`).join('')}</select></div>
+            <select name="categoria">${CATS_NEGOCIO.map(c => `<option ${c === pre.categoria ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
         </div>
         <div class="row">
           <div><label>Pagado con</label>
@@ -300,7 +302,7 @@ const Caja = (() => {
         </div>
         <div class="row"><div>
           <label>Descripción / nota</label>
-          <input name="nota" placeholder="Ej: onza de plata, renta agosto, supermercado…" autocomplete="off">
+          <input name="nota" value="${esc(pre.nota || '')}" placeholder="Ej: onza de plata, renta agosto, supermercado…" autocomplete="off">
         </div></div>
         <button type="submit" class="btn-gold btn-block">Registrar gasto</button>
       </form>
@@ -476,5 +478,5 @@ const Caja = (() => {
 
   function init() {}
 
-  return { init, render, listaCuentas, registrarCobro };
+  return { init, render, listaCuentas, registrarCobro, formGasto };
 })();
