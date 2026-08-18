@@ -98,12 +98,16 @@
 
     // 1) Leads calientes: aceptadas sin factura — lo más valioso del día
     for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId && !posp(c))) {
+      const desde = c.estadoManual || c.fecha;
+      const diasL = desde ? Math.round((new Date(hoy + 'T00:00:00') - new Date(desde + 'T00:00:00')) / 864e5) : 0;
       items.push({
         grupo: 0, monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
         icono: '🧾', titulo: c.clienteNombre,
-        sub: `Lead caliente · COT-${UI.esc(String(c.numero || ''))} · cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7, c.moneda)})`,
-        accion: 'lead', id: c.id, btn: '💬',
+        ref: `COT-${UI.esc(String(c.numero || ''))} · cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7, c.moneda)})`,
+        pill: { t: '🔥 Lead caliente', c: 'var(--tb-naranja)' },
+        fechaTxt: `aceptó hace ${diasL} día${diasL === 1 ? '' : 's'} · ventana de 7`,
+        accion: 'lead', id: c.id, btn: '💬', rojo: diasL > 7,
       });
     }
 
@@ -114,14 +118,19 @@
       if (!fecha) continue;
       const dias = Math.round((new Date(hoy + 'T00:00:00') - new Date(fecha + 'T00:00:00')) / 864e5);
       if (dias < -3) continue;   // todavía falta — entra a la cola 3 días antes
+      const pillCobro =
+        dias < 0  ? { t: `😊 Vence en ${-dias} d`, c: 'var(--tb-verde)' } :
+        dias === 0 ? { t: '📅 Vence HOY', c: 'var(--gold-bright)' } :
+        dias < 7  ? { t: `🟠 Firme · ${dias} d`, c: 'var(--tb-ambar)' } :
+        dias < 14 ? { t: `🔴 Urgente · ${dias} d`, c: 'var(--tb-rojo)' } :
+                    { t: `⚠️ Escalada · ${dias} d`, c: 'var(--tb-rojo)' };
       items.push({
         grupo: 1, monto: conv(f.proxCobro.monto || f.saldo, f.moneda || 'DOP'),
         hecho: f.ultimoRecordatorio === hoy || (f.abonos || []).some(a => a.fecha === hoy),
         icono: '💰', titulo: f.clienteNombre,
-        sub: `${dias > 0 ? `Cobro vencido hace ${dias} día${dias === 1 ? '' : 's'}`
-          : dias === 0 ? 'Cobro de HOY'
-          : `Vence en ${-dias} día${dias === -1 ? '' : 's'} — aviso amistoso`} · ${
-          UI.fmtDinero(f.proxCobro.monto || f.saldo, f.moneda)}${dias >= 7 ? ' · 📞 mejor llamar' : ''}`,
+        ref: `${f.orden ? '#' + f.orden : UI.esc(f.numero || 's/n')} · ${f.planPago ? 'cuota EasyPay' : 'abono acordado'} · ${UI.fmtDinero(f.proxCobro.monto || f.saldo, f.moneda)}`,
+        pill: pillCobro,
+        fechaTxt: dias > 0 ? `${UI.fmtFecha(fecha)}${dias >= 7 ? ' · 📞 mejor llamar' : ''}` : dias === 0 ? 'hoy' : `vence ${UI.fmtFecha(fecha)}`,
         accion: 'cobro', id: f.id, btn: '💬', rojo: dias > 0,
       });
     }
@@ -136,8 +145,11 @@
         grupo: 2, monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
         icono: '📋', titulo: c.clienteNombre,
-        sub: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total, c.moneda)} · ${
-          porVencer ? '⏳ por vencer' : `${diasSin} días sin seguimiento`}`,
+        ref: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total, c.moneda)}`,
+        pill: porVencer
+          ? { t: '⏳ Por vencer', c: 'var(--tb-ambar)' }
+          : { t: `🤝 ${diasSin} d sin gestión`, c: diasSin >= 15 ? 'var(--tb-rojo)' : 'var(--tb-azul)' },
+        fechaTxt: porVencer ? `vence ${UI.fmtFecha(c.vence)}` : (ultima ? `última gestión ${UI.fmtFecha(ultima)}` : ''),
         accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15,
       });
     }
@@ -151,7 +163,11 @@
       items.push({
         grupo: 3, monto: 0, hecho: false,
         icono: '🛠', titulo: t.titulo,
-        sub: `${paso ? UI.esc(paso.titulo) + ' · ' : ''}${UI.fmtFecha(fe)}${t.clienteNombre ? ' · ' + UI.esc(t.clienteNombre) : ''}`,
+        ref: `${paso ? UI.esc(paso.titulo) : 'tarea'}${t.clienteNombre ? ' · ' + UI.esc(t.clienteNombre) : ''}`,
+        pill: fe < hoy
+          ? { t: '🛠 Atrasada', c: 'var(--tb-rojo)' }
+          : { t: paso ? '🛠 Paso de hoy' : '✓ Tarea de hoy', c: 'var(--tb-violeta)' },
+        fechaTxt: UI.fmtFecha(fe),
         accion: 'tarea', id: t.id, paso: i, btn: '✓', rojo: fe < hoy,
       });
     }
@@ -164,9 +180,11 @@
       items.push({
         grupo: 4, monto: 0, hecho: false,
         icono: '🗄', titulo: 'Respaldo mensual del CRM',
-        sub: resp && resp.ultimo
-          ? `Última copia hace ${diasResp} días — toca 💾 y se descarga`
-          : 'Nunca se ha descargado una copia de seguridad — toca 💾',
+        ref: resp && resp.ultimo
+          ? `última copia hace ${diasResp} días — toca 💾 y se descarga`
+          : 'nunca se ha descargado una copia — toca 💾',
+        pill: { t: '🗄 Respaldo', c: diasResp >= 45 ? 'var(--tb-rojo)' : 'var(--tb-gris)' },
+        fechaTxt: '',
         accion: 'respaldo', id: 'respaldo', btn: '💾', rojo: diasResp >= 45,
       });
     }
@@ -183,25 +201,61 @@
       UI.statTile(items.filter(x => !x.hecho && x.grupo === 1).length, 'Cobros que tocan') +
       UI.statTile(UI.fmtDinero(enJuego), 'Valor en juego');
 
+    /* ── Tablero estilo Monday: grupos de colores, pastilla de etapa,
+       pie con totales. Las acciones son las mismas de siempre:
+       💬/✓ dispara y ⋯ registra el desenlace. ── */
     const cont = $('#colaDia');
-    cont.innerHTML = items.length ? items.map((x, i) => `
-      <div class="item dia-item ${x.hecho ? 'dia-hecho' : ''}" data-i="${i}">
-        <div class="item-info">
-          <div class="item-name">${x.icono} ${UI.esc(x.titulo)}</div>
-          <div class="item-sub ${x.rojo && !x.hecho ? 'rojo' : ''}">${x.sub}${
-            x.hecho && x.accion !== 'tarea' ? ' · 📨 enviado hoy — cuando responda, toca ⋯' : ''}</div>
+    items.forEach((x, i) => { x._i = i; });
+
+    const fila = x => `
+      <div class="tb-fila ${x.hecho ? 'tb-hecha' : ''}" data-i="${x._i}">
+        <div class="tb-info"><b>${x.icono} ${UI.esc(x.titulo)}</b><span>${x.ref || ''}</span></div>
+        <div class="tb-pillc"><span class="tb-pill" style="background:${
+          x.hecho ? 'var(--tb-verde)' : x.pill.c}">${
+          x.hecho ? (x.accion === 'tarea' ? '✓ Hecha' : '📨 Enviado — esperando') : x.pill.t}</span></div>
+        <div class="tb-monto">${x.monto > 0 ? UI.fmtDinero(x.monto) : '—'}</div>
+        <div class="tb-fecha ${x.rojo && !x.hecho ? 'rojo' : ''}">${
+          x.hecho && x.accion !== 'tarea' ? 'cuando responda, toca ⋯' : (x.fechaTxt || '')}</div>
+        <div class="tb-acc">${x.hecho
+          ? `<span class="verde" style="font-size:1.1rem">✓</span>${
+            ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué respondió?">⋯</button>` : ''}`
+          : `<button class="btn-gold btn-sm dia-btn" data-acc="${x._i}" title="Acción en 1 toque">${x.btn}</button>${
+            ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué pasó con este?">⋯</button>` : ''}`}</div>
+      </div>`;
+
+    const grupoTb = (titulo, color, arr, plegado = false) => !arr.length ? '' : `
+      <section class="tb-grupo ${plegado ? 'plegado' : ''}" style="--tbc:${color}">
+        <div class="tb-cab" tabindex="0"><span class="tb-caret">▼</span><b style="color:${color}">${titulo}</b><span class="tb-n">${arr.length}${
+          arr.some(x => x.monto > 0) ? ` · ${UI.fmtDinero(arr.reduce((s, x) => s + x.monto, 0))}` : ''}</span></div>
+        <div class="tb-cuerpo">
+          <div class="tb-encab"><div>Quién / qué</div><div>Etapa</div><div>Monto</div><div>Cuándo</div><div style="text-align:right">Acción</div></div>
+          ${arr.map(fila).join('')}
+          <div class="tb-pie">
+            <div>${arr.length} ${arr.length === 1 ? 'pendiente' : 'pendientes'}</div>
+            <div><span class="tb-bat">${arr.map(x => `<i style="background:${x.hecho ? 'var(--tb-verde)' : x.pill.c};width:${(100 / arr.length).toFixed(2)}%"></i>`).join('')}</span></div>
+            <div class="tb-monto">${arr.some(x => x.monto > 0) ? UI.fmtDinero(arr.reduce((s, x) => s + x.monto, 0)) : ''}</div>
+            <div></div><div></div>
+          </div>
         </div>
-        ${x.hecho
-          ? `<div style="display:flex;gap:6px;align-items:center;flex:0 0 auto">
-              <span class="verde" style="font-size:1.15rem">✓</span>${
-              ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué respondió?">⋯</button>` : ''}
-            </div>`
-          : `<div style="display:flex;gap:6px;flex:0 0 auto">
-              <button class="btn-gold btn-sm dia-btn" data-acc="${i}" title="Acción en 1 toque">${x.btn}</button>${
-              ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${i}" title="¿Qué pasó con este?">⋯</button>` : ''}
-            </div>`}
-      </div>`).join('')
+      </section>`;
+
+    const pend = items.filter(x => !x.hecho);
+    const hechasArr = items.filter(x => x.hecho);
+    const g = n => pend.filter(x => x.grupo === n);
+    cont.innerHTML = items.length
+      ? grupoTb('🔥 Leads calientes — a cerrar', 'var(--tb-naranja)', g(0)) +
+        grupoTb('💰 Cobros que tocan', 'var(--gold-bright)', g(1)) +
+        grupoTb('📋 Cotizaciones que piden seguimiento', 'var(--tb-azul)', g(2)) +
+        grupoTb('🧵 Taller y tareas', 'var(--tb-violeta)', g(3)) +
+        grupoTb('🗄 Sistema', 'var(--tb-gris)', g(4)) +
+        grupoTb('✓ Despachadas hoy', 'var(--tb-verde)', hechasArr, true)
       : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
+
+    cont.querySelectorAll('.tb-cab').forEach(c => {
+      const alternar = () => c.parentElement.classList.toggle('plegado');
+      c.addEventListener('click', alternar);
+      c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(); } });
+    });
 
     cont.querySelectorAll('.dia-btn').forEach(b => b.addEventListener('click', async e => {
       e.stopPropagation();
@@ -216,11 +270,11 @@
       e.stopPropagation();
       opcionesDia(items[Number(b.dataset.mas)]);
     }));
-    cont.querySelectorAll('.dia-item').forEach(el => el.addEventListener('click', () => {
+    cont.querySelectorAll('.tb-fila').forEach(el => el.addEventListener('click', () => {
       const x = items[Number(el.dataset.i)];
       if (x.accion === 'lead' || x.accion === 'cot') Cotizaciones.detalle(x.id);
       else if (x.accion === 'cobro') Cobros.detalle(x.id);
-      else DB.tareas.get(x.id).then(t => t && Tareas.formulario(t));
+      else if (x.accion === 'tarea') DB.tareas.get(x.id).then(t => t && Tareas.formulario(t));
     }));
   }
 

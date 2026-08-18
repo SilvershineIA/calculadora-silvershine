@@ -551,3 +551,50 @@ button:hover{filter:brightness(1.12)}
   #printArea .p-nota{margin-top:18px;font-size:.9rem;color:#555;font-style:italic}
   #printArea .p-pie{margin-top:40px;text-align:center;font-size:.8rem;color:#777;border-top:1px solid #ddd;padding-top:12px}
 }
+
+/* ── Tablero (estilo Monday, adaptado a SilverShine) ── */
+:root{
+  --tb-rojo:#D0655D;--tb-naranja:#E08A4C;--tb-ambar:#D9A03C;
+  --tb-violeta:#8E6FC0;--tb-azul:#4A7FD4;--tb-verde:#3E9B5F;--tb-gris:#9AA29F;
+}
+.tb-grupo{margin-bottom:22px}
+.tb-cab{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;user-select:none}
+.tb-caret{color:var(--muted);font-size:.7rem;transition:transform .15s}
+.tb-grupo.plegado .tb-caret{transform:rotate(-90deg)}
+.tb-grupo.plegado .tb-cuerpo{display:none}
+.tb-cab b{font-size:.95rem}
+.tb-n{color:var(--muted);font-size:.8rem}
+.tb-encab,.tb-fila,.tb-pie{
+  display:grid;grid-template-columns:minmax(210px,1.5fr) 185px 115px minmax(140px,1fr) 112px;
+  align-items:center;background:var(--panel);border:1px solid var(--border);border-top:0;
+}
+.tb-encab{border-top:1px solid var(--border);border-radius:10px 10px 0 0;
+  font-size:.66rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.tb-encab>div{padding:7px 12px}
+.tb-fila>div,.tb-pie>div{padding:6px 12px;min-height:46px;display:flex;align-items:center;font-size:.87rem}
+.tb-fila{border-left:4px solid var(--tbc,var(--border));cursor:pointer}
+.tb-fila:hover{background:#FCFAF7}
+.tb-fila.tb-hecha{opacity:.55}
+.tb-pie{border-radius:0 0 10px 10px;background:#F4EFE8;font-size:.8rem;color:var(--muted);border-left:4px solid transparent}
+.tb-info{flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;min-width:0}
+.tb-info b{font-weight:600}
+.tb-info span{font-size:.78rem;color:var(--muted)}
+.tb-pill{width:100%;height:30px;border-radius:5px;color:#fff;font-weight:600;font-size:.75rem;
+  display:flex;align-items:center;justify-content:center;letter-spacing:.2px;white-space:nowrap;overflow:hidden;padding:0 6px}
+.tb-monto{justify-content:flex-end;font-variant-numeric:tabular-nums}
+.tb-fecha{font-size:.8rem;color:var(--muted)}
+.tb-fecha.rojo{color:var(--red);font-weight:600}
+.tb-acc{gap:6px;justify-content:flex-end}
+.tb-bat{display:flex;height:14px;border-radius:4px;overflow:hidden;width:100%;max-width:170px}
+.tb-bat i{display:block;height:100%}
+@media(max-width:760px){
+  .tb-encab{display:none}
+  .tb-fila{grid-template-columns:1fr auto;grid-template-areas:"info info" "pill monto" "fecha acc";gap:7px 10px;padding:11px 12px}
+  .tb-fila>div{padding:0;min-height:0}
+  .tb-info{grid-area:info}
+  .tb-pillc{grid-area:pill}
+  .tb-monto{grid-area:monto}
+  .tb-fecha{grid-area:fecha}
+  .tb-acc{grid-area:acc}
+  .tb-pie{display:flex;justify-content:space-between;padding:9px 12px;gap:10px}
+}
