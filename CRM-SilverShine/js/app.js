@@ -358,6 +358,7 @@
       const c = await DB.cotizaciones.get(x.id);
       if (!c) return;
       UI.abrirModal(`${x.titulo} — ¿qué respondió?`, `
+        <button class="btn-ghost btn-block" data-op="enviado" style="margin-bottom:8px">📨 Ya le escribí — marcar enviado (sale de la cola de hoy)</button>
         <button class="btn-gold btn-block" data-op="respondio" style="margin-bottom:8px">✅ Le interesa — la conversación sigue conmigo</button>
         <button class="btn-ghost btn-block" data-op="modificar" style="margin-bottom:8px">✏️ Quiere modificar algo — ajustar la cotización</button>
         <button class="btn-ghost btn-block" data-op="pensando" style="margin-bottom:8px">🤔 Está pensándolo — darle espacio (7 días)</button>
@@ -379,6 +380,7 @@
         UI.cerrarModal(); UI.toast(msj); renderPanel();
       };
       const OPS = {
+        enviado: () => acc('WhatsApp', 0, '📨 Marcado enviado — queda en Despachadas esperando respuesta'),
         respondio: () => acc('respondió', 7, '✅ Anotado — la cola te la devuelve en 7 días si hace falta'),
         pensando:  () => acc('dándole espacio', 7, '🤔 Espacio dado — vuelve a la cola en 7 días'),
         t3:  () => acc(null, 3, '⏰ Toque programado en 3 días'),
@@ -409,6 +411,7 @@
       const f = await DB.facturas.get(x.id);
       if (!f) return;
       UI.abrirModal(`${x.titulo} — ¿qué pasó?`, `
+        <button class="btn-ghost btn-block" data-op="enviado" style="margin-bottom:8px">📨 Ya le escribí — marcar enviado (sale de la cola de hoy)</button>
         <button class="btn-gold btn-block" data-op="abono" style="margin-bottom:8px">💵 Pagó — registrar el abono</button>
         <h3 class="sub-h" style="margin-top:12px">🤝 Prometió pagar el…</h3>
         <div class="row">
@@ -427,6 +430,11 @@
         UI.cerrarModal(); UI.toast(msj); renderPanel();
       };
       const OPS = {
+        enviado: async () => {
+          f.ultimoRecordatorio = hoy;
+          await DB.facturas.upsert(f);
+          UI.cerrarModal(); UI.toast('📨 Marcado enviado — queda en Despachadas'); renderPanel();
+        },
         abono: () => Facturas.formAbono(f),
         promesa: () => {
           const fecha = UI.$('#opFechaPromesa').value;

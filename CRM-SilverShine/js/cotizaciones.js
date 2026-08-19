@@ -65,9 +65,9 @@ const Cotizaciones = (() => {
     if (!UI.tieneWhatsApp(cliente)) { detalle(id); return false; }
     const emp = await UI.getEmpresa();
     UI.abrirWhatsApp(cliente, mensajeSeguimientoDe(c, emp));
-    c.seguimientos = [...(c.seguimientos || []), { fecha: UI.fechaISO(), via: 'WhatsApp' }];
-    await DB.cotizaciones.upsert(c);
-    toast('🤝 Seguimiento enviado y registrado');
+    /* NO se anota nada solo por abrir el mensaje: el usuario decide
+       cuándo quedó enviado (⋯ → "Ya le escribí") — la fila no se mueve */
+    toast('💬 Mensaje listo — cuando lo envíes, márcalo con ⋯');
     return true;
   }
 

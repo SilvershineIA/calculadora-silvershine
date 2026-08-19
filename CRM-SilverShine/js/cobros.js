@@ -73,9 +73,9 @@ const Cobros = (() => {
     if (!UI.tieneWhatsApp(cliente)) { detalle(facturaId); return false; }
     const emp = await UI.getEmpresa();
     UI.abrirWhatsApp(cliente, mensajeRecordatorio(f, emp));
-    f.ultimoRecordatorio = hoyISO();
-    await DB.facturas.upsert(f);
-    toast('💬 Recordatorio enviado y anotado');
+    /* NO se anota nada solo por abrir el mensaje: el usuario decide
+       cuándo quedó enviado (⋯ → "Ya le escribí") — la fila no se mueve */
+    toast('💬 Recordatorio listo — cuando lo envíes, márcalo con ⋯');
     return true;
   }
 
