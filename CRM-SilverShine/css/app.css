@@ -612,3 +612,12 @@ button:hover{filter:brightness(1.12)}
 .tb-temp.on.t-cal{background:var(--tb-naranja)}
 .tb-temp.on.t-tib{background:var(--tb-azul)}
 .tb-temp.on.t-fri{background:var(--tb-gris)}
+
+/* ── Fila mini de despachados: recibo de una línea, no estorba ── */
+.tb-fila.tb-mini{grid-template-columns:1fr 170px 56px;grid-template-areas:none}
+.tb-fila.tb-mini>div{min-height:32px;padding:3px 12px;font-size:.82rem}
+.tb-fila.tb-mini .tb-pill{height:24px;font-size:.72rem}
+@media(max-width:760px){
+  .tb-fila.tb-mini{grid-template-columns:1fr auto auto;grid-template-areas:"info pill acc";gap:6px;padding:6px 10px}
+  .tb-fila.tb-mini>div{padding:0}
+}
