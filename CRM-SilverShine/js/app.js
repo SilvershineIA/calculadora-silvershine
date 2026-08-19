@@ -151,9 +151,9 @@
       const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
       const diasSin = ultima ? Math.round((new Date(hoy + 'T00:00:00') - new Date(ultima + 'T00:00:00')) / 864e5) : 99;
       const porVencer = c.vence && c.vence >= hoy && c.vence <= UI.fechaISO(new Date(Date.now() + 2 * 864e5));
-      /* Una marcada caliente/atención por el usuario entra aunque el
-         CRM no la reclamaría todavía */
-      if (diasSin < 7 && !porVencer && !['caliente', 'atencion'].includes(c.temp)) continue;
+      /* NADA se oculta solo: TODAS las abiertas están a la vista. Solo
+         las saca de la cola una decisión del usuario (⏰ toque en X días,
+         ❄️ fría, ❌ rechazo o pasarla a factura). */
       items.push({
         grupo: grupoTemp(c.temp, 2), monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
@@ -161,7 +161,9 @@
         ref: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total, c.moneda)}`,
         pill: pillTemp(c.temp, porVencer
           ? { t: '⏳ Por vencer', c: 'var(--tb-ambar)' }
-          : { t: `🤝 ${diasSin} d sin gestión`, c: diasSin >= 15 ? 'var(--tb-rojo)' : 'var(--tb-azul)' }),
+          : diasSin < 7
+            ? { t: `🤝 Al día · ${diasSin} d`, c: 'var(--tb-verde)' }
+            : { t: `🤝 ${diasSin} d sin gestión`, c: diasSin >= 15 ? 'var(--tb-rojo)' : 'var(--tb-azul)' }),
         fechaTxt: porVencer ? `vence ${UI.fmtFecha(c.vence)}` : (ultima ? `última gestión ${UI.fmtFecha(ultima)}` : ''),
         conv: c.ultimaConv || null,
         accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15 && c.temp !== 'fria',
@@ -265,11 +267,11 @@
     cont.innerHTML = items.length
       ? grupoTb('🔥 Leads calientes — a cerrar', 'var(--tb-naranja)', g(0)) +
         grupoTb('💰 Cobros que tocan', 'var(--gold-bright)', g(1)) +
-        grupoTb('📋 Cotizaciones que piden seguimiento', 'var(--tb-azul)', g(2)) +
+        grupoTb('📋 Cotizaciones abiertas — todas a la vista', 'var(--tb-azul)', g(2)) +
         grupoTb('🧵 Taller y tareas', 'var(--tb-violeta)', g(3)) +
         grupoTb('🗄 Sistema', 'var(--tb-gris)', g(4)) +
         grupoTb('❄️ Frías — decididas por ti', 'var(--tb-gris)', g(5), true) +
-        grupoTb('✓ Despachadas hoy', 'var(--tb-verde)', hechasArr, true)
+        grupoTb('✓ Despachadas hoy', 'var(--tb-verde)', hechasArr)
       : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
 
     cont.querySelectorAll('.tb-cab').forEach(c => {
@@ -361,8 +363,8 @@
         <button class="btn-ghost btn-block" data-op="enviado" style="margin-bottom:8px">📨 Ya le escribí — marcar enviado (sale de la cola de hoy)</button>
         <button class="btn-gold btn-block" data-op="respondio" style="margin-bottom:8px">✅ Le interesa — la conversación sigue conmigo</button>
         <button class="btn-ghost btn-block" data-op="modificar" style="margin-bottom:8px">✏️ Quiere modificar algo — ajustar la cotización</button>
-        <button class="btn-ghost btn-block" data-op="pensando" style="margin-bottom:8px">🤔 Está pensándolo — darle espacio (7 días)</button>
-        <h3 class="sub-h" style="margin-top:12px">⏰ Sin respuesta — recordármelo en…</h3>
+        <button class="btn-ghost btn-block" data-op="pensando" style="margin-bottom:8px">🤔 Está pensándolo</button>
+        <h3 class="sub-h" style="margin-top:12px">⏰ Sacarla de la cola — recordármela en…</h3>
         <div class="row">
           <button class="btn-ghost btn-block" data-op="t3">3 días</button>
           <button class="btn-ghost btn-block" data-op="t7">7 días</button>
@@ -381,8 +383,8 @@
       };
       const OPS = {
         enviado: () => acc('WhatsApp', 0, '📨 Marcado enviado — queda en Despachadas esperando respuesta'),
-        respondio: () => acc('respondió', 7, '✅ Anotado — la cola te la devuelve en 7 días si hace falta'),
-        pensando:  () => acc('dándole espacio', 7, '🤔 Espacio dado — vuelve a la cola en 7 días'),
+        respondio: () => acc('respondió', 0, '✅ Anotado — sigue a la vista; tú decides si la enfrías o la sacas con ⏰'),
+        pensando:  () => acc('dándole espacio', 0, '🤔 Anotado — sigue a la vista'),
         t3:  () => acc(null, 3, '⏰ Toque programado en 3 días'),
         t7:  () => acc(null, 7, '⏰ Toque programado en 7 días'),
         t15: () => acc(null, 15, '⏰ Toque programado en 15 días'),
