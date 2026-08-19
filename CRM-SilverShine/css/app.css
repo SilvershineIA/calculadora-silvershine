@@ -574,7 +574,8 @@ button:hover{filter:brightness(1.12)}
 .tb-fila>div,.tb-pie>div{padding:6px 12px;min-height:46px;display:flex;align-items:center;font-size:.87rem}
 .tb-fila{border-left:4px solid var(--tbc,var(--border));cursor:pointer}
 .tb-fila:hover{background:#FCFAF7}
-.tb-fila.tb-hecha{opacity:.55}
+.tb-fila.tb-hecha{--tbc:var(--tb-verde);background:#FBFDF9}
+.tb-check{color:var(--green);font-size:.7rem;font-weight:700;background:#E8F3E9;border:1px solid #bfdec2;border-radius:99px;padding:1px 8px;margin-left:6px;vertical-align:1px;white-space:nowrap}
 .tb-pie{border-radius:0 0 10px 10px;background:#F4EFE8;font-size:.8rem;color:var(--muted);border-left:4px solid transparent}
 .tb-info{flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;min-width:0}
 .tb-info b{font-weight:600}
@@ -613,11 +614,3 @@ button:hover{filter:brightness(1.12)}
 .tb-temp.on.t-tib{background:var(--tb-azul)}
 .tb-temp.on.t-fri{background:var(--tb-gris)}
 
-/* ── Fila mini de despachados: recibo de una línea, no estorba ── */
-.tb-fila.tb-mini{grid-template-columns:1fr 170px 56px;grid-template-areas:none}
-.tb-fila.tb-mini>div{min-height:32px;padding:3px 12px;font-size:.82rem}
-.tb-fila.tb-mini .tb-pill{height:24px;font-size:.72rem}
-@media(max-width:760px){
-  .tb-fila.tb-mini{grid-template-columns:1fr auto auto;grid-template-areas:"info pill acc";gap:6px;padding:6px 10px}
-  .tb-fila.tb-mini>div{padding:0}
-}

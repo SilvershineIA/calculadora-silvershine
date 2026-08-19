@@ -207,9 +207,9 @@
 
     // Pendientes arriba (leads → cobros → cotizaciones → taller, mayor monto
     // primero); las despachadas de hoy quedan al final con su ✓
-    /* Los despachados NO se van a otra parte: quedan en su mismo bloque,
-       al final, con la pastilla verde */
-    items.sort((a, b) => (a.grupo - b.grupo) || (a.hecho - b.hecho) ||
+    /* Los despachados NO se mueven de su lugar: mismo bloque, misma
+       posición — solo se marcan en verde como gestionados */
+    items.sort((a, b) => (a.grupo - b.grupo) ||
       ((a.pri ?? 1) - (b.pri ?? 1)) || (b.monto - a.monto));
     const hechas = items.filter(x => x.hecho).length;
     const enJuego = items.filter(x => !x.hecho).reduce((s, x) => s + x.monto, 0);
@@ -235,21 +235,13 @@
         ${[['caliente', '🔥', 't-cal', 'Caliente'], ['atencion', '🌤', 't-tib', 'Tibio'], ['fria', '❄️', 't-fri', 'Frío']]
           .map(([t, e, cls, tit]) => `<button type="button" class="tb-temp ${x.temp === t ? 'on ' + cls : ''}" data-temp="${x._i}" data-t="${t}" title="${tit}">${e}</button>`).join('')}
       </span>`;
-    const fila = x => x.hecho
-      /* Despachado = recibo finito de una línea: sigue en su bloque, en
-         verde; cuando el cliente responda, ⋯ registra el desenlace.
-         Mañana vuelve solo a pendiente si no hubo respuesta. */
-      ? `
-      <div class="tb-fila tb-hecha tb-mini" data-i="${x._i}" title="Esperando respuesta — mañana vuelve a pendiente si no responde">
-        <div class="tb-info"><b>${x.icono} ${UI.esc(x.titulo)}</b></div>
-        <div class="tb-pillc"><span class="tb-pill" style="background:var(--tb-verde)">${
-          x.accion === 'tarea' ? '✓ Hecha hoy' : '📨 Despachado hoy'}</span></div>
-        <div class="tb-acc">${['lead', 'cot', 'cobro'].includes(x.accion)
-          ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué respondió?">⋯</button>` : ''}</div>
-      </div>`
-      : `
-      <div class="tb-fila" data-i="${x._i}">
-        <div class="tb-info"><b>${x.icono} ${UI.esc(x.titulo)}</b><span>${x.ref || ''}</span></div>
+    /* Fila ÚNICA: el despachado conserva su fila completa y su posición;
+       solo cambia la marca — riel y sello verdes "✓ gestionado hoy".
+       Sigue reclasificable (🔥🌤❄️) y con su ⋯ para el desenlace. */
+    const fila = x => `
+      <div class="tb-fila ${x.hecho ? 'tb-hecha' : ''}" data-i="${x._i}">
+        <div class="tb-info"><b>${x.icono} ${UI.esc(x.titulo)}${
+          x.hecho ? ' <span class="tb-check">✓ gestionado hoy</span>' : ''}</b><span>${x.ref || ''}</span></div>
         <div class="tb-pillc">${
           ['lead', 'cot'].includes(x.accion)
             ? cluster(x)
@@ -257,12 +249,15 @@
             ? `<button type="button" class="tb-pill" data-pill="${x._i}" title="¿Qué pasó con este cobro?" style="background:${x.pill.c}">${x.pill.t}</button>`
             : `<span class="tb-pill" style="background:${x.pill.c}">${x.pill.t}</span>`}</div>
         <div class="tb-monto">${x.monto > 0 ? UI.fmtDinero(x.monto) : '—'}</div>
-        <div class="tb-fecha ${x.rojo ? 'rojo' : ''}">${
+        <div class="tb-fecha ${x.rojo && !x.hecho ? 'rojo' : ''}">${
           x.conv && x.conv.texto
             ? `<span title="${UI.esc(x.conv.texto)}">💬 «${UI.esc(recorta(x.conv.texto, 42))}» · ${UI.fmtFecha(x.conv.fecha)}</span>`
-            : (x.fechaTxt || '')}</div>
-        <div class="tb-acc"><button class="btn-gold btn-sm dia-btn" data-acc="${x._i}" title="Acción en 1 toque">${x.btn}</button>${
-          ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué pasó con este?">⋯</button>` : ''}</div>
+            : (x.hecho && x.accion !== 'tarea' ? 'esperando respuesta — ⋯ registra el desenlace' : (x.fechaTxt || ''))}</div>
+        <div class="tb-acc">${x.hecho
+          ? `<span class="verde" style="font-size:1.1rem" title="Ya gestionado hoy">✓</span>${
+            ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué respondió?">⋯</button>` : ''}`
+          : `<button class="btn-gold btn-sm dia-btn" data-acc="${x._i}" title="Acción en 1 toque">${x.btn}</button>${
+            ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué pasó con este?">⋯</button>` : ''}`}</div>
       </div>`;
 
     const grupoTb = (titulo, color, arr, plegado = false) => !arr.length ? '' : `
