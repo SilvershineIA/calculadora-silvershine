@@ -207,7 +207,9 @@
 
     // Pendientes arriba (leads → cobros → cotizaciones → taller, mayor monto
     // primero); las despachadas de hoy quedan al final con su ✓
-    items.sort((a, b) => (a.hecho - b.hecho) || (a.grupo - b.grupo) ||
+    /* Los despachados NO se van a otra parte: quedan en su mismo bloque,
+       al final, con la pastilla verde */
+    items.sort((a, b) => (a.grupo - b.grupo) || (a.hecho - b.hecho) ||
       ((a.pri ?? 1) - (b.pri ?? 1)) || (b.monto - a.monto));
     const hechas = items.filter(x => x.hecho).length;
     const enJuego = items.filter(x => !x.hecho).reduce((s, x) => s + x.monto, 0);
@@ -238,7 +240,7 @@
         <div class="tb-info"><b>${x.icono} ${UI.esc(x.titulo)}</b><span>${x.ref || ''}</span></div>
         <div class="tb-pillc">${
           x.hecho
-            ? `<span class="tb-pill" style="background:var(--tb-verde)">${x.accion === 'tarea' ? '✓ Hecha' : '📨 Enviado — esperando'}</span>`
+            ? `<span class="tb-pill" style="background:var(--tb-verde)">${x.accion === 'tarea' ? '✓ Hecha hoy' : '📨 Despachado hoy'}</span>`
           : ['lead', 'cot'].includes(x.accion)
             ? cluster(x)
           : x.accion === 'cobro'
@@ -272,16 +274,13 @@
         </div>
       </section>`;
 
-    const pend = items.filter(x => !x.hecho);
-    const hechasArr = items.filter(x => x.hecho);
-    const g = n => pend.filter(x => x.grupo === n);
+    const g = n => items.filter(x => x.grupo === n);
     cont.innerHTML = items.length
       ? grupoTb('🔥 Caliente — cobros y cierres de hoy', 'var(--tb-naranja)', g(0)) +
         grupoTb('🌤 Tibio — en conversación', 'var(--tb-azul)', g(2)) +
         grupoTb('❄️ Frío — decididas por ti', 'var(--tb-gris)', g(5)) +
         grupoTb('🧵 Taller y tareas', 'var(--tb-violeta)', g(3)) +
-        grupoTb('🗄 Sistema', 'var(--tb-gris)', g(4)) +
-        grupoTb('✓ Despachadas hoy', 'var(--tb-verde)', hechasArr)
+        grupoTb('🗄 Sistema', 'var(--tb-gris)', g(4))
       : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
 
     cont.querySelectorAll('.tb-cab').forEach(c => {
