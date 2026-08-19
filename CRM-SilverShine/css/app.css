@@ -614,3 +614,16 @@ button:hover{filter:brightness(1.12)}
 .tb-temp.on.t-tib{background:var(--tb-azul)}
 .tb-temp.on.t-fri{background:var(--tb-gris)}
 
+
+/* ── Escala de tiempo desde la última gestión (Mi Día) ── */
+.tb-gest{
+  display:inline-flex;align-items:center;color:#fff;font-weight:700;
+  font-size:.7rem;border-radius:99px;padding:2px 9px;letter-spacing:.2px;
+  white-space:nowrap;vertical-align:1px;
+}
+.tb-leyenda{
+  display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+  font-size:.74rem;color:var(--muted);margin:2px 0 14px;
+}
+.tb-leyenda span{display:inline-flex;align-items:center;gap:5px}
+.tb-leyenda i{width:11px;height:11px;border-radius:4px;display:inline-block}

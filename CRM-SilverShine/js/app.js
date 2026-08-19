@@ -104,6 +104,20 @@
     const T_COLOR = { caliente: 'var(--tb-naranja)', atencion: 'var(--tb-azul)', fria: 'var(--tb-gris)' };
     const T_NOMBRE = { caliente: '🔥 Caliente', atencion: '🌤 Tibio', fria: '❄️ Frío' };
 
+    /* Escala de color por TIEMPO DESDE LA ÚLTIMA GESTIÓN:
+       verde (0-2d) → ámbar (3-7) → naranja (8-14) → rojo (15-29) → vino (30+) */
+    const colorGestion = d =>
+      d == null ? 'var(--tb-gris)' :
+      d <= 2  ? 'var(--tb-verde)' :
+      d <= 7  ? 'var(--tb-ambar)' :
+      d <= 14 ? 'var(--tb-naranja)' :
+      d <= 29 ? 'var(--tb-rojo)' : '#8E3B35';
+    const diasDesde = fecha => fecha
+      ? Math.max(0, Math.round((new Date(hoy + 'T00:00:00') - new Date(fecha + 'T00:00:00')) / 864e5))
+      : null;
+    const ultimaGestionDe = c =>
+      [c.fecha, c.estadoManual, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
+
     // 1) Leads: aceptadas sin factura — calientes salvo decisión contraria
     for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId && !posp(c))) {
       const desde = c.estadoManual || c.fecha;
@@ -117,7 +131,7 @@
         ref: `COT-${UI.esc(String(c.numero || ''))} · aceptada — cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7, c.moneda)})`,
         pill: { t: T_NOMBRE[temp], c: T_COLOR[temp] },
         fechaTxt: `aceptó hace ${diasL} día${diasL === 1 ? '' : 's'}`,
-        conv: c.ultimaConv || null,
+        conv: c.ultimaConv || null, gest: diasDesde(ultimaGestionDe(c)),
         accion: 'lead', id: c.id, btn: '💬', rojo: diasL > 7 && temp === 'caliente',
       });
     }
@@ -143,7 +157,7 @@
         ref: `${f.orden ? '#' + f.orden : UI.esc(f.numero || 's/n')} · ${f.planPago ? 'cuota EasyPay' : 'abono acordado'} · ${UI.fmtDinero(f.proxCobro.monto || f.saldo, f.moneda)}`,
         pill: pillCobro,
         fechaTxt: dias > 0 ? `${UI.fmtFecha(fecha)}${dias >= 7 ? ' · 📞 mejor llamar' : ''}` : dias === 0 ? 'hoy' : `vence ${UI.fmtFecha(fecha)}`,
-        conv: f.ultimaConv || null,
+        conv: f.ultimaConv || null, gest: diasDesde(f.ultimoRecordatorio),
         accion: 'cobro', id: f.id, btn: '💬', rojo: dias > 0,
       });
     }
@@ -165,7 +179,7 @@
           porVencer ? '⏳ por vencer' : `${diasSin} d sin gestión`}`,
         pill: { t: T_NOMBRE[temp], c: T_COLOR[temp] },
         fechaTxt: porVencer ? `vence ${UI.fmtFecha(c.vence)}` : (ultima ? `última gestión ${UI.fmtFecha(ultima)}` : ''),
-        conv: c.ultimaConv || null,
+        conv: c.ultimaConv || null, gest: diasSin,
         accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15 && temp !== 'fria',
       });
     }
@@ -250,9 +264,12 @@
             : `<span class="tb-pill" style="background:${x.pill.c}">${x.pill.t}</span>`}</div>
         <div class="tb-monto">${x.monto > 0 ? UI.fmtDinero(x.monto) : '—'}</div>
         <div class="tb-fecha ${x.rojo && !x.hecho ? 'rojo' : ''}">${
+          x.gest !== undefined
+            ? `<span class="tb-gest" style="background:${colorGestion(x.hecho ? 0 : x.gest)}" title="Tiempo desde la última gestión">⏱ ${
+                x.hecho ? 'hoy' : x.gest == null ? 'nunca' : x.gest === 0 ? 'hoy' : x.gest + ' d'}</span> ` : ''}${
           x.conv && x.conv.texto
-            ? `<span title="${UI.esc(x.conv.texto)}">💬 «${UI.esc(recorta(x.conv.texto, 42))}» · ${UI.fmtFecha(x.conv.fecha)}</span>`
-            : (x.hecho && x.accion !== 'tarea' ? 'esperando respuesta — ⋯ registra el desenlace' : (x.fechaTxt || ''))}</div>
+            ? `<span title="${UI.esc(x.conv.texto)}">💬 «${UI.esc(recorta(x.conv.texto, 34))}» · ${UI.fmtFecha(x.conv.fecha)}</span>`
+            : (x.hecho && x.accion !== 'tarea' ? 'esperando respuesta' : (x.fechaTxt || ''))}</div>
         <div class="tb-acc">${x.hecho
           ? `<span class="verde" style="font-size:1.1rem" title="Ya gestionado hoy">✓</span>${
             ['lead', 'cot', 'cobro'].includes(x.accion) ? `<button class="btn-ghost btn-sm dia-mas" data-mas="${x._i}" title="¿Qué respondió?">⋯</button>` : ''}`
@@ -277,8 +294,17 @@
       </section>`;
 
     const g = n => items.filter(x => x.grupo === n);
+    const leyenda = `
+      <div class="tb-leyenda">⏱ Desde la última gestión:
+        <span><i style="background:var(--tb-verde)"></i>0–2 d</span>
+        <span><i style="background:var(--tb-ambar)"></i>3–7 d</span>
+        <span><i style="background:var(--tb-naranja)"></i>8–14 d</span>
+        <span><i style="background:var(--tb-rojo)"></i>15–29 d</span>
+        <span><i style="background:#8E3B35"></i>30+ d</span>
+      </div>`;
     cont.innerHTML = items.length
-      ? grupoTb('🔥 Caliente — cobros y cierres de hoy', 'var(--tb-naranja)', g(0)) +
+      ? leyenda +
+        grupoTb('🔥 Caliente — cobros y cierres de hoy', 'var(--tb-naranja)', g(0)) +
         grupoTb('🌤 Tibio — en conversación', 'var(--tb-azul)', g(2)) +
         grupoTb('❄️ Frío — decididas por ti', 'var(--tb-gris)', g(5)) +
         grupoTb('🧵 Taller y tareas', 'var(--tb-violeta)', g(3)) +
