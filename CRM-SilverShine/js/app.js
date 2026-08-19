@@ -96,28 +96,29 @@
 
     const posp = c => c.proximoToque && c.proximoToque > hoy;   // "toque el X" desde el menú ⋯
 
-    /* La TEMPERATURA la decide el usuario (c.temp: caliente/atencion/fria);
-       el CRM solo propone la suya cuando no hay decisión manual */
-    const pillTemp = (temp, auto) =>
-      temp === 'fria'     ? { t: '❄️ Fría — tuya', c: 'var(--tb-gris)' } :
-      temp === 'atencion' ? { t: '🌤 Atención — tuya', c: 'var(--tb-azul)' } :
-      temp === 'caliente' ? { t: '🔥 Caliente — tuya', c: 'var(--tb-naranja)' } : auto;
-    const grupoTemp = (temp, auto) =>
-      temp === 'fria' ? 5 : temp === 'atencion' ? 2 : temp === 'caliente' ? 0 : auto;
+    /* TEMPERATURA: bloques 🔥 Caliente / 🌤 Tibio / ❄️ Frío. La decide el
+       usuario (c.temp) con los botones de la fila; sin decisión, el CRM
+       propone: aceptada sin factura = caliente, abierta = tibia. Los
+       COBROS van SIEMPRE en Caliente (gestión eficiente). */
+    const T_GRUPO = { caliente: 0, atencion: 2, fria: 5 };
+    const T_COLOR = { caliente: 'var(--tb-naranja)', atencion: 'var(--tb-azul)', fria: 'var(--tb-gris)' };
+    const T_NOMBRE = { caliente: '🔥 Caliente', atencion: '🌤 Tibio', fria: '❄️ Frío' };
 
-    // 1) Leads calientes: aceptadas sin factura — lo más valioso del día
+    // 1) Leads: aceptadas sin factura — calientes salvo decisión contraria
     for (const c of cots.filter(c => estadoCot(c) === 'aceptada' && !c.facturaId && !posp(c))) {
       const desde = c.estadoManual || c.fecha;
       const diasL = desde ? Math.round((new Date(hoy + 'T00:00:00') - new Date(desde + 'T00:00:00')) / 864e5) : 0;
+      const temp = c.temp || 'caliente';
       items.push({
-        grupo: grupoTemp(c.temp, 0), monto: conv(c.total || 0, c.moneda || 'DOP'),
+        grupo: T_GRUPO[temp], temp, pri: 1,
+        monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
         icono: '🧾', titulo: c.clienteNombre,
-        ref: `COT-${UI.esc(String(c.numero || ''))} · cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7, c.moneda)})`,
-        pill: pillTemp(c.temp, { t: '🔥 Lead caliente', c: 'var(--tb-naranja)' }),
-        fechaTxt: `aceptó hace ${diasL} día${diasL === 1 ? '' : 's'} · ventana de 7`,
+        ref: `COT-${UI.esc(String(c.numero || ''))} · aceptada — cerrar con el 70% (${UI.fmtDinero((c.total || 0) * 0.7, c.moneda)})`,
+        pill: { t: T_NOMBRE[temp], c: T_COLOR[temp] },
+        fechaTxt: `aceptó hace ${diasL} día${diasL === 1 ? '' : 's'}`,
         conv: c.ultimaConv || null,
-        accion: 'lead', id: c.id, btn: '💬', rojo: diasL > 7 && c.temp !== 'fria',
+        accion: 'lead', id: c.id, btn: '💬', rojo: diasL > 7 && temp === 'caliente',
       });
     }
 
@@ -135,7 +136,8 @@
         dias < 14 ? { t: `🔴 Urgente · ${dias} d`, c: 'var(--tb-rojo)' } :
                     { t: `⚠️ Escalada · ${dias} d`, c: 'var(--tb-rojo)' };
       items.push({
-        grupo: 1, monto: conv(f.proxCobro.monto || f.saldo, f.moneda || 'DOP'),
+        grupo: 0, pri: 0,   // los cobros SIEMPRE en Caliente, encabezando
+        monto: conv(f.proxCobro.monto || f.saldo, f.moneda || 'DOP'),
         hecho: f.ultimoRecordatorio === hoy || (f.abonos || []).some(a => a.fecha === hoy),
         icono: '💰', titulo: f.clienteNombre,
         ref: `${f.orden ? '#' + f.orden : UI.esc(f.numero || 's/n')} · ${f.planPago ? 'cuota EasyPay' : 'abono acordado'} · ${UI.fmtDinero(f.proxCobro.monto || f.saldo, f.moneda)}`,
@@ -151,22 +153,20 @@
       const ultima = [c.fecha, ...(c.seguimientos || []).map(s => s.fecha)].filter(Boolean).sort().pop();
       const diasSin = ultima ? Math.round((new Date(hoy + 'T00:00:00') - new Date(ultima + 'T00:00:00')) / 864e5) : 99;
       const porVencer = c.vence && c.vence >= hoy && c.vence <= UI.fechaISO(new Date(Date.now() + 2 * 864e5));
-      /* NADA se oculta solo: TODAS las abiertas están a la vista. Solo
-         las saca de la cola una decisión del usuario (⏰ toque en X días,
-         ❄️ fría, ❌ rechazo o pasarla a factura). */
+      /* NADA se oculta solo: TODAS las abiertas están a la vista, tibias
+         por defecto; el usuario las sube a caliente o las baja a frío. */
+      const temp = c.temp || 'atencion';
       items.push({
-        grupo: grupoTemp(c.temp, 2), monto: conv(c.total || 0, c.moneda || 'DOP'),
+        grupo: T_GRUPO[temp], temp, pri: 1,
+        monto: conv(c.total || 0, c.moneda || 'DOP'),
         hecho: (c.seguimientos || []).some(s => s.fecha === hoy),
         icono: '📋', titulo: c.clienteNombre,
-        ref: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total, c.moneda)}`,
-        pill: pillTemp(c.temp, porVencer
-          ? { t: '⏳ Por vencer', c: 'var(--tb-ambar)' }
-          : diasSin < 7
-            ? { t: `🤝 Al día · ${diasSin} d`, c: 'var(--tb-verde)' }
-            : { t: `🤝 ${diasSin} d sin gestión`, c: diasSin >= 15 ? 'var(--tb-rojo)' : 'var(--tb-azul)' }),
+        ref: `COT-${UI.esc(String(c.numero || ''))} · ${UI.fmtDinero(c.total, c.moneda)} · ${
+          porVencer ? '⏳ por vencer' : `${diasSin} d sin gestión`}`,
+        pill: { t: T_NOMBRE[temp], c: T_COLOR[temp] },
         fechaTxt: porVencer ? `vence ${UI.fmtFecha(c.vence)}` : (ultima ? `última gestión ${UI.fmtFecha(ultima)}` : ''),
         conv: c.ultimaConv || null,
-        accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15 && c.temp !== 'fria',
+        accion: 'cot', id: c.id, btn: '💬', rojo: diasSin >= 15 && temp !== 'fria',
       });
     }
 
@@ -207,14 +207,15 @@
 
     // Pendientes arriba (leads → cobros → cotizaciones → taller, mayor monto
     // primero); las despachadas de hoy quedan al final con su ✓
-    items.sort((a, b) => (a.hecho - b.hecho) || (a.grupo - b.grupo) || (b.monto - a.monto));
+    items.sort((a, b) => (a.hecho - b.hecho) || (a.grupo - b.grupo) ||
+      ((a.pri ?? 1) - (b.pri ?? 1)) || (b.monto - a.monto));
     const hechas = items.filter(x => x.hecho).length;
     const enJuego = items.filter(x => !x.hecho).reduce((s, x) => s + x.monto, 0);
 
     $('#diaStats').innerHTML =
       UI.statTile(`${hechas}/${items.length}`, 'Despachadas hoy', items.length && hechas === items.length ? 'verde' : '') +
-      UI.statTile(items.filter(x => !x.hecho && x.grupo === 0).length, 'Leads calientes') +
-      UI.statTile(items.filter(x => !x.hecho && x.grupo === 1).length, 'Cobros que tocan') +
+      UI.statTile(items.filter(x => !x.hecho && x.grupo === 0).length, '🔥 En caliente') +
+      UI.statTile(items.filter(x => !x.hecho && x.grupo === 2).length, '🌤 Tibias') +
       UI.statTile(UI.fmtDinero(enJuego), 'Valor en juego');
 
     /* ── Tablero estilo Monday: grupos de colores, pastilla de etapa,
@@ -224,15 +225,25 @@
     items.forEach((x, i) => { x._i = i; });
 
     const recorta = (t, n) => t.length > n ? t.slice(0, n - 1) + '…' : t;
+    /* Los botones principales viven EN la fila: para cotizaciones/leads,
+       la temperatura se cambia con un toque (🔥/🌤/❄️ visibles); el
+       cobro conserva su pastilla de etapa (la calcula el CRM). */
+    const cluster = x => `
+      <span class="tb-temps">
+        ${[['caliente', '🔥', 't-cal', 'Caliente'], ['atencion', '🌤', 't-tib', 'Tibio'], ['fria', '❄️', 't-fri', 'Frío']]
+          .map(([t, e, cls, tit]) => `<button type="button" class="tb-temp ${x.temp === t ? 'on ' + cls : ''}" data-temp="${x._i}" data-t="${t}" title="${tit}">${e}</button>`).join('')}
+      </span>`;
     const fila = x => `
       <div class="tb-fila ${x.hecho ? 'tb-hecha' : ''}" data-i="${x._i}">
         <div class="tb-info"><b>${x.icono} ${UI.esc(x.titulo)}</b><span>${x.ref || ''}</span></div>
-        <div class="tb-pillc">${['lead', 'cot', 'cobro'].includes(x.accion)
-          ? `<button type="button" class="tb-pill" data-pill="${x._i}" title="${x.accion === 'cobro' ? '¿Qué pasó con este cobro?' : 'Decidir temperatura y anotar lo conversado'}" style="background:${
-              x.hecho ? 'var(--tb-verde)' : x.pill.c}">${
-              x.hecho ? '📨 Enviado — esperando' : x.pill.t}</button>`
-          : `<span class="tb-pill" style="background:${x.hecho ? 'var(--tb-verde)' : x.pill.c}">${
-              x.hecho ? '✓ Hecha' : x.pill.t}</span>`}</div>
+        <div class="tb-pillc">${
+          x.hecho
+            ? `<span class="tb-pill" style="background:var(--tb-verde)">${x.accion === 'tarea' ? '✓ Hecha' : '📨 Enviado — esperando'}</span>`
+          : ['lead', 'cot'].includes(x.accion)
+            ? cluster(x)
+          : x.accion === 'cobro'
+            ? `<button type="button" class="tb-pill" data-pill="${x._i}" title="¿Qué pasó con este cobro?" style="background:${x.pill.c}">${x.pill.t}</button>`
+            : `<span class="tb-pill" style="background:${x.pill.c}">${x.pill.t}</span>`}</div>
         <div class="tb-monto">${x.monto > 0 ? UI.fmtDinero(x.monto) : '—'}</div>
         <div class="tb-fecha ${x.rojo && !x.hecho ? 'rojo' : ''}">${
           x.conv && x.conv.texto
@@ -265,12 +276,11 @@
     const hechasArr = items.filter(x => x.hecho);
     const g = n => pend.filter(x => x.grupo === n);
     cont.innerHTML = items.length
-      ? grupoTb('🔥 Leads calientes — a cerrar', 'var(--tb-naranja)', g(0)) +
-        grupoTb('💰 Cobros que tocan', 'var(--gold-bright)', g(1)) +
-        grupoTb('📋 Cotizaciones abiertas — todas a la vista', 'var(--tb-azul)', g(2)) +
+      ? grupoTb('🔥 Caliente — cobros y cierres de hoy', 'var(--tb-naranja)', g(0)) +
+        grupoTb('🌤 Tibio — en conversación', 'var(--tb-azul)', g(2)) +
+        grupoTb('❄️ Frío — decididas por ti', 'var(--tb-gris)', g(5)) +
         grupoTb('🧵 Taller y tareas', 'var(--tb-violeta)', g(3)) +
         grupoTb('🗄 Sistema', 'var(--tb-gris)', g(4)) +
-        grupoTb('❄️ Frías — decididas por ti', 'var(--tb-gris)', g(5), true) +
         grupoTb('✓ Despachadas hoy', 'var(--tb-verde)', hechasArr)
       : '<div class="empty"><span>🌤</span>Nada en la cola — el día está despachado.</div>';
 
@@ -279,13 +289,20 @@
       c.addEventListener('click', alternar);
       c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(); } });
     });
-    /* La pastilla es el control del usuario: en leads/cotizaciones abre
-       temperatura + lo conversado; en cobros, el menú "¿qué pasó?" */
+    /* Temperatura con UN toque, directo en la fila */
+    cont.querySelectorAll('[data-temp]').forEach(b => b.addEventListener('click', async e => {
+      e.stopPropagation();
+      const x = items[Number(b.dataset.temp)];
+      const c = await DB.cotizaciones.get(x.id);
+      if (!c) return;
+      c.temp = b.dataset.t;
+      await DB.cotizaciones.upsert(c);
+      renderPanel();
+    }));
+    /* La pastilla del cobro abre el menú "¿qué pasó?" */
     cont.querySelectorAll('[data-pill]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
-      const x = items[Number(b.dataset.pill)];
-      if (x.accion === 'cobro') opcionesDia(x);
-      else menuTemperatura(x);
+      opcionesDia(items[Number(b.dataset.pill)]);
     }));
 
     cont.querySelectorAll('.dia-btn').forEach(b => b.addEventListener('click', async e => {
@@ -322,8 +339,8 @@
       <h3 class="sub-h" style="margin-top:0">🌡 ¿Qué tan caliente está?</h3>
       <div class="row">
         <button class="${sel('caliente')} btn-block" data-t="caliente">🔥 Caliente</button>
-        <button class="${sel('atencion')} btn-block" data-t="atencion">🌤 Atención</button>
-        <button class="${sel('fria')} btn-block" data-t="fria">❄️ Fría</button>
+        <button class="${sel('atencion')} btn-block" data-t="atencion">🌤 Tibio</button>
+        <button class="${sel('fria')} btn-block" data-t="fria">❄️ Frío</button>
       </div>
       <button class="${sel('auto')} btn-block" data-t="auto" style="margin-bottom:14px">🤖 Que el CRM decida solo</button>
       <label>💬 Lo último conversado con el cliente</label>

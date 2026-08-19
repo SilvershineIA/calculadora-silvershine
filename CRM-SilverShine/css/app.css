@@ -598,3 +598,17 @@ button:hover{filter:brightness(1.12)}
   .tb-acc{grid-area:acc}
   .tb-pie{display:flex;justify-content:space-between;padding:9px 12px;gap:10px}
 }
+
+/* ── Temperatura en la fila (Mi Día): 🔥/🌤/❄️ con un toque ── */
+.tb-temps{display:flex;gap:5px}
+.tb-temp{
+  width:36px;height:31px;border-radius:6px;border:1px solid var(--border);
+  background:var(--panel2);cursor:pointer;font-size:.95rem;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  opacity:.45;transition:opacity .12s, transform .12s;
+}
+.tb-temp:hover{opacity:.85;transform:scale(1.06)}
+.tb-temp.on{opacity:1;border-color:transparent;box-shadow:0 1px 4px rgba(52,61,72,.18)}
+.tb-temp.on.t-cal{background:var(--tb-naranja)}
+.tb-temp.on.t-tib{background:var(--tb-azul)}
+.tb-temp.on.t-fri{background:var(--tb-gris)}
