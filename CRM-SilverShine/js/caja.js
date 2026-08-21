@@ -107,6 +107,7 @@ const Caja = (() => {
     $('#cuadreGrupos').innerHTML = `
       <div class="row" style="margin-bottom:14px">
         <button class="btn-gold btn-block" id="btnGasto">💸 Registrar gasto</button>
+        <button class="btn-ghost btn-block" id="btnFotoGasto">📸 Foto a gasto</button>
         <button class="btn-ghost btn-block" id="btnArqueo">🔒 Arqueo de caja</button>
       </div>` + `
       <div class="card">
@@ -154,7 +155,118 @@ const Caja = (() => {
 
     UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => detalleCuenta(el.dataset.id)));
     $('#btnGasto').addEventListener('click', () => formGasto());
+    $('#btnFotoGasto').addEventListener('click', fotoAGasto);
     $('#btnArqueo').addEventListener('click', () => formArqueo());
+  }
+
+  /* ── 📸 Foto a gasto: la IA lee la factura y deja el formulario de
+     gasto YA LLENO (monto, categoría, nota) — el usuario solo confirma
+     la cuenta y guarda. Requiere la clave de IA en Ajustes (se guarda
+     SOLO en este dispositivo, nunca se sincroniza ni se sube al repo). */
+  const K_IAKEY = 'sscrm_ia_key';
+
+  async function fotoAGasto() {
+    const clave = localStorage.getItem(K_IAKEY);
+    if (!clave) {
+      abrirModal('📸 Foto a gasto', `
+        <p class="muted">Para leer facturas con la cámara hace falta una clave de la API de Anthropic
+        (la IA que lee la foto). Se configura UNA vez por dispositivo en
+        <b>Ajustes → 🤖 Inteligencia artificial</b>. Cada foto cuesta centavos y se cobra
+        a tu cuenta de Anthropic (console.anthropic.com).</p>
+        <button class="btn-gold btn-block" id="irAjustesIa" style="margin-top:12px">Ir a Ajustes</button>
+      `);
+      $('#irAjustesIa').addEventListener('click', () => {
+        cerrarModal();
+        document.querySelector('.nav-btn[data-view="ajustes"]').click();
+      });
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      abrirModal('📸 Leyendo la factura…',
+        '<p class="muted" style="text-align:center;padding:24px 10px">🤖 La IA está leyendo la foto — unos segundos…</p>');
+      try {
+        const b64 = await comprimirParaIA(file);
+        const datos = await leerFacturaIA(b64, clave);
+        if (datos.error) throw new Error(datos.error);
+        const monto = Number(datos.monto) || 0;
+        const nota = [datos.comercio, datos.descripcion,
+          datos.fecha ? `factura del ${datos.fecha}` : '',
+          datos.moneda === 'USD' ? '(monto en US$ — elige una cuenta en dólares)' : '']
+          .filter(Boolean).join(' · ');
+        toast(`🤖 Leída${datos.comercio ? ': ' + datos.comercio : ''} — confirma la cuenta y guarda`);
+        formGasto(null, {
+          categoria: [...CATS_NEGOCIO, CAT_PERSONAL].includes(datos.categoria) ? datos.categoria : undefined,
+          nota, monto,
+        });
+      } catch (e) {
+        abrirModal('📸 No se pudo leer', `
+          <p class="muted">${esc(String((e && e.message) || e))}</p>
+          <p class="muted" style="margin-top:10px">Prueba con una foto más clara (buena luz, factura completa) o registra el gasto a mano con 💸.</p>`);
+      }
+    };
+    input.click();
+  }
+
+  /* Achicar la foto antes de mandarla (rápido y barato): máx 1400px, JPEG */
+  function comprimirParaIA(file) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => {
+        const factor = Math.min(1, 1400 / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * factor);
+        cv.height = Math.round(img.height * factor);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        res(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
+      };
+      img.onerror = () => rej(new Error('No se pudo abrir la imagen'));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function leerFacturaIA(b64, clave) {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': clave,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'anthropic-beta': 'server-side-fallback-2026-07-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-5',
+        max_tokens: 2048,
+        fallbacks: 'default',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text:
+`Lee esta foto de una factura o recibo de gasto (República Dominicana) y responde SOLO un objeto JSON, sin texto extra:
+{"comercio": "nombre del negocio", "fecha": "YYYY-MM-DD o null si no se ve", "monto": total final a pagar (número), "moneda": "DOP" o "USD", "categoria": "exactamente una de: ${[...CATS_NEGOCIO, CAT_PERSONAL].join(' | ')}", "descripcion": "qué se compró, en pocas palabras"}
+Si la imagen no es una factura legible responde {"error": "motivo corto"}.` },
+          ],
+        }],
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => null);
+      const msj = err && err.error && err.error.message;
+      throw new Error(resp.status === 401 ? 'La clave de IA no es válida — revísala en Ajustes' : (msj || `La IA respondió ${resp.status}`));
+    }
+    const data = await resp.json();
+    if (data.stop_reason === 'refusal') throw new Error('La IA declinó leer esta imagen');
+    const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('La IA no devolvió datos legibles');
+    return JSON.parse(m[0]);
   }
 
   /* ── Arqueo de caja: contar el efectivo físico, comparar con el
@@ -308,6 +420,7 @@ const Caja = (() => {
       </form>
     `);
     const form = $('#formGasto');
+    if (pre.monto > 0) form.monto.value = pre.monto;
     form.ambito.addEventListener('change', () => {
       $('#gCatRow').hidden = form.ambito.value === 'personal';
     });

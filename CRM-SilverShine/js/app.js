@@ -1039,6 +1039,21 @@
     } catch { /* sin archivo o sin red: se queda vacío */ }
   }
 
+  /* ── Ajustes: clave de IA (vive SOLO en este dispositivo) ── */
+  const pintarIaKey = () => {
+    $('#iaKeyEstado').textContent = localStorage.getItem('sscrm_ia_key')
+      ? '✓ Clave configurada en este dispositivo — 📸 Foto a gasto activo en el Cuadre'
+      : 'Sin configurar — el botón 📸 del Cuadre te pedirá la clave. Guardar con el campo vacío la borra.';
+  };
+  pintarIaKey();
+  $('#btnIaKey').addEventListener('click', () => {
+    const v = $('#iaKey').value.trim();
+    if (v) { localStorage.setItem('sscrm_ia_key', v); toast('🔑 Clave guardada en este dispositivo'); }
+    else { localStorage.removeItem('sscrm_ia_key'); toast('Clave eliminada de este dispositivo'); }
+    $('#iaKey').value = '';
+    pintarIaKey();
+  });
+
   $('#btnCargarCatalogo').addEventListener('click', async () => {
     if (!confirm('Esto REEMPLAZA el catálogo actual con los productos publicados en silvershine.com.do. ¿Continuar?')) return;
     try {

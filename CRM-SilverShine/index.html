@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=120">
+<link rel="stylesheet" href="css/app.css?v=121">
 </head>
 <body>
 
@@ -330,6 +330,16 @@
     <section class="view" data-view="ajustes">
       <h1 class="view-title">Ajustes</h1>
       <div class="card">
+        <h2>🤖 Inteligencia artificial</h2>
+        <p class="muted" style="margin-bottom:12px">Habilita <b>📸 Foto a gasto</b> en el Cuadre: le tiras foto a una factura y la IA la convierte en gasto.
+          Crea una clave en <b>console.anthropic.com</b> (API keys) y pégala aquí — se guarda <b>solo en este dispositivo</b>, nunca en la nube. Cada foto cuesta centavos.</p>
+        <div class="row" style="align-items:flex-end">
+          <div><label>Clave de la API de Anthropic</label><input type="password" id="iaKey" placeholder="sk-ant-…" autocomplete="off"></div>
+          <div style="flex:0 0 auto"><button type="button" class="btn-gold btn-sm" id="btnIaKey">Guardar</button></div>
+        </div>
+        <p class="muted" id="iaKeyEstado" style="margin-top:6px"></p>
+      </div>
+      <div class="card">
         <h2>🏢 Empresa y factura</h2>
         <form id="formEmpresa">
           <div class="row">
@@ -437,22 +447,22 @@
 <div id="printArea"></div>
 
 <script src="js/jspdf.min.js"></script>
-<script src="js/pdf.js?v=120"></script>
-<script src="js/reportes.js?v=120"></script>
-<script src="js/db.js?v=120"></script>
-<script src="js/sync.js?v=120"></script>
-<script src="js/ui.js?v=120"></script>
-<script src="js/clientes.js?v=120"></script>
-<script src="js/catalogo.js?v=120"></script>
-<script src="js/calculadora.js?v=120"></script>
-<script src="js/facturas.js?v=120"></script>
-<script src="js/cotizaciones.js?v=120"></script>
-<script src="js/confecciones.js?v=120"></script>
-<script src="js/cobros.js?v=120"></script>
-<script src="js/finanzas.js?v=120"></script>
-<script src="js/caja.js?v=120"></script>
-<script src="js/inventario.js?v=120"></script>
-<script src="js/tareas.js?v=120"></script>
-<script src="js/app.js?v=120"></script>
+<script src="js/pdf.js?v=121"></script>
+<script src="js/reportes.js?v=121"></script>
+<script src="js/db.js?v=121"></script>
+<script src="js/sync.js?v=121"></script>
+<script src="js/ui.js?v=121"></script>
+<script src="js/clientes.js?v=121"></script>
+<script src="js/catalogo.js?v=121"></script>
+<script src="js/calculadora.js?v=121"></script>
+<script src="js/facturas.js?v=121"></script>
+<script src="js/cotizaciones.js?v=121"></script>
+<script src="js/confecciones.js?v=121"></script>
+<script src="js/cobros.js?v=121"></script>
+<script src="js/finanzas.js?v=121"></script>
+<script src="js/caja.js?v=121"></script>
+<script src="js/inventario.js?v=121"></script>
+<script src="js/tareas.js?v=121"></script>
+<script src="js/app.js?v=121"></script>
 </body>
 </html>
