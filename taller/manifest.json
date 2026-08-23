@@ -1,0 +1,12 @@
+{
+  "name": "Taller SilverShine ✕ Tonglin",
+  "short_name": "Taller",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FAF8F6",
+  "theme_color": "#B07F74",
+  "icons": [
+    { "src": "../CRM-SilverShine/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../CRM-SilverShine/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
