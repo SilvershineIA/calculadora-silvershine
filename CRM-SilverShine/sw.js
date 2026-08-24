@@ -1,27 +1,31 @@
-﻿/* Service worker — CRM SilverShine (cache-first con actualización en segundo plano) */
-const CACHE = 'sscrm-v122';
+﻿/* Service worker — CRM SilverShine.
+   Estrategia: el HTML y sw.js van RED-PRIMERO (con respaldo del caché si
+   no hay internet) para que las versiones nuevas entren a la primera; los
+   archivos versionados (?v=) van caché-primero; y las APIs (Supabase, IA)
+   NO se tocan — siempre van directo a la red, jamás se cachean. */
+const CACHE = 'sscrm-v123';
 const ARCHIVOS = [
   './',
   './index.html',
-  './css/app.css?v=121',
+  './css/app.css?v=123',
   './js/jspdf.min.js',
-  './js/pdf.js?v=121',
-  './js/reportes.js?v=121',
-  './js/db.js?v=121',
-  './js/sync.js?v=121',
-  './js/ui.js?v=121',
-  './js/clientes.js?v=121',
-  './js/catalogo.js?v=121',
-  './js/calculadora.js?v=121',
-  './js/facturas.js?v=121',
-  './js/cotizaciones.js?v=121',
-  './js/confecciones.js?v=121',
-  './js/cobros.js?v=121',
-  './js/finanzas.js?v=121',
-  './js/caja.js?v=121',
-  './js/inventario.js?v=121',
-  './js/tareas.js?v=121',
-  './js/app.js?v=121',
+  './js/pdf.js?v=123',
+  './js/reportes.js?v=123',
+  './js/db.js?v=123',
+  './js/sync.js?v=123',
+  './js/ui.js?v=123',
+  './js/clientes.js?v=123',
+  './js/catalogo.js?v=123',
+  './js/calculadora.js?v=123',
+  './js/facturas.js?v=123',
+  './js/cotizaciones.js?v=123',
+  './js/confecciones.js?v=123',
+  './js/cobros.js?v=123',
+  './js/finanzas.js?v=123',
+  './js/caja.js?v=123',
+  './js/inventario.js?v=123',
+  './js/tareas.js?v=123',
+  './js/app.js?v=123',
   './manifest.json',
   './logo.png',
   './icon-192.png',
@@ -42,15 +46,35 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+
+  /* APIs externas (Supabase, Anthropic…): directo a la red, sin caché —
+     cachearlas servía datos VIEJOS de la nube y rompía el sync */
+  if (url.origin !== self.location.origin) return;
+
+  const guardar = resp => {
+    if (resp.ok) {
+      const copia = resp.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copia));
+    }
+    return resp;
+  };
+
+  /* El documento y sw.js: red primero (así las versiones nuevas entran a
+     la primera recarga); el caché solo salva cuando no hay internet */
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('/sw.js') || url.pathname.endsWith('/index.html')) {
+    e.respondWith(
+      fetch(e.request).then(guardar)
+        .catch(() => caches.match(e.request).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  /* Todo lo demás (js/css/imágenes versionados): caché primero con
+     refresco en segundo plano */
   e.respondWith(
     caches.match(e.request).then(cached => {
-      const red = fetch(e.request).then(resp => {
-        if (resp.ok) {
-          const copia = resp.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copia));
-        }
-        return resp;
-      }).catch(() => cached);
+      const red = fetch(e.request).then(guardar).catch(() => cached);
       return cached || red;
     })
   );

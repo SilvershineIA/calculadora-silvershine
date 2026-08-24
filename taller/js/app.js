@@ -888,7 +888,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const r = lienzo.getBoundingClientRect();
       return [(e.clientX - r.left) * lienzo.width / r.width, (e.clientY - r.top) * lienzo.height / r.height];
     };
-    lienzo.addEventListener('pointerdown', e => { e.preventDefault(); trazo = [punto(e)]; lienzo.setPointerCapture(e.pointerId); });
+    lienzo.addEventListener('pointerdown', e => { e.preventDefault(); trazo = [punto(e)]; try { lienzo.setPointerCapture(e.pointerId); } catch {} });
     lienzo.addEventListener('pointermove', e => { if (trazo) { trazo.push(punto(e)); pintar(); } });
     lienzo.addEventListener('pointerup', () => { if (trazo && trazo.length > 1) trazos.push(trazo); trazo = null; pintar(); });
     $('#czDeshacer').addEventListener('click', () => { trazos.pop(); pintar(); });
