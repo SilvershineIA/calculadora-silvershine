@@ -877,7 +877,11 @@ Si no es legible responde {"error": "motivo corto"}.`;
     /* CAD */
     html += `<div class="h-sec">${T('c_titulo')}</div>`;
     const cads = o.cad || [];
-    if (!cads.length) html += `<div class="card"><div class="sub">${T('c_esperando')}</div></div>`;
+    if (!cads.length) {
+      html += o.cadOmitido
+        ? `<div class="card"><div class="sub"><b>${T('c_omitido')}</b> · ${fmtFecha(o.cadOmitido.fecha)}${o.cadOmitido.nota ? ' · ' + esc(o.cadOmitido.nota) : ''}</div></div>`
+        : `<div class="card"><div class="sub">${T('c_esperando')}</div></div>`;
+    }
     cads.forEach((cv, i) => {
       const fb = cv.feedback;
       html += `<div class="card">
@@ -893,7 +897,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button class="btn rosa" data-cadok="${i}">${T('c_aprobar')}</button>` : ''}
       </div>`;
     });
-    if (karen && l && l.comprobante) html += `<button class="btn jade" id="btnSubirCad">${T('c_subir')}</button>`;
+    if (karen && l && l.comprobante) {
+      html += `<button class="btn jade" id="btnSubirCad">${T('c_subir')}</button>`;
+      if (!cads.length && !o.cadOmitido) html += `<button class="btn ghost" id="btnOmitirCad">${T('c_omitir')}</button>`;
+    }
 
     /* comentarios por pieza */
     const coms = o.comentarios || [];
@@ -947,6 +954,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         await Nube.subirArchivo(path, blob, 'image/jpeg');
         o.cad = o.cad || [];
         o.cad.push({ v, imgPath: path, fecha: hoyISO() });
+        delete o.cadOmitido;   // subió CAD al final: el salto ya no aplica
         await guardarDoc(o);
         await avisar('cad', `${o.nombre} · v${v}`, o.loteId, o.id);
         render();
@@ -964,6 +972,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
         o.comentarios.push({ de: 'jose', texto, fecha: hoyISO() });
         await guardarDoc(o);
         await avisar('comentario', `${o.nombre}: ${texto.slice(0, 60)}`, o.loteId, o.id);
+        cerrarModal();
+        render();
+      });
+    });
+
+    on('#btnOmitirCad', () => {
+      abrirModal(T('c_omitir'), `
+        <textarea id="ocNota" placeholder="${T('c_omitirPor')}"></textarea>
+        <button class="btn jade" id="ocOk">OK — continue without a new CAD</button>`);
+      $('#ocOk').addEventListener('click', async () => {
+        o.cadOmitido = { fecha: hoyISO(), nota: $('#ocNota').value.trim() };
+        await guardarDoc(o);
+        await avisar('cadOmitido', `${o.nombre}${o.cadOmitido.nota ? ': ' + o.cadOmitido.nota.slice(0, 60) : ''}`, o.loteId, o.id);
         cerrarModal();
         render();
       });

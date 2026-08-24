@@ -120,6 +120,9 @@ const I18N = (() => {
     c_aprobado:     ['✅ CAD aprobado', '✅ CAD approved by José'],
     c_cambios:      ['✏️ Cambios pedidos', '✏️ Changes requested'],
     c_esperando:    ['Esperando el CAD de Tonglin…', 'CAD pending — upload when ready'],
+    c_omitir:       ['—', '⏭ Skip CAD — we already have it / not needed'],
+    c_omitido:      ['⏭ Sin CAD nuevo — Tonglin sigue con el que ya existe', '⏭ CAD skipped — proceeding without a new one'],
+    c_omitirPor:    ['—', 'Reason (optional): already have the CAD, repeat design…'],
     c_deshacer:     ['↩ Deshacer trazo', '—'],
     c_enviarCambios:['Enviar los cambios a Tonglin', '—'],
 
@@ -139,6 +142,7 @@ const I18N = (() => {
     ev_tracking:    ['¡Despachado! Tracking listo', 'Tracking added'],
     ev_noDisp:      ['Tonglin devolvió una pieza (no disponible)', 'Piece marked not available'],
     ev_ordenEditada:['Orden editada', '⚠ José EDITED an order — please check the changes'],
+    ev_cadOmitido:  ['⏭ Tonglin seguirá SIN CAD nuevo (ya lo tienen u otra razón)', 'CAD skipped'],
 
     /* ── login / ajustes ── */
     a_conectar:     ['Conectar', 'Connect'],
