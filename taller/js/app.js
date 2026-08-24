@@ -978,7 +978,18 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <div><label>${T('o_qty')}</label><input id="noQty" type="number" min="1" value="${esc(b.qty || '1')}"></div>
         </div>
         <label>${T('o_engraving')}</label><input id="noEng" autocomplete="off" value="${esc(b.engraving || '')}">
-        <label>${T('o_stone')}</label><textarea id="noStone" placeholder="Centro: lab ruby round 1.2 CT…">${esc(b.stone || '')}</textarea>
+        <label>${T('o_stone')}</label>
+        <div class="chips" id="noPiedraTipo" style="margin-bottom:6px">
+          <button data-p="Cubic Zirconia">Circonia</button>
+          <button data-p="Moissanite" class="on">Moissanita</button>
+          <button data-p="Lab grown diamond">Diamante lab</button>
+        </div>
+        <div class="fila" style="align-items:flex-end;gap:8px;margin-bottom:6px">
+          <div style="flex:1"><label style="margin-top:0">mm</label><input id="noPiedraMm" type="number" step="0.1" min="0" placeholder="6.5"></div>
+          <div style="flex:1"><label style="margin-top:0">CT</label><input id="noPiedraCt" type="number" step="0.01" min="0" placeholder="1.0"></div>
+          <button type="button" class="btn-sm" id="noPiedraAdd" style="flex:0 0 auto;padding:10px 16px">＋ piedra</button>
+        </div>
+        <textarea id="noStone" placeholder="Centro: lab ruby round 1.2 CT…">${esc(b.stone || '')}</textarea>
         <div class="dos">
           <div><label>${T('o_cert')}</label><input id="noCert" autocomplete="off" placeholder="No cert / IGI / GIA" value="${esc(b.cert || '')}"></div>
           <div><label>${T('o_target')}</label><input id="noTarget" type="date" value="${esc(b.target || '')}"></div>
@@ -1061,6 +1072,25 @@ Si no es legible responde {"error": "motivo corto"}.`;
       btn.classList.add('on');
       armarMaterial();
     }));
+
+    /* piedras rápidas: tipo + mm/CT → cada ＋ agrega una línea al detalle
+       (una pieza puede llevar centro + laterales) */
+    $$('#noPiedraTipo button').forEach(btn => btn.addEventListener('click', () => {
+      $$('#noPiedraTipo button').forEach(x => x.classList.remove('on'));
+      btn.classList.add('on');
+    }));
+    $('#noPiedraAdd').addEventListener('click', () => {
+      const tipo = (($('#noPiedraTipo button.on') || {}).dataset || {}).p;
+      if (!tipo) return;
+      const mm = Number($('#noPiedraMm').value) || 0;
+      const ct = Number($('#noPiedraCt').value) || 0;
+      const linea = [tipo, mm ? `${mm} mm` : '', ct ? `${ct} CT` : ''].filter(Boolean).join(' — ');
+      const t = $('#noStone');
+      t.value = (t.value.trim() ? t.value.trim() + '\n' : '') + linea;
+      $('#noPiedraMm').value = '';
+      $('#noPiedraCt').value = '';
+      anotar();
+    });
 
     $$('#noDestino button').forEach(btn => btn.addEventListener('click', () => {
       $$('#noDestino button').forEach(x => x.classList.remove('on'));
