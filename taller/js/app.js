@@ -30,7 +30,8 @@ const App = (() => {
   }
 
   function toast(msj) {
-    const el = $('#toast');
+    let el = $('#toast');
+    if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
     el.textContent = msj;
     el.classList.add('ver');
     clearTimeout(toast._t);
@@ -115,6 +116,7 @@ const App = (() => {
   }
 
   let cargandoRed = false;
+  let faltaSQL = false;   // la tabla `taller` no existe aún en Supabase
   async function cargar(silencioso) {
     if (cargandoRed) return;
     cargandoRed = true;
@@ -122,14 +124,23 @@ const App = (() => {
     if (b) b.classList.add('girando');
     try {
       docs = await Nube.listarDocs();
-      if (!silencioso) render();
-      else render();          // el render es barato: siempre repintar
+      faltaSQL = false;
+      render();
     } catch (e) {
-      if (!silencioso) toast('⚠ ' + (e.message === 'SESION_EXPIRADA' ? 'Sesión expirada' : e.message));
-      if (e.message === 'SESION_EXPIRADA') { vista = 'login'; render(); }
+      const msj = String(e.message || e);
+      if (msj === 'SESION_EXPIRADA') { vista = 'login'; render(); }
+      else if (/404|does not exist|relation|42P01/i.test(msj)) {
+        /* la sesión está bien — lo que falta es correr taller-schema.sql */
+        faltaSQL = true;
+        render();
+      } else {
+        render();   // pintar el shell (con #toast) antes de avisar
+        if (!silencioso) toast('⚠ ' + msj);
+      }
     } finally {
       cargandoRed = false;
-      if (b) b.classList.remove('girando');
+      const b2 = $('#btnRefrescar');
+      if (b2) b2.classList.remove('girando');
     }
   }
 
@@ -261,6 +272,12 @@ const App = (() => {
       </div>`;
 
     c.innerHTML = `
+      ${faltaSQL ? `<div class="card" style="border-color:var(--red)">
+        <div class="nombre rojo">⚠ ${I18N.esKaren() ? 'Setup pending — ask José.' : 'Falta el paso 2 del setup'}</div>
+        <div class="sub" style="margin-top:4px">${I18N.esKaren() ? '' : `Tu conexión funcionó ✓, pero la tabla del taller no existe todavía en Supabase.
+          Ve a <b>Supabase → SQL Editor → New query</b>, pega TODO el contenido de <b>taller-schema.sql</b> y presiona <b>Run</b>.
+          Después toca 🔄 aquí arriba.`}</div>
+      </div>` : ''}
       <div class="h-sec">${T('novedades')}</div>
       ${nuevos.length ? nuevos.map(e => fila(e, true)).join('')
         : `<div class="vacio"><span>✓</span>${T('sinNovedades')}</div>`}
