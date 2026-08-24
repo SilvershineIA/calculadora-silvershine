@@ -210,6 +210,29 @@ const App = (() => {
     await Nube.upsertDoc(d);
   }
 
+  /* ── WhatsApp de Julia: push real no funciona en China (FCM bloqueado),
+     así que el empujón va por WhatsApp con el mensaje ya armado ── */
+  const cfgTaller = () => doc('cfg-taller') || { id: 'cfg-taller', tipo: 'cfg' };
+  function msjJulia(l, est) {
+    const n = piezasDe(l.id).length;
+    const M = {
+      enviado: `Hi Julia! New batch "${l.nombre}" with ${n} order${n === 1 ? '' : 's'} is ready to quote in the app 🧵`,
+      cotizado: `Hi Julia! Just a question about your quotation for batch "${l.nombre}" — please check the app 🧵`,
+      aprobado: `Hi Julia! Quotation approved for batch "${l.nombre}" ✅ Please attach the payment link in the app.`,
+      porPagar: `Hi Julia! About the deposit for batch "${l.nombre}" — please check the app 🧵`,
+      produccion: `Hi Julia! Deposit receipt uploaded for batch "${l.nombre}" 💵 The production clock started — please check the app.`,
+      final: `Hi Julia! About the final quote for batch "${l.nombre}" — please check the app 🧵`,
+      pagoFinal: `Hi Julia! Final payment receipt uploaded for batch "${l.nombre}" ✅ Please ship and add the tracking number in the app.`,
+      despachado: `Hi Julia! About batch "${l.nombre}" — please check the app 🧵`,
+    };
+    return M[est] || `Hi Julia! There's news for you in the app 🧵`;
+  }
+  function avisarJulia(l, est) {
+    const num = (cfgTaller().waJulia || '').replace(/[^\d]/g, '');
+    if (!num) { toast('⚠ Pon el WhatsApp de Julia en Ajustes'); return; }
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msjJulia(l, est))}`, '_blank');
+  }
+
   /* evento para el otro lado (clave del diccionario + contexto neutro) */
   async function avisar(clave, ctx, loteId, ordenId) {
     const para = I18N.esKaren() ? 'jose' : 'karen';
@@ -611,12 +634,19 @@ const App = (() => {
       }
     }
 
+    /* José: empujón por WhatsApp cuando el próximo paso le toca a Julia */
+    if (!karen && LE_TOCA[est] === 'karen') {
+      html += `<button class="btn ghost" id="btnAvisarJulia">💬 Avisar a Julia por WhatsApp (mensaje listo)</button>`;
+    }
+
     c.innerHTML = html;
     wireLote(l, piezas);
   }
 
   function wireLote(l, piezas) {
     $('#btnVolver').addEventListener('click', () => nav('lotes'));
+    const bJulia = $('#btnAvisarJulia');
+    if (bJulia) bJulia.addEventListener('click', () => avisarJulia(l, estadoLote(l)));
     $$('#cuerpo [data-orden]').forEach(el => el.addEventListener('click', () => { ordenAbierta = el.dataset.orden; nav('orden'); }));
     $$('#cuerpo [data-ver]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verSegunTipo(b.dataset.ver); }));
     $$('#cuerpo [data-link]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); window.open(b.dataset.link, '_blank'); }));
@@ -1380,6 +1410,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button class="btn ghost" id="ajCopiar">${T('copiar')}</button>
         </div>
       </div>
+      <div class="h-sec">💬 WhatsApp de Julia</div>
+      <div class="card">
+        <p class="sub">Para el botón «Avisar a Julia»: su número con código de país, solo dígitos (el de Tonglin es +86…).</p>
+        <label>Número</label><input id="ajWaJulia" autocomplete="off" placeholder="8618138103154" value="${esc(cfgTaller().waJulia || '')}">
+        <button class="btn ghost" id="ajWaOk">${T('guardar')}</button>
+      </div>
       <div class="h-sec">${T('a_ia')}</div>
       <div class="card">
         <p class="sub">${T('a_iaExpl')}</p>
@@ -1397,6 +1433,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
     $('#ajCopiar').addEventListener('click', () => {
       navigator.clipboard.writeText($('#ajLinkTxt').value);
       toast(T('copiado'));
+    });
+    $('#ajWaOk').addEventListener('click', async () => {
+      const c2 = cfgTaller();
+      c2.waJulia = $('#ajWaJulia').value.replace(/[^\d]/g, '');
+      await guardarDoc(c2);
+      toast('💬 ✓');
     });
     $('#ajIaOk').addEventListener('click', () => {
       const v = $('#ajIa').value.trim();
