@@ -227,11 +227,22 @@ const App = (() => {
     };
     return M[est] || `Hi Julia! There's news for you in the app 🧵`;
   }
-  function avisarJulia(l, est) {
-    const num = (cfgTaller().waJulia || '').replace(/[^\d]/g, '');
-    if (!num) { toast('⚠ Pon el WhatsApp de Julia en Ajustes'); return; }
-    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msjJulia(l, est))}`, '_blank');
+  /* Al GRUPO no se le puede pre-llenar el texto (limitación de WhatsApp):
+     se copia el mensaje al portapapeles y se abre el grupo — solo pegas */
+  async function mandarWA(msj, quien) {
+    const cfg = cfgTaller();
+    const grupo = (cfg.waGrupo || '').trim();
+    if (grupo) {
+      try { await navigator.clipboard.writeText(msj); } catch {}
+      toast('📋 Mensaje copiado — PÉGALO en el grupo / Message copied — PASTE it in the group');
+      setTimeout(() => window.open(grupo, '_blank'), 600);
+      return;
+    }
+    const num = (quien === 'julia' ? cfg.waJulia : cfg.waJose || '').replace(/[^\d]/g, '');
+    if (!num) { toast(quien === 'julia' ? '⚠ Pon el WhatsApp (o el grupo) en Ajustes' : "⚠ José hasn't set his WhatsApp yet"); return; }
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msj)}`, '_blank');
   }
+  const avisarJulia = (l, est) => mandarWA(msjJulia(l, est), 'julia');
 
   /* …y en la otra dirección: Julia le avisa a José con el mensaje listo */
   function msjJose(l, est) {
@@ -243,11 +254,7 @@ const App = (() => {
     };
     return M[est] || `Hi José! Please check batch "${l.nombre}" in the app 🧵`;
   }
-  function avisarJose(l, est) {
-    const num = (cfgTaller().waJose || '').replace(/[^\d]/g, '');
-    if (!num) { toast("⚠ José hasn't set his WhatsApp number yet"); return; }
-    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msjJose(l, est))}`, '_blank');
-  }
+  const avisarJose = (l, est) => mandarWA(msjJose(l, est), 'jose');
 
   /* evento para el otro lado (clave del diccionario + contexto neutro) */
   async function avisar(clave, ctx, loteId, ordenId) {
@@ -1433,9 +1440,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
       </div>
       <div class="h-sec">💬 WhatsApp (avisos en ambas direcciones)</div>
       <div class="card">
-        <p class="sub">Con código de país, solo dígitos. El de Julia para tu botón «Avisar a Julia»; el TUYO para el botón «Message José» que ella ve.</p>
-        <label>WhatsApp de Julia</label><input id="ajWaJulia" autocomplete="off" placeholder="8618138103154" value="${esc(cfgTaller().waJulia || '')}">
-        <label>Tu WhatsApp</label><input id="ajWaJose" autocomplete="off" placeholder="1809XXXXXXX" value="${esc(cfgTaller().waJose || '')}">
+        <p class="sub">Si hablan por un GRUPO: pega el link de invitación del grupo (WhatsApp → el grupo → nombre → «Invitar mediante enlace»). Los botones copiarán el mensaje y abrirán el grupo — solo pegas y envías. Si lo dejas vacío, se usan los números individuales.</p>
+        <label>🔗 Link del grupo (recomendado)</label><input id="ajWaGrupo" autocomplete="off" placeholder="https://chat.whatsapp.com/…" value="${esc(cfgTaller().waGrupo || '')}">
+        <label>WhatsApp de Julia (si no hay grupo)</label><input id="ajWaJulia" autocomplete="off" placeholder="8618138103154" value="${esc(cfgTaller().waJulia || '')}">
+        <label>Tu WhatsApp (si no hay grupo)</label><input id="ajWaJose" autocomplete="off" placeholder="1809XXXXXXX" value="${esc(cfgTaller().waJose || '')}">
         <button class="btn ghost" id="ajWaOk">${T('guardar')}</button>
       </div>
       <div class="h-sec">${T('a_ia')}</div>
@@ -1458,6 +1466,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
     $('#ajWaOk').addEventListener('click', async () => {
       const c2 = cfgTaller();
+      c2.waGrupo = $('#ajWaGrupo').value.trim();
       c2.waJulia = $('#ajWaJulia').value.replace(/[^\d]/g, '');
       c2.waJose = $('#ajWaJose').value.replace(/[^\d]/g, '');
       await guardarDoc(c2);
