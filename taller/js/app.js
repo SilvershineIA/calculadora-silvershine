@@ -984,6 +984,17 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button data-p="Moissanite" class="on">Moissanita</button>
           <button data-p="Lab grown diamond">Diamante lab</button>
         </div>
+        <div class="chips chips-mini" id="noPiedraCorte" style="margin-bottom:6px">
+          <button data-c="Round" class="on">● Redondo</button>
+          <button data-c="Oval">⬭ Oval</button>
+          <button data-c="Princess">◆ Princesa</button>
+          <button data-c="Emerald cut">▭ Esmeralda</button>
+          <button data-c="Cushion">▢ Cojín</button>
+          <button data-c="Pear">💧 Pera</button>
+          <button data-c="Marquise">◗ Marquesa</button>
+          <button data-c="Radiant">◇ Radiante</button>
+          <button data-c="Heart">♥ Corazón</button>
+        </div>
         <div class="fila" style="align-items:flex-end;gap:8px;margin-bottom:6px">
           <div style="flex:1"><label style="margin-top:0">mm</label><input id="noPiedraMm" type="number" step="0.1" min="0" placeholder="6.5"></div>
           <div style="flex:1"><label style="margin-top:0">CT</label><input id="noPiedraCt" type="number" step="0.01" min="0" placeholder="1.0"></div>
@@ -1079,12 +1090,17 @@ Si no es legible responde {"error": "motivo corto"}.`;
       $$('#noPiedraTipo button').forEach(x => x.classList.remove('on'));
       btn.classList.add('on');
     }));
+    $$('#noPiedraCorte button').forEach(btn => btn.addEventListener('click', () => {
+      $$('#noPiedraCorte button').forEach(x => x.classList.remove('on'));
+      btn.classList.add('on');
+    }));
     $('#noPiedraAdd').addEventListener('click', () => {
       const tipo = (($('#noPiedraTipo button.on') || {}).dataset || {}).p;
       if (!tipo) return;
+      const corte = (($('#noPiedraCorte button.on') || {}).dataset || {}).c || '';
       const mm = Number($('#noPiedraMm').value) || 0;
       const ct = Number($('#noPiedraCt').value) || 0;
-      const linea = [tipo, mm ? `${mm} mm` : '', ct ? `${ct} CT` : ''].filter(Boolean).join(' — ');
+      const linea = [tipo, corte, mm ? `${mm} mm` : '', ct ? `${ct} CT` : ''].filter(Boolean).join(' — ');
       const t = $('#noStone');
       t.value = (t.value.trim() ? t.value.trim() + '\n' : '') + linea;
       $('#noPiedraMm').value = '';
