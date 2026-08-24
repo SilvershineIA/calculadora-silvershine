@@ -877,7 +877,14 @@ Si no es legible responde {"error": "motivo corto"}.`;
     /* CAD */
     html += `<div class="h-sec">${T('c_titulo')}</div>`;
     const cads = o.cad || [];
-    if (!cads.length) {
+    const tieneCadJose = o.cadJose && (o.cadJose.fotos || []).length;
+    if (tieneCadJose) {
+      html += `<div class="card">
+        <div class="sub" style="margin-bottom:6px"><b>${T('c_deJose')}</b> · ${fmtFecha(o.cadJose.fecha)}</div>
+        ${o.cadJose.fotos.map(f => `<img class="cad-img" data-path="${f.path}" alt="CAD" style="margin-bottom:6px">`).join('')}
+      </div>`;
+    }
+    if (!cads.length && !tieneCadJose) {
       html += o.cadOmitido
         ? `<div class="card"><div class="sub"><b>${T('c_omitido')}</b> · ${fmtFecha(o.cadOmitido.fecha)}${o.cadOmitido.nota ? ' · ' + esc(o.cadOmitido.nota) : ''}</div></div>`
         : `<div class="card"><div class="sub">${T('c_esperando')}</div></div>`;
@@ -897,7 +904,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button class="btn rosa" data-cadok="${i}">${T('c_aprobar')}</button>` : ''}
       </div>`;
     });
-    if (karen && l && l.comprobante) {
+    if (karen && l && l.comprobante && !tieneCadJose) {
       html += `<button class="btn jade" id="btnSubirCad">${T('c_subir')}</button>`;
       if (!cads.length && !o.cadOmitido) html += `<button class="btn ghost" id="btnOmitirCad">${T('c_omitir')}</button>`;
     }
@@ -1006,6 +1013,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
       editandoOrden = o.id;
       fotosNueva = [];
       fotosExistentes = (o.fotos || []).slice();
+      cadNueva = [];
+      cadExistentes = ((o.cadJose && o.cadJose.fotos) || []).slice();
       borrador = {
         destino: o.destino || 'cliente', etsyNum: o.etsyNum || '', shipTo: o.shipTo || '',
         nombre: o.nombre || '', material: o.material || '', igLink: o.igLink || '',
@@ -1122,6 +1131,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
   let borrador = null;       // campos a medio llenar
   let editandoOrden = null;  // id de la orden que se está EDITANDO (null = orden nueva)
   let fotosExistentes = [];  // fotos ya subidas de la orden en edición (se pueden quitar)
+  let cadNueva = [];         // CAD propio de José: blobs nuevos
+  let cadExistentes = [];    // CAD propio ya subido (en edición)
   function vNueva(c) {
     const editando = editandoOrden ? doc(editandoOrden) : null;
     if (editandoOrden && !editando) { editandoOrden = null; borrador = null; }
@@ -1161,6 +1172,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
         <input id="noMaterial" autocomplete="off" placeholder="14K Yellow Gold" value="${esc(b.material || '')}">
         <label>${T('o_fotos')}</label>
         <div class="galeria" id="noFotos"><button class="mas" id="noMas" title="También puedes ARRASTRAR imágenes aquí">＋</button></div>
+        <label>${T('o_cadJose')}</label>
+        <div class="galeria" id="noCad"><button class="mas" id="noCadMas" title="También puedes ARRASTRAR el CAD aquí">＋</button></div>
         <label>${T('o_igLink')}</label><input id="noIg" autocomplete="off" placeholder="https://instagram.com/p/…" value="${esc(b.igLink || '')}">
         <div class="dos">
           <div><label>${T('o_size')}</label><input id="noSize" autocomplete="off" placeholder="US 7" value="${esc(b.size || '')}"></div>
@@ -1275,6 +1288,41 @@ Si no es legible responde {"error": "motivo corto"}.`;
     zonaArrastre($('#noFotos'), agregarFotos);
     zonaArrastre($('#noForm'), agregarFotos);
 
+    /* CAD propio de José: mismo mecanismo que las fotos */
+    if (editando) {
+      for (const f of cadExistentes) {
+        const cont = document.createElement('div');
+        cont.style.cssText = 'position:relative;display:inline-block';
+        const im = document.createElement('img');
+        im.dataset.path = f.path;
+        const x = document.createElement('button');
+        x.textContent = '✕'; x.type = 'button';
+        x.style.cssText = 'position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:12px;cursor:pointer';
+        x.addEventListener('click', () => { cadExistentes = cadExistentes.filter(z => z !== f); cont.remove(); });
+        cont.appendChild(im); cont.appendChild(x);
+        $('#noCad').insertBefore(cont, $('#noCadMas'));
+      }
+      pintarImagenes($('#noCad'));
+    }
+    for (const blob of cadNueva) {
+      const im = document.createElement('img');
+      im.src = URL.createObjectURL(blob);
+      $('#noCad').insertBefore(im, $('#noCadMas'));
+    }
+    const agregarCads = async archivos => {
+      for (const f of archivos) {
+        try {
+          const blob = await comprimir(f, 1800, 0.88);
+          cadNueva.push(blob);
+          const im = document.createElement('img');
+          im.src = URL.createObjectURL(blob);
+          $('#noCad').insertBefore(im, $('#noCadMas'));
+        } catch { toast('⚠ ' + f.name); }
+      }
+    };
+    $('#noCadMas').addEventListener('click', async () => agregarCads(await elegirArchivos('image/*')));
+    zonaArrastre($('#noCad'), agregarCads);
+
     /* material rápido: base + color (el campo queda en el inglés que
        Tonglin entiende, y sigue editable a mano) */
     const armarMaterial = () => {
@@ -1361,6 +1409,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (cancelarEd) cancelarEd.addEventListener('click', () => {
       const volverA = editandoOrden;
       editandoOrden = null; borrador = null; fotosNueva = []; fotosExistentes = [];
+      cadNueva = []; cadExistentes = [];
       ordenAbierta = volverA;
       nav('orden');
     });
@@ -1403,6 +1452,15 @@ Si no es legible responde {"error": "motivo corto"}.`;
           await Nube.subirArchivo(p, fotosNueva[i], 'image/jpeg');
           o.fotos.push({ path: p });
         }
+        /* CAD propio: si la orden lo lleva, el paso del CAD queda saltado */
+        const cadFotos = editando ? cadExistentes.slice() : [];
+        for (let i = 0; i < cadNueva.length; i++) {
+          const p = `ordenes/${o.id}/cad-jose-${Date.now()}-${i + 1}.jpg`;
+          await Nube.subirArchivo(p, cadNueva[i], 'image/jpeg');
+          cadFotos.push({ path: p });
+        }
+        if (cadFotos.length) o.cadJose = { fotos: cadFotos, fecha: o.cadJose ? o.cadJose.fecha : hoyISO() };
+        else delete o.cadJose;
         if (editando) {
           o.editadaEl = hoyISO();
           await guardarDoc(o);
@@ -1416,6 +1474,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         }
         const irA = editando ? o.id : null;
         editandoOrden = null; borrador = null; fotosNueva = []; fotosExistentes = [];
+        cadNueva = []; cadExistentes = [];
         if (irA) { ordenAbierta = irA; nav('orden'); }
         else { loteAbierto = loteId; nav(loteId ? 'lote' : 'lotes'); }
       } catch (e) {

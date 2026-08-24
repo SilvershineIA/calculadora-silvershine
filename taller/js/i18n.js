@@ -123,6 +123,8 @@ const I18N = (() => {
     c_omitir:       ['—', '⏭ Skip CAD — we already have it / not needed'],
     c_omitido:      ['⏭ Sin CAD nuevo — Tonglin sigue con el que ya existe', '⏭ CAD skipped — proceeding without a new one'],
     c_omitirPor:    ['—', 'Reason (optional): already have the CAD, repeat design…'],
+    c_deJose:       ['📐 CAD enviado por ti con la orden — el paso del CAD queda saltado', '📐 CAD provided by José — work with this one, no upload needed'],
+    o_cadJose:      ['📐 CAD (si ya lo tienes, va con la orden y el paso del CAD se salta)', '—'],
     c_deshacer:     ['↩ Deshacer trazo', '—'],
     c_enviarCambios:['Enviar los cambios a Tonglin', '—'],
 
