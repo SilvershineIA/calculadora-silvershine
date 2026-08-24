@@ -956,7 +956,20 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <label>${T('o_shipTo')}</label><textarea id="noShipTo">${esc(b.shipTo || '')}</textarea>
         </div>
         <label>${T('o_nombre')}</label><input id="noNombre" autocomplete="off" placeholder="Ej: Anillo rubí 14K — María" value="${esc(b.nombre || '')}">
-        <label>${T('o_material')}</label><input id="noMaterial" autocomplete="off" placeholder="14K Yellow Gold" value="${esc(b.material || '')}">
+        <label>${T('o_material')}</label>
+        <div class="chips" id="noMatBase" style="margin-bottom:6px">
+          <button data-m="925R" class="${b.matBase === '925R' ? 'on' : ''}">925 rodio</button>
+          <button data-m="925V" class="${b.matBase === '925V' ? 'on' : ''}">925 vermeil 2.5μm</button>
+          <button data-m="10K" class="${b.matBase === '10K' ? 'on' : ''}">10K</button>
+          <button data-m="14K" class="${b.matBase === '14K' ? 'on' : ''}">14K</button>
+          <button data-m="18K" class="${b.matBase === '18K' ? 'on' : ''}">18K</button>
+        </div>
+        <div class="chips" id="noMatColor" style="margin-bottom:6px;display:${/K$/.test(b.matBase || '') ? 'flex' : 'none'}">
+          <button data-c="Yellow" class="${(b.matColor || 'Yellow') === 'Yellow' ? 'on' : ''}">🟡 Amarillo</button>
+          <button data-c="White" class="${b.matColor === 'White' ? 'on' : ''}">⚪ Blanco</button>
+          <button data-c="Rose" class="${b.matColor === 'Rose' ? 'on' : ''}">🌹 Rosa</button>
+        </div>
+        <input id="noMaterial" autocomplete="off" placeholder="14K Yellow Gold" value="${esc(b.material || '')}">
         <label>${T('o_fotos')}</label>
         <div class="galeria" id="noFotos"><button class="mas" id="noMas" title="También puedes ARRASTRAR imágenes aquí">＋</button></div>
         <label>${T('o_igLink')}</label><input id="noIg" autocomplete="off" placeholder="https://instagram.com/p/…" value="${esc(b.igLink || '')}">
@@ -988,7 +1001,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
 
     /* borrador: cada tecla queda guardada — cambiar de pestaña no borra nada */
     const anotar = () => {
+      const chipOn = sel => { const x = $(sel); return x ? x.dataset : {}; };
       borrador = {
+        matBase: chipOn('#noMatBase button.on').m || '',
+        matColor: chipOn('#noMatColor button.on').c || 'Yellow',
         destino: ($('#noDestino button.on') || {}).dataset ? $('#noDestino button.on').dataset.d : 'cliente',
         etsyNum: $('#noEtsyNum').value, shipTo: $('#noShipTo').value,
         nombre: $('#noNombre').value, material: $('#noMaterial').value,
@@ -1019,6 +1035,32 @@ Si no es legible responde {"error": "motivo corto"}.`;
     };
     zonaArrastre($('#noFotos'), agregarFotos);
     zonaArrastre($('#noForm'), agregarFotos);
+
+    /* material rápido: base + color (el campo queda en el inglés que
+       Tonglin entiende, y sigue editable a mano) */
+    const armarMaterial = () => {
+      const base = ($('#noMatBase button.on') || {}).dataset;
+      if (!base) return;
+      const esOro = /K$/.test(base.m);
+      $('#noMatColor').style.display = esOro ? 'flex' : 'none';
+      const color = (($('#noMatColor button.on') || {}).dataset || {}).c || 'Yellow';
+      $('#noMaterial').value =
+        base.m === '925R' ? '925 Silver — Rhodium plated' :
+        base.m === '925V' ? '925 Silver — Vermeil 2.5μm gold plated' :
+        `${base.m} ${color} Gold`;
+      anotar();
+    };
+    $$('#noMatBase button').forEach(btn => btn.addEventListener('click', () => {
+      $$('#noMatBase button').forEach(x => x.classList.remove('on'));
+      btn.classList.add('on');
+      if (/K$/.test(btn.dataset.m) && !$('#noMatColor button.on')) $('#noMatColor button').classList.add('on');
+      armarMaterial();
+    }));
+    $$('#noMatColor button').forEach(btn => btn.addEventListener('click', () => {
+      $$('#noMatColor button').forEach(x => x.classList.remove('on'));
+      btn.classList.add('on');
+      armarMaterial();
+    }));
 
     $$('#noDestino button').forEach(btn => btn.addEventListener('click', () => {
       $$('#noDestino button').forEach(x => x.classList.remove('on'));
