@@ -215,7 +215,7 @@ const App = (() => {
 
     const sinVer = eventos().filter(e => e.para === (karen ? 'karen' : 'jose') && !e.visto).length;
     const tabs = karen
-      ? [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')]]
+      ? [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['ajustes','⚙️',T('ajustes')]]
       : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['ajustes','⚙️',T('ajustes')]];
     const tabOn = (vista === 'lote' || vista === 'orden') ? 'lotes' : vista;
 
@@ -1082,9 +1082,24 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
   }
 
-  /* ═══ ajustes (José) ═══ */
+  /* ═══ ajustes ═══ */
   function vAjustes(c) {
     const info = Nube.info() || {};
+    if (I18N.esKaren()) {
+      /* Lado de Karen: solo salir (y la salida de emergencia si José
+         abrió el link de ella en su propio dispositivo) */
+      c.innerHTML = `
+        <div class="h-sec">${T('ajustes')}</div>
+        <div class="card"><div class="sub">👤 ${esc(info.email || '')}</div></div>
+        <div class="card"><div class="sub">To sign back in, just open your link again — it never expires.</div></div>
+        <button class="btn peligro" id="ajSalir">${T('a_salir')}</button>`;
+      $('#ajSalir').addEventListener('click', () => {
+        if (!confirm(T('confirmar'))) return;
+        Nube.desconectar();
+        location.reload();
+      });
+      return;
+    }
     c.innerHTML = `
       <div class="h-sec">${T('ajustes')}</div>
       <div class="card">
@@ -1134,13 +1149,21 @@ Si no es legible responde {"error": "motivo corto"}.`;
   async function init() {
     /* ¿Viene con el link secreto de Karen? */
     const linkKaren = Nube.leerLink(location.hash);
+    let avisoLink = '';
     if (linkKaren) {
       history.replaceState(null, '', location.pathname);
-      try {
-        await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p);
-      } catch (e) {
-        document.body.innerHTML = `<div class="login"><h1>Tonglin</h1><p class="sub">This link is not valid anymore — ask José for a new one.<br><span style="opacity:.6">${esc(e.message)}</span></p></div>`;
-        return;
+      const yo = Nube.info();
+      if (yo && yo.rol === 'jose') {
+        /* José abrió el link de Karen en SU dispositivo: no dejar que le
+           secuestre la sesión — para probar el lado de ella, incógnito */
+        avisoLink = '🔗 Ese link es el de Karen — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.';
+      } else {
+        try {
+          await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p);
+        } catch (e) {
+          document.body.innerHTML = `<div class="login"><h1>Tonglin</h1><p class="sub">This link is not valid anymore — ask José for a new one.<br><span style="opacity:.6">${esc(e.message)}</span></p></div>`;
+          return;
+        }
       }
     }
     if (Nube.conectado()) {
@@ -1148,6 +1171,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       vista = 'novedades';
       $('#app').innerHTML = `<div class="vacio" style="padding-top:30vh"><span>🧵</span>${T('cargando')}</div>`;
       await cargar();
+      if (avisoLink) toast(avisoLink);
     } else {
       I18N.setRol('jose');
       vista = 'login';
