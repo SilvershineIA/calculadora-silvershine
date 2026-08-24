@@ -1003,7 +1003,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
         </div>
         <textarea id="noStone" placeholder="Centro: lab ruby round 1.2 CT…">${esc(b.stone || '')}</textarea>
         <div class="dos">
-          <div><label>${T('o_cert')}</label><input id="noCert" autocomplete="off" placeholder="No cert / IGI / GIA" value="${esc(b.cert || '')}"></div>
+          <div><label>${T('o_cert')}</label>
+            <div class="chips" id="noCert" style="padding-top:6px">
+              <button data-v="No" class="${(b.cert || 'No') === 'No' ? 'on' : ''}">No</button>
+              <button data-v="Yes" class="${b.cert === 'Yes' ? 'on' : ''}">Sí</button>
+            </div>
+          </div>
           <div><label>${T('o_target')}</label><input id="noTarget" type="date" value="${esc(b.target || '')}"></div>
         </div>
         <label>${T('o_special')}</label><textarea id="noSpecial">${esc(b.special || '')}</textarea>
@@ -1033,7 +1038,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
         nombre: $('#noNombre').value, material: $('#noMaterial').value,
         igLink: $('#noIg').value, size: $('#noSize').value, qty: $('#noQty').value,
         engraving: $('#noEng').value, stone: $('#noStone').value,
-        cert: $('#noCert').value, target: $('#noTarget').value, special: $('#noSpecial').value,
+        cert: chipOn('#noCert button.on').v || 'No',
+        target: $('#noTarget').value, special: $('#noSpecial').value,
         loteId: $('#noLote').value, loteNombre: $('#noLoteNombre').value,
       };
     };
@@ -1121,6 +1127,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
       anotar();
     });
 
+    $$('#noCert button').forEach(btn => btn.addEventListener('click', () => {
+      $$('#noCert button').forEach(x => x.classList.remove('on'));
+      btn.classList.add('on');
+      anotar();
+    }));
+
     $$('#noDestino button').forEach(btn => btn.addEventListener('click', () => {
       $$('#noDestino button').forEach(x => x.classList.remove('on'));
       btn.classList.add('on');
@@ -1157,7 +1169,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
           engraving: $('#noEng').value.trim(),
           stone: $('#noStone').value.trim(),
           qty: $('#noQty').value || '1',
-          cert: $('#noCert').value.trim(),
+          cert: ((($('#noCert button.on') || {}).dataset || {}).v) || 'No',
           target: $('#noTarget').value || '',
           special: $('#noSpecial').value.trim(),
           igLink: $('#noIg').value.trim(),
