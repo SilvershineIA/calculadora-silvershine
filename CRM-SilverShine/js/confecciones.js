@@ -121,25 +121,20 @@ const Confecciones = (() => {
     const cuenta = e => proceso.filter(f => f.confeccion.estado === e).length;
     const atrasadas = proceso.filter(atrasada);
     const deudaProceso = proceso.reduce((s, f) => s + (f.saldo > 0 ? conv(f) : 0), 0);
-    /* Lo que falta pagarle a los talleres (en US$): costo final menos pago
-       inicial, solo piezas con costo final conocido. Lo del taller RD (en
-       pesos) entra convertido con la tasa viva. */
-    const porPagarUSD = proceso.reduce((s, f) => {
-      const c = f.confeccion;
-      const esRD = (f.esStock && f.destino === 'rd') || c.taller === 'rd';
-      let v = 0;
-      if (!esRD && c.costoFinalUSD) v = Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0) - abonadoTaller(c), 0);
-      if (esRD && c.costoFinalRD && tasa) v = Math.max(c.costoFinalRD - (c.costoInicialRD || 0) - abonadoTaller(c), 0) / tasa;
-      return s + v;
-    }, 0);
+    const deudaTaller = await calcularDeudaTaller(lista, tasa);
 
     $('#confStats').innerHTML =
       UI.statTile(cuenta('pendiente'), 'Por enviar al taller', cuenta('pendiente') ? 'rojo' : '') +
       UI.statTile(cuenta('taller') + cuenta('recibida'), 'En el taller') +
       UI.statTile(cuenta('camino') + cuenta('lista'), 'En camino / almacén') +
       UI.statTile(atrasadas.length, 'Atrasadas', atrasadas.length ? 'rojo' : '') +
-      UI.statTile(fmtMoneda(porPagarUSD, 'USD'), 'Por pagar al taller', porPagarUSD > 0 ? 'rojo' : '') +
+      UI.statTile(fmtMoneda(deudaTaller.total, 'USD'), 'Por pagar al taller · toca 🔍', deudaTaller.total > 0 ? 'rojo' : '', 'tile-deuda-taller') +
       UI.statTile(UI.fmtDinero(deudaProceso), 'Por cobrar al entregar', deudaProceso > 0 ? 'rojo' : 'verde');
+    const tileDeuda = document.querySelector('.tile-deuda-taller');
+    if (tileDeuda) {
+      tileDeuda.style.cursor = 'pointer';
+      tileDeuda.addEventListener('click', () => detalleDeudaTaller(deudaTaller));
+    }
 
     const FILTROS = [['proceso', '🧵 En proceso'], ['grupos', '🗂 Por grupo'], ['entregadas', '✅ Entregadas'], ['todas', 'Todas']];
     $('#confFiltros').innerHTML = FILTROS.map(([k, t]) =>
@@ -404,6 +399,80 @@ const Confecciones = (() => {
       cerrarModal();
       render();
     });
+  }
+
+  /* ── Deuda real con los talleres (US$) ──
+     REGLA: donde hay CUENTA DE LOTE (cotización/factura final del grupo),
+     esa manda — falta = (factura final || cotizado) − (abonos al lote +
+     abonos de sus piezas); sus piezas NO se suman aparte (evita el doble
+     conteo). Piezas sueltas o de grupos sin cuenta: costo final − abonos.
+     Incluye entregadas al cliente (la deuda al taller no se esfuma por
+     entregar la pieza). Taller RD entra convertido con la tasa viva. */
+  async function calcularDeudaTaller(lista, tasa) {
+    const usd = v => fmtMoneda(v, 'USD');
+    const esRDp = f => (f.esStock && f.destino === 'rd') || f.confeccion.taller === 'rd';
+    const gdocs = (await DB.config.list()).filter(d => d.tipo === 'conf-grupo');
+    const detalle = [];
+    let total = 0;
+    const cubiertas = new Set();   // piezas cuya deuda ya la lleva su lote
+
+    for (const d of gdocs) {
+      const piezas = lista.filter(f => f.confeccion.grupo === d.nombre && !esRDp(f));
+      const pagado = (d.abonos || []).reduce((s, a) => s + (a.monto || 0), 0) + (d.pagadoUSD || 0) +
+        piezas.reduce((s, f) => s + abonadoTaller(f.confeccion) + (f.confeccion.costoInicialUSD || 0), 0);
+      const base = d.finalUSD || d.cotizadoUSD || d.exigidoUSD || 0;
+      if (!base) continue;   // lote sin cifra del taller todavía: sus piezas van por su cuenta
+      piezas.forEach(f => cubiertas.add(f.id));
+      const falta = Math.max(base - pagado, 0);
+      total += falta;
+      detalle.push({
+        t: `🗂 ${d.nombre} (${piezas.length} pieza${piezas.length === 1 ? '' : 's'})`,
+        sub: `${d.finalUSD ? 'factura final' : 'cotizado'} ${usd(base)} · abonado ${usd(pagado)}`,
+        faltaTxt: usd(falta), falta,
+      });
+    }
+
+    for (const f of lista) {
+      if (cubiertas.has(f.id)) continue;
+      const c = f.confeccion;
+      if (esRDp(f)) {
+        if (c.costoFinalRD && tasa) {
+          const faltaRD = Math.max(c.costoFinalRD - (c.costoInicialRD || 0) - abonadoTaller(c), 0);
+          if (faltaRD > 0.005) {
+            const falta = faltaRD / tasa;
+            total += falta;
+            detalle.push({ t: `🇩🇴 ${f.clienteNombre}${rotulo(f) ? ' ' + rotulo(f) : ''}`,
+              sub: `taller RD · ${UI.fmtDinero(faltaRD)} a tasa ${tasa}`, faltaTxt: usd(falta), falta });
+          }
+        }
+        continue;
+      }
+      if (c.costoFinalUSD) {
+        const falta = Math.max(c.costoFinalUSD - (c.costoInicialUSD || 0) - abonadoTaller(c), 0);
+        if (falta > 0.005) {
+          total += falta;
+          detalle.push({ t: `${f.clienteNombre}${rotulo(f) ? ' ' + rotulo(f) : ''}`,
+            sub: `costo ${usd(c.costoFinalUSD)} · abonado ${usd((c.costoInicialUSD || 0) + abonadoTaller(c))}${c.grupo ? ` · 🗂 ${c.grupo} (sin cifra de lote)` : ''}`,
+            faltaTxt: usd(falta), falta });
+        }
+      }
+    }
+    detalle.sort((a, b) => b.falta - a.falta);
+    return { total, detalle };
+  }
+
+  /* Desglose tocable: para cuadrar el número contra los papeles */
+  function detalleDeudaTaller(deuda) {
+    abrirModal('🏭 Por pagar a los talleres — desglose', (deuda.detalle.length
+      ? deuda.detalle.map(d => `
+        <div class="abono-row">
+          <span>${esc(d.t)}<br><span class="muted" style="font-size:.78rem">${d.sub}</span></span>
+          <b class="rojo">${d.faltaTxt}</b>
+        </div>`).join('') +
+        `<div class="abono-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:10px">
+          <span><b>Total</b></span><b class="rojo">${fmtMoneda(deuda.total, 'USD')}</b></div>`
+      : '<p class="muted">Nada pendiente con los talleres 🎉</p>') +
+      `<p class="muted" style="margin-top:12px;font-size:.8rem">Donde hay cuenta de lote (cotización o factura final del grupo), esa manda y sus piezas no se suman aparte. Piezas sin lote van por su costo final − abonos. Incluye piezas ya entregadas al cliente si el taller sigue sin cobrar.</p>`);
   }
 
   /* ── Mensaje de WhatsApp según el momento de la confección ── */
