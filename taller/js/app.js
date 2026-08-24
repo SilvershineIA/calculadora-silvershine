@@ -104,6 +104,88 @@ const App = (() => {
     try { window.open(await Nube.bajarArchivo(path), '_blank'); }
     catch (e) { toast('⚠ ' + e.message); }
   }
+
+  /* ── Visor de imágenes a pantalla completa: pellizco para zoom en el
+     teléfono, rueda en la PC, doble toque acerca/aleja, arrastre para
+     moverse. Lo usan el CAD, las fotos y los comprobantes. ── */
+  async function verImagen(path) {
+    let url;
+    try { url = await Nube.bajarArchivo(path); } catch (e) { toast('⚠ ' + e.message); return; }
+    const f = document.createElement('div');
+    f.className = 'visor';
+    f.innerHTML = `<img src="${url}" alt="" draggable="false"><button class="visor-x" aria-label="cerrar">✕</button>`;
+    document.body.appendChild(f);
+    const img = f.querySelector('img');
+    let s = 1, tx = 0, ty = 0;
+    const LIM = { min: 1, max: 8 };
+    const aplicar = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`; };
+
+    /* zoom manteniendo fijo el punto p (coords relativas al centro) */
+    const centro = () => { const r = f.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    function zoomEn(px, py, s1) {
+      s1 = Math.min(LIM.max, Math.max(LIM.min, s1));
+      const c = centro();
+      const p = { x: px - c.x, y: py - c.y };
+      tx = p.x - (p.x - tx) * (s1 / s);
+      ty = p.y - (p.y - ty) * (s1 / s);
+      s = s1;
+      if (s === 1) { tx = 0; ty = 0; }
+      aplicar();
+    }
+
+    const punteros = new Map();
+    let pinchInicio = null;   // {dist, s}
+    let ultTap = 0;
+    f.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { f.setPointerCapture(e.pointerId); } catch {}
+      if (punteros.size === 2) {
+        const [a, b] = [...punteros.values()];
+        pinchInicio = { dist: Math.hypot(a.x - b.x, a.y - b.y), s };
+      }
+    });
+    f.addEventListener('pointermove', e => {
+      if (!punteros.has(e.pointerId)) return;
+      const prev = punteros.get(e.pointerId);
+      punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (punteros.size === 2 && pinchInicio) {
+        const [a, b] = [...punteros.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        zoomEn((a.x + b.x) / 2, (a.y + b.y) / 2, pinchInicio.s * dist / pinchInicio.dist);
+      } else if (punteros.size === 1 && s > 1) {
+        tx += e.clientX - prev.x;
+        ty += e.clientY - prev.y;
+        aplicar();
+      }
+    });
+    const soltar = e => {
+      punteros.delete(e.pointerId);
+      if (punteros.size < 2) pinchInicio = null;
+    };
+    f.addEventListener('pointerup', e => {
+      soltar(e);
+      /* doble toque: acerca al punto o vuelve a tamaño normal */
+      const ahora = Date.now();
+      if (ahora - ultTap < 300) { zoomEn(e.clientX, e.clientY, s > 1.2 ? 1 : 2.5); ultTap = 0; }
+      else ultTap = ahora;
+    });
+    f.addEventListener('pointercancel', soltar);
+    f.addEventListener('wheel', e => {
+      e.preventDefault();
+      zoomEn(e.clientX, e.clientY, s * (e.deltaY < 0 ? 1.18 : 1 / 1.18));
+    }, { passive: false });
+
+    const cerrar = () => { document.removeEventListener('keydown', alTeclear); f.remove(); };
+    const alTeclear = e => { if (e.key === 'Escape') cerrar(); };
+    document.addEventListener('keydown', alTeclear);
+    f.querySelector('.visor-x').addEventListener('click', cerrar);
+    /* toque simple sobre el fondo (sin zoom activo) también cierra */
+    f.addEventListener('click', e => { if (e.target === f && s === 1) cerrar(); });
+  }
+
+  /* imágenes al visor con zoom; PDFs a su pestaña */
+  const verSegunTipo = path => /\.pdf$/i.test(path) ? verArchivo(path) : verImagen(path);
   /* pinta <img data-path> bajando cada archivo con auth */
   function pintarImagenes(raiz) {
     (raiz || document).querySelectorAll('img[data-path]').forEach(async img => {
@@ -536,7 +618,7 @@ const App = (() => {
   function wireLote(l, piezas) {
     $('#btnVolver').addEventListener('click', () => nav('lotes'));
     $$('#cuerpo [data-orden]').forEach(el => el.addEventListener('click', () => { ordenAbierta = el.dataset.orden; nav('orden'); }));
-    $$('#cuerpo [data-ver]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verArchivo(b.dataset.ver); }));
+    $$('#cuerpo [data-ver]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verSegunTipo(b.dataset.ver); }));
     $$('#cuerpo [data-link]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); window.open(b.dataset.link, '_blank'); }));
     $$('#cuerpo [data-copiar]').forEach(b => b.addEventListener('click', () => { navigator.clipboard.writeText(b.dataset.copiar); toast(T('copiado')); }));
 
@@ -782,7 +864,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     c.innerHTML = html;
     pintarImagenes(c);
     $('#btnVolver').addEventListener('click', () => { if (l) { loteAbierto = l.id; nav('lote'); } else nav('lotes'); });
-    $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verArchivo(img.dataset.path)));
+    $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verImagen(img.dataset.path)));
 
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
 
