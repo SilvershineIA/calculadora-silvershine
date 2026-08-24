@@ -64,6 +64,11 @@ const I18N = (() => {
     o_guardada:     ['🧵 Orden guardada en el lote', 'Order saved'],
     o_suelta:       ['Órdenes sueltas (sin lote)', 'Unassigned orders'],
     o_noDisp:       ['🚫 No disponible — devuelta por Tonglin', '🚫 Not available'],
+    o_editar:       ['✏️ Editar la orden', '—'],
+    o_editada:      ['✏️ Editada el', '✏️ EDITED by José on'],
+    o_editTitulo:   ['✏️ Editando la orden', '—'],
+    o_editCancelar: ['Cancelar edición', '—'],
+    o_editGuardada: ['✏️ Orden actualizada', '—'],
     o_marcarNoDisp: ['🚫 No podemos hacer esta pieza (devolver a José)', "🚫 We can't make this piece — send it back"],
     o_devuelta:     ['La pieza vuelve a tus órdenes sueltas', 'Piece returned to José'],
 
@@ -133,6 +138,7 @@ const I18N = (() => {
     ev_pagoFinal:   ['Comprobante final subido', 'Final payment receipt uploaded'],
     ev_tracking:    ['¡Despachado! Tracking listo', 'Tracking added'],
     ev_noDisp:      ['Tonglin devolvió una pieza (no disponible)', 'Piece marked not available'],
+    ev_ordenEditada:['Orden editada', '⚠ José EDITED an order — please check the changes'],
 
     /* ── login / ajustes ── */
     a_conectar:     ['Conectar', 'Connect'],

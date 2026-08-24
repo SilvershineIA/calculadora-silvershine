@@ -715,6 +715,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       <div class="h-sec">${esc(o.nombre)}${l ? ` · 🗂 ${esc(l.nombre)}` : ''}</div>`;
 
     if (o.noDisponible) html += `<div class="card"><div class="sub rojo"><b>${T('o_noDisp')}</b> · ${fmtFecha(o.noDisponible.fecha)}${o.noDisponible.nota ? ' · ' + esc(o.noDisponible.nota) : ''}</div></div>`;
+    if (o.editadaEl) html += `<div class="card" style="border-color:var(--rose)"><div class="sub"><b>${T('o_editada')} ${fmtFecha(o.editadaEl)}</b>${I18N.esKaren() ? ' — the specs below are the current version.' : ''}</div></div>`;
     if (!karen && o.destino) html += `<div class="card"><span class="badge ${o.destino === 'etsy' ? 'b-rojo' : 'b-gris'}">${T('o_' + o.destino)}</span>${o.destino === 'etsy' ? ` <span class="sub">· ${T('l_shipDirect')}</span>` : ''}</div>`;
 
     /* la orden — formato Tonglin */
@@ -768,6 +769,11 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (karen && l && (est === 'enviado' || est === 'cotizado') && !o.noDisponible) {
       html += `<button class="btn peligro" id="btnNoDisp">${T('o_marcarNoDisp')}</button>`;
     }
+    /* José: editar hasta que arranque la producción (después el taller ya
+       está trabajando la pieza); si el lote ya fue enviado, a Tonglin le
+       llega un aviso de que la orden cambió */
+    const editable = !karen && (!l || ['armando', 'enviado', 'cotizado', 'aprobado', 'porPagar'].includes(est));
+    if (editable) html += `<button class="btn ghost" id="btnEditarOrden">${T('o_editar')}</button>`;
     /* José: borrar orden mientras el lote se arma */
     if (!karen && (!l || est === 'armando')) {
       html += `<button class="btn peligro" id="btnBorrarOrden">🗑 ${T('eliminar')}</button>`;
@@ -833,6 +839,20 @@ Si no es legible responde {"error": "motivo corto"}.`;
       toast(T('o_devuelta'));
       loteAbierto = loteViejo;
       nav('lote');
+    });
+
+    on('#btnEditarOrden', () => {
+      editandoOrden = o.id;
+      fotosNueva = [];
+      fotosExistentes = (o.fotos || []).slice();
+      borrador = {
+        destino: o.destino || 'cliente', etsyNum: o.etsyNum || '', shipTo: o.shipTo || '',
+        nombre: o.nombre || '', material: o.material || '', igLink: o.igLink || '',
+        size: o.size || '', qty: o.qty || '1', engraving: o.engraving || '',
+        stone: o.stone || '', cert: o.cert === 'Yes' ? 'Yes' : 'No',
+        target: o.target || '', special: o.special || '', loteId: o.loteId || '',
+      };
+      nav('nueva');
     });
 
     on('#btnBorrarOrden', async () => {
@@ -937,13 +957,21 @@ Si no es legible responde {"error": "motivo corto"}.`;
   /* ═══ nueva orden (José) ═══
      El formulario vive en un BORRADOR: moverse de pestaña, refrescar
      datos o mirar un lote a mitad de camino NO borra lo escrito. */
-  let fotosNueva = [];   // blobs pendientes de subir (persisten entre renders)
-  let borrador = null;   // campos a medio llenar
+  let fotosNueva = [];       // blobs pendientes de subir (persisten entre renders)
+  let borrador = null;       // campos a medio llenar
+  let editandoOrden = null;  // id de la orden que se está EDITANDO (null = orden nueva)
+  let fotosExistentes = [];  // fotos ya subidas de la orden en edición (se pueden quitar)
   function vNueva(c) {
+    const editando = editandoOrden ? doc(editandoOrden) : null;
+    if (editandoOrden && !editando) { editandoOrden = null; borrador = null; }
+    const loteEd = editando && editando.loteId ? doc(editando.loteId) : null;
+    /* con el lote ya enviado la pieza no se puede mover de lote, solo editar */
+    const loteBloqueado = editando && loteEd && estadoLote(loteEd) !== 'armando';
     const lotesAbiertos = lotes().filter(l => estadoLote(l) === 'armando');
     const b = borrador || {};
     c.innerHTML = `
-      <div class="h-sec">＋ ${T('nueva')}</div>
+      <div class="h-sec">${editando ? `${T('o_editTitulo')}: ${esc(editando.nombre)}` : '＋ ' + T('nueva')}</div>
+      ${editando && loteBloqueado ? `<div class="card" style="border-color:var(--rose)"><div class="sub">⚠ El lote <b>${esc(loteEd.nombre)}</b> ya fue enviado — al guardar, a Tonglin le llegará un AVISO de que esta orden cambió.</div></div>` : ''}
       <div class="card" id="noForm">
         <label>${T('o_destino')}</label>
         <div class="chips" id="noDestino">
@@ -1013,15 +1041,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
         </div>
         <label>${T('o_special')}</label><textarea id="noSpecial">${esc(b.special || '')}</textarea>
         <label>${T('o_lote')}</label>
-        <select id="noLote">
+        ${loteBloqueado
+          ? `<input value="🗂 ${esc(loteEd.nombre)} (${T('e_' + estadoLote(loteEd)).replace(/^[^ ]+ /, '')})" disabled>
+             <select id="noLote" style="display:none"><option value="${loteEd.id}" selected></option></select>`
+          : `<select id="noLote">
           ${lotesAbiertos.map(l => `<option value="${l.id}" ${b.loteId === l.id ? 'selected' : ''}>🗂 ${esc(l.nombre)}</option>`).join('')}
           <option value="__nuevo__" ${b.loteId === '__nuevo__' ? 'selected' : ''}>${T('o_loteNuevo')}</option>
           <option value="" ${b.loteId === '' ? 'selected' : ''}>(${T('o_suelta')})</option>
-        </select>
+        </select>`}
         <div id="noLoteNuevo" style="display:none">
           <label>${T('l_nuevoNombre')}</label><input id="noLoteNombre" autocomplete="off" value="${esc(b.loteNombre || '')}">
         </div>
         <button class="btn rosa" id="noGuardar">${T('guardar')}</button>
+        ${editando ? `<button class="btn ghost" id="noCancelarEd">${T('o_editCancelar')}</button>` : ''}
       </div>`;
 
     if (!lotesAbiertos.length && !('loteId' in b)) $('#noLote').value = '__nuevo__';
@@ -1045,7 +1077,24 @@ Si no es legible responde {"error": "motivo corto"}.`;
     };
     $('#noForm').addEventListener('input', anotar);
 
-    /* fotos ya elegidas: se re-pintan al volver */
+    /* en edición: las fotos YA subidas, con su ✕ para quitarlas */
+    if (editando) {
+      for (const f of fotosExistentes) {
+        const cont = document.createElement('div');
+        cont.style.cssText = 'position:relative;display:inline-block';
+        const im = document.createElement('img');
+        im.dataset.path = f.path;
+        const x = document.createElement('button');
+        x.textContent = '✕';
+        x.type = 'button';
+        x.style.cssText = 'position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:12px;cursor:pointer';
+        x.addEventListener('click', () => { fotosExistentes = fotosExistentes.filter(z => z !== f); cont.remove(); });
+        cont.appendChild(im); cont.appendChild(x);
+        $('#noFotos').insertBefore(cont, $('#noMas'));
+      }
+      pintarImagenes($('#noFotos'));
+    }
+    /* fotos ya elegidas (nuevas): se re-pintan al volver */
     for (const blob of fotosNueva) {
       const im = document.createElement('img');
       im.src = URL.createObjectURL(blob);
@@ -1147,6 +1196,14 @@ Si no es legible responde {"error": "motivo corto"}.`;
       agregarFotos(await elegirArchivos('image/*'));
     });
 
+    const cancelarEd = $('#noCancelarEd');
+    if (cancelarEd) cancelarEd.addEventListener('click', () => {
+      const volverA = editandoOrden;
+      editandoOrden = null; borrador = null; fotosNueva = []; fotosExistentes = [];
+      ordenAbierta = volverA;
+      nav('orden');
+    });
+
     $('#noGuardar').addEventListener('click', async () => {
       const nombre = $('#noNombre').value.trim();
       if (!nombre) { toast('⚠ ' + T('o_nombre')); $('#noNombre').focus(); return; }
@@ -1161,8 +1218,9 @@ Si no es legible responde {"error": "motivo corto"}.`;
           loteId = l.id;
         }
         const destino = $('#noDestino button.on').dataset.d;
-        const o = {
-          id: uid('ord'), tipo: 'orden', creado: new Date().toISOString(),
+        /* editando: se conserva la misma orden (id, CAD, comentarios) */
+        const o = editando || { id: uid('ord'), tipo: 'orden', creado: new Date().toISOString(), fotos: [] };
+        Object.assign(o, {
           nombre, destino,
           material: $('#noMaterial').value.trim(),
           size: $('#noSize').value.trim(),
@@ -1175,19 +1233,30 @@ Si no es legible responde {"error": "motivo corto"}.`;
           igLink: $('#noIg').value.trim(),
           etsyNum: destino === 'etsy' ? $('#noEtsyNum').value.trim() : '',
           shipTo: destino === 'etsy' ? $('#noShipTo').value.trim() : '',
-          loteId, fotos: [],
-        };
+          loteId,
+        });
+        if (editando) o.fotos = fotosExistentes.slice();
+        else o.fotos = [];
         for (let i = 0; i < fotosNueva.length; i++) {
-          const p = `ordenes/${o.id}/foto-${i + 1}.jpg`;
+          const p = `ordenes/${o.id}/foto-${Date.now()}-${i + 1}.jpg`;
           await Nube.subirArchivo(p, fotosNueva[i], 'image/jpeg');
           o.fotos.push({ path: p });
         }
-        await guardarDoc(o);
-        borrador = null;      // orden guardada: borrador y fotos quedan limpios
-        fotosNueva = [];
-        toast(T('o_guardada'));
-        loteAbierto = loteId;
-        nav(loteId ? 'lote' : 'lotes');
+        if (editando) {
+          o.editadaEl = hoyISO();
+          await guardarDoc(o);
+          /* lote ya enviado → AVISO a Tonglin de que la orden cambió */
+          const lo = loteId ? doc(loteId) : null;
+          if (lo && estadoLote(lo) !== 'armando') await avisar('ordenEditada', o.nombre, loteId, o.id);
+          toast(T('o_editGuardada'));
+        } else {
+          await guardarDoc(o);
+          toast(T('o_guardada'));
+        }
+        const irA = editando ? o.id : null;
+        editandoOrden = null; borrador = null; fotosNueva = []; fotosExistentes = [];
+        if (irA) { ordenAbierta = irA; nav('orden'); }
+        else { loteAbierto = loteId; nav(loteId ? 'lote' : 'lotes'); }
       } catch (e) {
         toast('⚠ ' + e.message);
         $('#noGuardar').disabled = false;
