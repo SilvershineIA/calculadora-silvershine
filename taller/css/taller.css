@@ -145,6 +145,8 @@ textarea{min-height:70px;resize:vertical}
   width:74px;height:74px;border-radius:10px;border:1.5px dashed var(--border);
   background:none;font-size:22px;color:var(--muted);cursor:pointer;
 }
+/* al arrastrar imágenes encima */
+.arrastrando{outline:2px dashed var(--rose-700);outline-offset:3px;border-radius:12px}
 
 /* tabla de cotización */
 .qt{width:100%;border-collapse:collapse;font-size:13px}

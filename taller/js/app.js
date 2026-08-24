@@ -75,6 +75,25 @@ const App = (() => {
     i.onchange = () => res(i.files[0] || null);
     i.click();
   });
+  const elegirArchivos = accept => new Promise(res => {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = accept; i.multiple = true;
+    i.onchange = () => res([...i.files]);
+    i.click();
+  });
+  /* Zona de arrastre: soltar imágenes encima también funciona */
+  function zonaArrastre(el, alSoltar) {
+    if (!el) return;
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('arrastrando'); });
+    el.addEventListener('dragleave', () => el.classList.remove('arrastrando'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();   // que la zona de adentro no se lo pase a la de afuera (foto doble)
+      el.classList.remove('arrastrando');
+      const archivos = [...((e.dataTransfer && e.dataTransfer.files) || [])].filter(f => f.type.startsWith('image/'));
+      if (archivos.length) alSoltar(archivos);
+    });
+  }
   async function blobAB64(blob) {
     const buf = new Uint8Array(await blob.arrayBuffer());
     let s = '';
@@ -125,7 +144,13 @@ const App = (() => {
     try {
       docs = await Nube.listarDocs();
       faltaSQL = false;
-      render();
+      /* No repintar debajo de los dedos del usuario: si está llenando la
+         Nueva orden, escribiendo en un campo o con un modal abierto, los
+         datos frescos esperan al próximo movimiento */
+      const a = document.activeElement;
+      const escribiendo = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+      if (silencioso && (vista === 'nueva' || escribiendo || $('#modalFondo'))) { /* nada */ }
+      else render();
     } catch (e) {
       const msj = String(e.message || e);
       if (msj === 'SESION_EXPIRADA') { vista = 'login'; render(); }
@@ -868,15 +893,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
     lienzo.addEventListener('pointerup', () => { if (trazo && trazo.length > 1) trazos.push(trazo); trazo = null; pintar(); });
     $('#czDeshacer').addEventListener('click', () => { trazos.pop(); pintar(); });
 
-    $('#czMas').addEventListener('click', async () => {
-      const f = await elegirArchivo('image/*');
-      if (!f) return;
-      const blob = await comprimir(f);
-      refs.push(blob);
-      const im = document.createElement('img');
-      im.src = URL.createObjectURL(blob);
-      $('#czRefs').insertBefore(im, $('#czMas'));
-    });
+    const agregarRefs = async archivos => {
+      for (const f of archivos) {
+        try {
+          const blob = await comprimir(f);
+          refs.push(blob);
+          const im = document.createElement('img');
+          im.src = URL.createObjectURL(blob);
+          $('#czRefs').insertBefore(im, $('#czMas'));
+        } catch { toast('⚠ ' + f.name); }
+      }
+    };
+    $('#czMas').addEventListener('click', async () => agregarRefs(await elegirArchivos('image/*')));
+    zonaArrastre($('#czRefs'), agregarRefs);
 
     $('#czEnviar').addEventListener('click', async () => {
       const nota = $('#czNota').value.trim();
@@ -905,69 +934,104 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
   }
 
-  /* ═══ nueva orden (José) ═══ */
-  let fotosNueva = [];   // blobs pendientes de subir
+  /* ═══ nueva orden (José) ═══
+     El formulario vive en un BORRADOR: moverse de pestaña, refrescar
+     datos o mirar un lote a mitad de camino NO borra lo escrito. */
+  let fotosNueva = [];   // blobs pendientes de subir (persisten entre renders)
+  let borrador = null;   // campos a medio llenar
   function vNueva(c) {
     const lotesAbiertos = lotes().filter(l => estadoLote(l) === 'armando');
-    fotosNueva = [];
+    const b = borrador || {};
     c.innerHTML = `
       <div class="h-sec">＋ ${T('nueva')}</div>
-      <div class="card">
+      <div class="card" id="noForm">
         <label>${T('o_destino')}</label>
         <div class="chips" id="noDestino">
-          <button data-d="cliente" class="on">${T('o_cliente')}</button>
-          <button data-d="stock">${T('o_stock')}</button>
-          <button data-d="etsy">${T('o_etsy')}</button>
+          <button data-d="cliente" class="${(b.destino || 'cliente') === 'cliente' ? 'on' : ''}">${T('o_cliente')}</button>
+          <button data-d="stock" class="${b.destino === 'stock' ? 'on' : ''}">${T('o_stock')}</button>
+          <button data-d="etsy" class="${b.destino === 'etsy' ? 'on' : ''}">${T('o_etsy')}</button>
         </div>
-        <div id="noEtsy" style="display:none">
-          <label>${T('o_etsyNum')}</label><input id="noEtsyNum" autocomplete="off">
-          <label>${T('o_shipTo')}</label><textarea id="noShipTo"></textarea>
+        <div id="noEtsy" style="display:${b.destino === 'etsy' ? 'block' : 'none'}">
+          <label>${T('o_etsyNum')}</label><input id="noEtsyNum" autocomplete="off" value="${esc(b.etsyNum || '')}">
+          <label>${T('o_shipTo')}</label><textarea id="noShipTo">${esc(b.shipTo || '')}</textarea>
         </div>
-        <label>${T('o_nombre')}</label><input id="noNombre" autocomplete="off" placeholder="Ej: Anillo rubí 14K — María">
-        <label>${T('o_material')}</label><input id="noMaterial" autocomplete="off" placeholder="14K Yellow Gold">
+        <label>${T('o_nombre')}</label><input id="noNombre" autocomplete="off" placeholder="Ej: Anillo rubí 14K — María" value="${esc(b.nombre || '')}">
+        <label>${T('o_material')}</label><input id="noMaterial" autocomplete="off" placeholder="14K Yellow Gold" value="${esc(b.material || '')}">
         <label>${T('o_fotos')}</label>
-        <div class="galeria" id="noFotos"><button class="mas" id="noMas">＋</button></div>
-        <label>${T('o_igLink')}</label><input id="noIg" autocomplete="off" placeholder="https://instagram.com/p/…">
+        <div class="galeria" id="noFotos"><button class="mas" id="noMas" title="También puedes ARRASTRAR imágenes aquí">＋</button></div>
+        <label>${T('o_igLink')}</label><input id="noIg" autocomplete="off" placeholder="https://instagram.com/p/…" value="${esc(b.igLink || '')}">
         <div class="dos">
-          <div><label>${T('o_size')}</label><input id="noSize" autocomplete="off" placeholder="US 7"></div>
-          <div><label>${T('o_qty')}</label><input id="noQty" type="number" min="1" value="1"></div>
+          <div><label>${T('o_size')}</label><input id="noSize" autocomplete="off" placeholder="US 7" value="${esc(b.size || '')}"></div>
+          <div><label>${T('o_qty')}</label><input id="noQty" type="number" min="1" value="${esc(b.qty || '1')}"></div>
         </div>
-        <label>${T('o_engraving')}</label><input id="noEng" autocomplete="off">
-        <label>${T('o_stone')}</label><textarea id="noStone" placeholder="Centro: lab ruby round 1.2 CT…"></textarea>
+        <label>${T('o_engraving')}</label><input id="noEng" autocomplete="off" value="${esc(b.engraving || '')}">
+        <label>${T('o_stone')}</label><textarea id="noStone" placeholder="Centro: lab ruby round 1.2 CT…">${esc(b.stone || '')}</textarea>
         <div class="dos">
-          <div><label>${T('o_cert')}</label><input id="noCert" autocomplete="off" placeholder="No cert / IGI / GIA"></div>
-          <div><label>${T('o_target')}</label><input id="noTarget" type="date"></div>
+          <div><label>${T('o_cert')}</label><input id="noCert" autocomplete="off" placeholder="No cert / IGI / GIA" value="${esc(b.cert || '')}"></div>
+          <div><label>${T('o_target')}</label><input id="noTarget" type="date" value="${esc(b.target || '')}"></div>
         </div>
-        <label>${T('o_special')}</label><textarea id="noSpecial"></textarea>
+        <label>${T('o_special')}</label><textarea id="noSpecial">${esc(b.special || '')}</textarea>
         <label>${T('o_lote')}</label>
         <select id="noLote">
-          ${lotesAbiertos.map(l => `<option value="${l.id}">🗂 ${esc(l.nombre)}</option>`).join('')}
-          <option value="__nuevo__">${T('o_loteNuevo')}</option>
-          <option value="">(${T('o_suelta')})</option>
+          ${lotesAbiertos.map(l => `<option value="${l.id}" ${b.loteId === l.id ? 'selected' : ''}>🗂 ${esc(l.nombre)}</option>`).join('')}
+          <option value="__nuevo__" ${b.loteId === '__nuevo__' ? 'selected' : ''}>${T('o_loteNuevo')}</option>
+          <option value="" ${b.loteId === '' ? 'selected' : ''}>(${T('o_suelta')})</option>
         </select>
-        <div id="noLoteNuevo" style="display:${lotesAbiertos.length ? 'none' : 'block'}">
-          <label>${T('l_nuevoNombre')}</label><input id="noLoteNombre" autocomplete="off">
+        <div id="noLoteNuevo" style="display:none">
+          <label>${T('l_nuevoNombre')}</label><input id="noLoteNombre" autocomplete="off" value="${esc(b.loteNombre || '')}">
         </div>
         <button class="btn rosa" id="noGuardar">${T('guardar')}</button>
       </div>`;
 
-    if (!lotesAbiertos.length) $('#noLote').value = '__nuevo__';
-    $$('#noDestino button').forEach(b => b.addEventListener('click', () => {
-      $$('#noDestino button').forEach(x => x.classList.remove('on'));
-      b.classList.add('on');
-      $('#noEtsy').style.display = b.dataset.d === 'etsy' ? 'block' : 'none';
-    }));
-    $('#noLote').addEventListener('change', () => {
-      $('#noLoteNuevo').style.display = $('#noLote').value === '__nuevo__' ? 'block' : 'none';
-    });
-    $('#noMas').addEventListener('click', async () => {
-      const f = await elegirArchivo('image/*');
-      if (!f) return;
-      const blob = await comprimir(f);
-      fotosNueva.push(blob);
+    if (!lotesAbiertos.length && !('loteId' in b)) $('#noLote').value = '__nuevo__';
+    $('#noLoteNuevo').style.display = $('#noLote').value === '__nuevo__' ? 'block' : 'none';
+
+    /* borrador: cada tecla queda guardada — cambiar de pestaña no borra nada */
+    const anotar = () => {
+      borrador = {
+        destino: ($('#noDestino button.on') || {}).dataset ? $('#noDestino button.on').dataset.d : 'cliente',
+        etsyNum: $('#noEtsyNum').value, shipTo: $('#noShipTo').value,
+        nombre: $('#noNombre').value, material: $('#noMaterial').value,
+        igLink: $('#noIg').value, size: $('#noSize').value, qty: $('#noQty').value,
+        engraving: $('#noEng').value, stone: $('#noStone').value,
+        cert: $('#noCert').value, target: $('#noTarget').value, special: $('#noSpecial').value,
+        loteId: $('#noLote').value, loteNombre: $('#noLoteNombre').value,
+      };
+    };
+    $('#noForm').addEventListener('input', anotar);
+
+    /* fotos ya elegidas: se re-pintan al volver */
+    for (const blob of fotosNueva) {
       const im = document.createElement('img');
       im.src = URL.createObjectURL(blob);
       $('#noFotos').insertBefore(im, $('#noMas'));
+    }
+    const agregarFotos = async archivos => {
+      for (const f of archivos) {
+        try {
+          const blob = await comprimir(f);
+          fotosNueva.push(blob);
+          const im = document.createElement('img');
+          im.src = URL.createObjectURL(blob);
+          $('#noFotos').insertBefore(im, $('#noMas'));
+        } catch { toast('⚠ ' + f.name); }
+      }
+    };
+    zonaArrastre($('#noFotos'), agregarFotos);
+    zonaArrastre($('#noForm'), agregarFotos);
+
+    $$('#noDestino button').forEach(btn => btn.addEventListener('click', () => {
+      $$('#noDestino button').forEach(x => x.classList.remove('on'));
+      btn.classList.add('on');
+      $('#noEtsy').style.display = btn.dataset.d === 'etsy' ? 'block' : 'none';
+      anotar();
+    }));
+    $('#noLote').addEventListener('change', () => {
+      $('#noLoteNuevo').style.display = $('#noLote').value === '__nuevo__' ? 'block' : 'none';
+      anotar();
+    });
+    $('#noMas').addEventListener('click', async () => {
+      agregarFotos(await elegirArchivos('image/*'));
     });
 
     $('#noGuardar').addEventListener('click', async () => {
@@ -1006,6 +1070,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
           o.fotos.push({ path: p });
         }
         await guardarDoc(o);
+        borrador = null;      // orden guardada: borrador y fotos quedan limpios
+        fotosNueva = [];
         toast(T('o_guardada'));
         loteAbierto = loteId;
         nav(loteId ? 'lote' : 'lotes');
