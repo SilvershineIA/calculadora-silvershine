@@ -305,7 +305,7 @@ const App = (() => {
       <div class="topbar">
         <h1>${T('app')}</h1>
         <button id="btnRefrescar" title="${T('actualizar')}">🔄</button>
-        <span class="quien ${karen ? 'taller' : 'jose'}">${karen ? 'Karen' : 'José'}</span>
+        <span class="quien ${karen ? 'taller' : 'jose'}">${karen ? 'Julia' : 'José'}</span>
       </div>
       <main id="cuerpo"></main>
       <nav class="nav">${tabs.map(([k, ico, tx]) => `
@@ -842,7 +842,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (coms.length || (!karen && l && est === 'cotizado')) {
       html += `<div class="h-sec">💬</div>`;
       coms.forEach(cm => {
-        html += `<div class="card"><div class="sub"><b>${cm.de === 'jose' ? 'José' : 'Karen'}</b> · ${fmtFecha(cm.fecha)}</div><div style="font-size:14px;margin-top:2px">${esc(cm.texto)}</div></div>`;
+        html += `<div class="card"><div class="sub"><b>${cm.de === 'jose' ? 'José' : 'Julia'}</b> · ${fmtFecha(cm.fecha)}</div><div style="font-size:14px;margin-top:2px">${esc(cm.texto)}</div></div>`;
       });
       if (!karen && l && !l.aprobada && l.cot) html += `<button class="btn ghost" id="btnComentar">${T('l_comentar')}</button>`;
     }
@@ -1420,7 +1420,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       if (yo && yo.rol === 'jose') {
         /* José abrió el link de Karen en SU dispositivo: no dejar que le
            secuestre la sesión — para probar el lado de ella, incógnito */
-        avisoLink = '🔗 Ese link es el de Karen — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.';
+        avisoLink = '🔗 Ese link es el de Julia — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.';
       } else {
         try {
           await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p);

@@ -147,7 +147,7 @@ const I18N = (() => {
     a_url:          ['URL de Supabase', 'Supabase URL'],
     a_anon:         ['Clave anon/public', 'Anon key'],
     a_linkKaren:    ['🔗 Link para Tonglin', ''],
-    a_linkExpl:     ['Pega el email y la clave del usuario del taller (SETUP-TALLER.md paso 1) y genera el link que le mandarás a Karen UNA vez.', ''],
+    a_linkExpl:     ['Pega el email y la clave del usuario del taller (SETUP-TALLER.md paso 1) y genera el link que le mandarás a Julia UNA vez.', ''],
     a_generar:      ['Generar link', ''],
     a_ia:           ['🤖 Clave de IA (Anthropic)', ''],
     a_iaExpl:       ['La misma del CRM — se usa para leer los PDFs de Tonglin. Vive SOLO en este dispositivo.', ''],
