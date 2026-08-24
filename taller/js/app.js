@@ -996,7 +996,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button data-c="Heart">♥ Corazón</button>
         </div>
         <div class="fila" style="align-items:flex-end;gap:8px;margin-bottom:6px">
-          <div style="flex:1"><label style="margin-top:0">mm</label><input id="noPiedraMm" type="number" step="0.1" min="0" placeholder="6.5"></div>
+          <div style="flex:1"><label style="margin-top:0" id="noPiedraMmLbl">mm</label><input id="noPiedraMm" type="number" step="0.1" min="0" placeholder="6.5"></div>
+          <div style="flex:1;display:none" id="noPiedraMm2Wrap"><label style="margin-top:0">× mm</label><input id="noPiedraMm2" type="number" step="0.1" min="0" placeholder="6"></div>
           <div style="flex:1"><label style="margin-top:0">CT</label><input id="noPiedraCt" type="number" step="0.01" min="0" placeholder="1.0"></div>
           <button type="button" class="btn-sm" id="noPiedraAdd" style="flex:0 0 auto;padding:10px 16px">＋ piedra</button>
         </div>
@@ -1090,20 +1091,32 @@ Si no es legible responde {"error": "motivo corto"}.`;
       $$('#noPiedraTipo button').forEach(x => x.classList.remove('on'));
       btn.classList.add('on');
     }));
+    /* los cortes fancy (todo menos redondo) se miden largo × ancho */
+    const ajustarMm = () => {
+      const corte = (($('#noPiedraCorte button.on') || {}).dataset || {}).c || 'Round';
+      const fancy = corte !== 'Round';
+      $('#noPiedraMm2Wrap').style.display = fancy ? 'block' : 'none';
+      $('#noPiedraMmLbl').textContent = fancy ? 'mm largo' : 'mm';
+    };
     $$('#noPiedraCorte button').forEach(btn => btn.addEventListener('click', () => {
       $$('#noPiedraCorte button').forEach(x => x.classList.remove('on'));
       btn.classList.add('on');
+      ajustarMm();
     }));
+    ajustarMm();
     $('#noPiedraAdd').addEventListener('click', () => {
       const tipo = (($('#noPiedraTipo button.on') || {}).dataset || {}).p;
       if (!tipo) return;
       const corte = (($('#noPiedraCorte button.on') || {}).dataset || {}).c || '';
       const mm = Number($('#noPiedraMm').value) || 0;
+      const mm2 = corte !== 'Round' ? (Number($('#noPiedraMm2').value) || 0) : 0;
+      const medida = mm && mm2 ? `${mm}×${mm2} mm` : mm ? `${mm} mm` : '';
       const ct = Number($('#noPiedraCt').value) || 0;
-      const linea = [tipo, corte, mm ? `${mm} mm` : '', ct ? `${ct} CT` : ''].filter(Boolean).join(' — ');
+      const linea = [tipo, corte, medida, ct ? `${ct} CT` : ''].filter(Boolean).join(' — ');
       const t = $('#noStone');
       t.value = (t.value.trim() ? t.value.trim() + '\n' : '') + linea;
       $('#noPiedraMm').value = '';
+      $('#noPiedraMm2').value = '';
       $('#noPiedraCt').value = '';
       anotar();
     });
