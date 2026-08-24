@@ -233,6 +233,22 @@ const App = (() => {
     window.open(`https://wa.me/${num}?text=${encodeURIComponent(msjJulia(l, est))}`, '_blank');
   }
 
+  /* …y en la otra dirección: Julia le avisa a José con el mensaje listo */
+  function msjJose(l, est) {
+    const M = {
+      cotizado: `Hi José! The quotation for batch "${l.nombre}" is uploaded in the app — please review and approve 🧵`,
+      porPagar: `Hi José! Payment link for batch "${l.nombre}" is attached — waiting for the deposit receipt 💳`,
+      final: `Hi José! Final quote and payment link for batch "${l.nombre}" are in the app — waiting for the balance ⚖️`,
+      despachado: `Hi José! Batch "${l.nombre}" is shipped ✈️ The tracking number is in the app.`,
+    };
+    return M[est] || `Hi José! Please check batch "${l.nombre}" in the app 🧵`;
+  }
+  function avisarJose(l, est) {
+    const num = (cfgTaller().waJose || '').replace(/[^\d]/g, '');
+    if (!num) { toast("⚠ José hasn't set his WhatsApp number yet"); return; }
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msjJose(l, est))}`, '_blank');
+  }
+
   /* evento para el otro lado (clave del diccionario + contexto neutro) */
   async function avisar(clave, ctx, loteId, ordenId) {
     const para = I18N.esKaren() ? 'jose' : 'karen';
@@ -634,9 +650,12 @@ const App = (() => {
       }
     }
 
-    /* José: empujón por WhatsApp cuando el próximo paso le toca a Julia */
+    /* Empujón por WhatsApp cuando el próximo paso le toca al OTRO lado */
     if (!karen && LE_TOCA[est] === 'karen') {
       html += `<button class="btn ghost" id="btnAvisarJulia">💬 Avisar a Julia por WhatsApp (mensaje listo)</button>`;
+    }
+    if (karen && LE_TOCA[est] === 'jose') {
+      html += `<button class="btn ghost" id="btnAvisarJose">💬 Message José on WhatsApp (ready to send)</button>`;
     }
 
     c.innerHTML = html;
@@ -647,6 +666,8 @@ const App = (() => {
     $('#btnVolver').addEventListener('click', () => nav('lotes'));
     const bJulia = $('#btnAvisarJulia');
     if (bJulia) bJulia.addEventListener('click', () => avisarJulia(l, estadoLote(l)));
+    const bJose = $('#btnAvisarJose');
+    if (bJose) bJose.addEventListener('click', () => avisarJose(l, estadoLote(l)));
     $$('#cuerpo [data-orden]').forEach(el => el.addEventListener('click', () => { ordenAbierta = el.dataset.orden; nav('orden'); }));
     $$('#cuerpo [data-ver]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verSegunTipo(b.dataset.ver); }));
     $$('#cuerpo [data-link]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); window.open(b.dataset.link, '_blank'); }));
@@ -1410,10 +1431,11 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button class="btn ghost" id="ajCopiar">${T('copiar')}</button>
         </div>
       </div>
-      <div class="h-sec">💬 WhatsApp de Julia</div>
+      <div class="h-sec">💬 WhatsApp (avisos en ambas direcciones)</div>
       <div class="card">
-        <p class="sub">Para el botón «Avisar a Julia»: su número con código de país, solo dígitos (el de Tonglin es +86…).</p>
-        <label>Número</label><input id="ajWaJulia" autocomplete="off" placeholder="8618138103154" value="${esc(cfgTaller().waJulia || '')}">
+        <p class="sub">Con código de país, solo dígitos. El de Julia para tu botón «Avisar a Julia»; el TUYO para el botón «Message José» que ella ve.</p>
+        <label>WhatsApp de Julia</label><input id="ajWaJulia" autocomplete="off" placeholder="8618138103154" value="${esc(cfgTaller().waJulia || '')}">
+        <label>Tu WhatsApp</label><input id="ajWaJose" autocomplete="off" placeholder="1809XXXXXXX" value="${esc(cfgTaller().waJose || '')}">
         <button class="btn ghost" id="ajWaOk">${T('guardar')}</button>
       </div>
       <div class="h-sec">${T('a_ia')}</div>
@@ -1437,6 +1459,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     $('#ajWaOk').addEventListener('click', async () => {
       const c2 = cfgTaller();
       c2.waJulia = $('#ajWaJulia').value.replace(/[^\d]/g, '');
+      c2.waJose = $('#ajWaJose').value.replace(/[^\d]/g, '');
       await guardarDoc(c2);
       toast('💬 ✓');
     });
