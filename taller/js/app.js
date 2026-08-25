@@ -204,6 +204,11 @@ const App = (() => {
   const sueltas = () => ordenes().filter(o => !o.loteId)
     .sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
 
+  /* El nombre visible de una orden SIEMPRE arranca por su número (si lo
+     tiene) — es el hilo que la une con la factura del CRM y con el PI
+     de Tonglin, que también escribe "order 1882" en sus filas */
+  const nomOrden = o => (o.numero ? '#' + o.numero + ' · ' : '') + (o.nombre || '');
+
   async function guardarDoc(d) {
     const i = docs.findIndex(x => x.id === d.id);
     if (i >= 0) docs[i] = d; else docs.unshift(d);
@@ -480,7 +485,7 @@ const App = (() => {
         html += `<div class="h-sec">${T('o_suelta')} (${s.length})</div>` + s.map(o => `
           <div class="card click" data-orden="${o.id}">
             <div class="fila"><div class="crece">
-              <div class="nombre">${esc(o.nombre)}</div>
+              <div class="nombre">${esc(nomOrden(o))}</div>
               <div class="sub">${esc(o.material || '')}${o.noDisponible ? ` · <b class="rojo">${T('o_noDisp')}</b>` : ''}</div>
             </div><span class="sub">›</span></div>
           </div>`).join('');
@@ -536,7 +541,7 @@ const App = (() => {
       return `
       <div class="card click" data-orden="${o.id}">
         <div class="fila"><div class="crece">
-          <div class="nombre">${esc(o.nombre)}${o.destino === 'etsy' ? ' 🛍' : ''}</div>
+          <div class="nombre">${esc(nomOrden(o))}${o.destino === 'etsy' ? ' 🛍' : ''}</div>
           <div class="sub">${esc(o.material || '')}${cadTxt}${(o.comentarios || []).length ? ' · 💬 ' + o.comentarios.length : ''}</div>
         </div><span class="sub">›</span></div>
       </div>`;
@@ -595,8 +600,9 @@ const App = (() => {
               ${!karen ? `<label>${T('q_asignar')}</label>
                 <select data-asigna="${i}">
                   <option value="">—</option>
-                  ${piezas.map(o => `<option value="${o.id}" ${(p.ordenId || (piezas[i] || {}).id) === o.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join('')}
-                </select>` : ''}
+                  ${piezas.map(o => `<option value="${o.id}" ${(p.ordenId || (piezas[i] || {}).id) === o.id ? 'selected' : ''}>${esc(nomOrden(o))}</option>`).join('')}
+                </select>
+                <button type="button" class="btn-sm" data-crearpieza="${i}" style="margin-top:8px">${T('q_crearPieza')}</button>` : ''}
             </div>
           </div>`).join('');
         /* chequeo de cuadre: suma de piezas vs total del PDF */
@@ -760,6 +766,26 @@ const App = (() => {
         await guardarDoc(l);
       });
     });
+    /* Una fila del PI que NO estaba en el lote (se le olvidó a José pero
+       Tonglin sí la cotizó): se crea la pieza desde la fila, extrayendo
+       el "order 1882" que Tonglin escribe en la descripción */
+    $$('#cuerpo [data-crearpieza]').forEach(b => b.addEventListener('click', async e => {
+      e.stopPropagation();
+      const p = l.cot.leida.pieces[Number(b.dataset.crearpieza)];
+      const o = {
+        id: uid('ord'), tipo: 'orden', creado: new Date().toISOString(),
+        nombre: (p.description || ('Pieza #' + p.n)).slice(0, 90),
+        destino: 'cliente', material: '', fotos: [], loteId: l.id, desdePI: true,
+      };
+      const m = /order\s*#?\s*(\d{3,7})/i.exec(p.description || '');
+      if (m) o.numero = m[1];
+      await guardarDoc(o);
+      p.ordenId = o.id;
+      await guardarDoc(l);
+      toast(`🧵 ${nomOrden(o)} ✓`);
+      render();
+    }));
+
     on('#btnAplicarCostos', async () => {
       const ps = (l.cot.leida.pieces || []);
       let n = 0;
@@ -1001,7 +1027,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     const filaSpec = (k, v) => v ? `<div class="k">${k}</div><div>${v}</div>` : '';
     let html = `
       <button class="btn-sm" id="btnVolver">${T('volver')}</button>
-      <div class="h-sec">${esc(o.nombre)}${l ? ` · 🗂 ${esc(l.nombre)}` : ''}</div>`;
+      <div class="h-sec">${esc(nomOrden(o))}${l ? ` · 🗂 ${esc(l.nombre)}` : ''}</div>`;
 
     if (o.noDisponible) html += `<div class="card"><div class="sub rojo"><b>${T('o_noDisp')}</b> · ${fmtFecha(o.noDisponible.fecha)}${o.noDisponible.nota ? ' · ' + esc(o.noDisponible.nota) : ''}</div></div>`;
     if (o.editadaEl) html += `<div class="card" style="border-color:var(--rose)"><div class="sub"><b>${T('o_editada')} ${fmtFecha(o.editadaEl)}</b>${I18N.esKaren() ? ' — the specs below are the current version.' : ''}</div></div>`;
@@ -1009,6 +1035,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
 
     /* la orden — formato Tonglin */
     html += `<div class="card"><div class="spec">
+      ${filaSpec(T('o_numero'), o.numero ? '#' + esc(o.numero) : '')}
       ${filaSpec(T('o_material'), esc(o.material))}
       ${filaSpec(T('o_size'), esc(o.size))}
       ${filaSpec(T('o_engraving'), esc(o.engraving))}
@@ -1218,6 +1245,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       cadExistentes = ((o.cadJose && o.cadJose.fotos) || []).slice();
       borrador = {
         destino: o.destino || 'cliente', etsyNum: o.etsyNum || '', shipTo: o.shipTo || '',
+        numero: o.numero || '',
         nombre: o.nombre || '', material: o.material || '', igLink: o.igLink || '',
         size: o.size || '', qty: o.qty || '1', engraving: o.engraving || '',
         stone: o.stone || '', cert: o.cert === 'Yes' ? 'Yes' : 'No',
@@ -1267,7 +1295,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
       $$('#efLista [data-ef]').forEach(el => el.addEventListener('click', () => confirmar(hits[Number(el.dataset.ef)])));
     };
     $('#efBuscar').addEventListener('input', e => pintar(e.target.value));
-    pintar('');
+    /* si la pieza tiene número de orden, la búsqueda arranca por él —
+       la factura correcta sale de primera casi siempre */
+    if (o.numero) { $('#efBuscar').value = o.numero; pintar(o.numero); }
+    else pintar('');
 
     const confirmar = f => {
       /* si ya hay costo FINAL (peso real), ese manda sobre el cotizado */
@@ -1439,7 +1470,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <label>${T('o_etsyNum')}</label><input id="noEtsyNum" autocomplete="off" value="${esc(b.etsyNum || '')}">
           <label>${T('o_shipTo')}</label><textarea id="noShipTo">${esc(b.shipTo || '')}</textarea>
         </div>
-        <label>${T('o_nombre')}</label><input id="noNombre" autocomplete="off" placeholder="Ej: Anillo rubí 14K — María" value="${esc(b.nombre || '')}">
+        <div class="dos">
+          <div><label>${T('o_numero')}</label><input id="noNumero" autocomplete="off" inputmode="numeric" placeholder="1882" value="${esc(b.numero || '')}"></div>
+          <div><label>${T('o_nombre')}</label><input id="noNombre" autocomplete="off" placeholder="Ej: Anillo rubí 14K" value="${esc(b.nombre || '')}"></div>
+        </div>
         <label>${T('o_material')}</label>
         <div class="chips" id="noMatBase" style="margin-bottom:6px">
           <button data-m="925R" class="${b.matBase === '925R' ? 'on' : ''}">925 rodio</button>
@@ -1525,6 +1559,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         matColor: chipOn('#noMatColor button.on').c || 'Yellow',
         destino: ($('#noDestino button.on') || {}).dataset ? $('#noDestino button.on').dataset.d : 'cliente',
         etsyNum: $('#noEtsyNum').value, shipTo: $('#noShipTo').value,
+        numero: $('#noNumero').value,
         nombre: $('#noNombre').value, material: $('#noMaterial').value,
         igLink: $('#noIg').value, size: $('#noSize').value, qty: $('#noQty').value,
         engraving: $('#noEng').value, stone: $('#noStone').value,
@@ -1715,6 +1750,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         /* editando: se conserva la misma orden (id, CAD, comentarios) */
         const o = editando || { id: uid('ord'), tipo: 'orden', creado: new Date().toISOString(), fotos: [] };
         Object.assign(o, {
+          numero: $('#noNumero').value.trim(),
           nombre, destino,
           material: $('#noMaterial').value.trim(),
           size: $('#noSize').value.trim(),
