@@ -351,7 +351,7 @@ const App = (() => {
       <div class="topbar">
         <h1>${T('app')}</h1>
         <button id="btnRefrescar" title="${T('actualizar')}">🔄</button>
-        <span class="quien ${karen ? 'taller' : 'jose'}">${karen ? 'Julia' : 'José'}</span>
+        <span class="quien ${karen ? 'taller' : 'jose'}">${karen ? esc((Nube.info() || {}).nombre || 'Julia') : 'José'}</span>
       </div>
       <main id="cuerpo"></main>
       <nav class="nav">${tabs.map(([k, ico, tx]) => `
@@ -917,7 +917,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     html += `<div class="h-sec">${T('obs_titulo')}${coms.length ? ` (${coms.length})` : ''}</div>`;
     coms.forEach(cm => {
       html += `<div class="card" style="border-left:3px solid ${cm.de === 'jose' ? 'var(--rose)' : 'var(--jade)'}">
-        <div class="sub"><b>${cm.de === 'jose' ? 'José' : 'Julia'}</b> · ${fmtFecha(cm.fecha)}</div>
+        <div class="sub"><b>${cm.de === 'jose' ? 'José' : esc(cm.nombre || 'Julia')}</b> · ${fmtFecha(cm.fecha)}</div>
         <div style="font-size:14px;margin-top:2px">${esc(cm.texto)}</div></div>`;
     });
     if (!coms.length) html += `<div class="card"><div class="sub">${T('obs_vacio')}</div></div>`;
@@ -983,7 +983,11 @@ Si no es legible responde {"error": "motivo corto"}.`;
         const texto = $('#cmTxt').value.trim();
         if (!texto) return;
         o.comentarios = o.comentarios || [];
-        o.comentarios.push({ de: deJulia ? 'julia' : 'jose', texto, fecha: hoyISO() });
+        o.comentarios.push({
+          de: deJulia ? 'julia' : 'jose',
+          nombre: deJulia ? ((Nube.info() || {}).nombre || 'Julia') : 'José',
+          texto, fecha: hoyISO(),
+        });
         await guardarDoc(o);
         await avisar(deJulia ? 'obsJulia' : 'comentario', `${o.nombre}: ${texto.slice(0, 60)}`, o.loteId, o.id);
         cerrarModal();
@@ -1516,9 +1520,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
       </div>
       <div class="h-sec">${T('a_linkKaren')}</div>
       <div class="card">
-        <p class="sub">${T('a_linkExpl')}</p>
+        <p class="sub">${T('a_linkExpl')} Cada persona del taller puede tener SU link con su nombre (Julia, Karen…) — mismas credenciales, y la app muestra quién es quién.</p>
         <label>Email</label><input id="ajKEmail" autocomplete="off" placeholder="taller@silvershine.com.do">
         <label>Password</label><input id="ajKPass" autocomplete="off">
+        <label>Nombre de quien usará este link</label><input id="ajKNombre" autocomplete="off" value="Julia" placeholder="Julia / Karen…">
         <button class="btn rosa" id="ajGenerar">${T('a_generar')}</button>
         <div id="ajLink" style="display:none">
           <label>Link</label><textarea id="ajLinkTxt" readonly style="min-height:90px;font-size:12px"></textarea>
@@ -1543,8 +1548,9 @@ Si no es legible responde {"error": "motivo corto"}.`;
 
     $('#ajGenerar').addEventListener('click', () => {
       const e = $('#ajKEmail').value.trim(), p = $('#ajKPass').value.trim();
+      const n = $('#ajKNombre').value.trim() || 'Julia';
       if (!e || !p) return;
-      $('#ajLinkTxt').value = Nube.armarLink(e, p);
+      $('#ajLinkTxt').value = Nube.armarLink(e, p, n);
       $('#ajLink').style.display = 'block';
     });
     $('#ajCopiar').addEventListener('click', () => {
@@ -1584,7 +1590,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         avisoLink = '🔗 Ese link es el de Julia — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.';
       } else {
         try {
-          await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p);
+          await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p, linkKaren.n);
         } catch (e) {
           document.body.innerHTML = `<div class="login"><h1>Tonglin</h1><p class="sub">This link is not valid anymore — ask José for a new one.<br><span style="opacity:.6">${esc(e.message)}</span></p></div>`;
           return;

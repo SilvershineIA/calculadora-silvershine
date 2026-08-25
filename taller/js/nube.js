@@ -47,11 +47,12 @@ const Nube = (() => {
     guardar();
   }
 
-  /* Karen: sus credenciales viven en el dispositivo → si la sesión se
-     cae, se re-conecta sola sin que ella haga nada */
-  async function conectarTaller(url, anonKey, email, password) {
+  /* Lado Tonglin: sus credenciales viven en el dispositivo → si la sesión
+     se cae, se re-conecta sola. El NOMBRE viaja en el link: el mismo
+     usuario puede tener un link para Julia y otro para Karen. */
+  async function conectarTaller(url, anonKey, email, password, nombre) {
     const session = await loginRaw(url, anonKey, email, password);
-    cfg = { rol: 'taller', url, anonKey, email, pass: password, session };
+    cfg = { rol: 'taller', url, anonKey, email, pass: password, nombre: nombre || 'Julia', session };
     guardar();
   }
 
@@ -201,9 +202,10 @@ const Nube = (() => {
     cfg = null;
   }
 
-  /* Link secreto de Karen: #k=<base64url(JSON)> con todo lo necesario */
-  const armarLink = (email, password) => {
-    const payload = { u: cfg.url, a: cfg.anonKey, e: email, p: password };
+  /* Link secreto del taller: #k=<base64url(JSON)> con todo lo necesario,
+     incluido el nombre de quien lo usará (Julia, Karen…) */
+  const armarLink = (email, password, nombre) => {
+    const payload = { u: cfg.url, a: cfg.anonKey, e: email, p: password, n: nombre || 'Julia' };
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return `${location.origin}${location.pathname}#k=${b64}`;
@@ -223,6 +225,6 @@ const Nube = (() => {
     subirArchivo, bajarArchivo, bajarBlob,
     iaClave, iaGuardarClave, iaLeerPDF,
     armarLink, leerLink,
-    info: () => cfg ? { url: cfg.url, email: cfg.email, rol: cfg.rol } : null,
+    info: () => cfg ? { url: cfg.url, email: cfg.email, rol: cfg.rol, nombre: cfg.nombre } : null,
   };
 })();
