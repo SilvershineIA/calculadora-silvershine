@@ -249,21 +249,9 @@ const Facturas = (() => {
       });
       $('#grabVolver').addEventListener('click', () => detalle(f.id));
     });
-    on('#fTConfeccion', () => {
-      abrirModal(`Confección — ${rotulo(f)}`, `
-        <p class="muted" style="margin-bottom:14px">¿Para cuándo está pactada la confección?</p>
-        <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
-        <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
-        <button class="btn-ghost btn-block" id="confVolver" style="margin-top:12px">← Volver a la factura</button>
-      `);
-      const crear = async dias => {
-        await Confecciones.iniciar(f, dias);   // estampa f.confeccion + crea la tarea de taller
-        detalle(f.id);
-      };
-      $('#conf5').addEventListener('click', () => crear(5));
-      $('#conf20').addEventListener('click', () => crear(20));
-      $('#confVolver').addEventListener('click', () => detalle(f.id));
-    });
+    /* El mismo modal de la factura nueva: Tonglin (app del Taller) o el
+       taller local a plazo — sirve también para facturas VIEJAS */
+    on('#fTConfeccion', () => Confecciones.pactar(f, () => detalle(f.id)));
     on('#fTarea', () => Tareas.formulario({
       clienteId: f.clienteId,
       clienteNombre: f.clienteNombre,

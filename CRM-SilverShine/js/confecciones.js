@@ -974,6 +974,8 @@ const Confecciones = (() => {
         toast('⚠ Conecta la nube en Ajustes primero — la orden del Taller vive en Supabase');
         return;
       }
+      if (f.tallerOrdenId &&
+          !confirm('Esta factura YA tiene una orden en el Taller. ¿Crear OTRA orden (pieza adicional)?')) return;
       const linea = (f.lineas || []).find(l => /confecci/i.test(l.descripcion || '')) || (f.lineas || [])[0] || {};
       const uidT = () => 'ord-' + (crypto.randomUUID ? crypto.randomUUID()
         : Date.now().toString(36) + Math.random().toString(36).slice(2));
