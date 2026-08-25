@@ -557,16 +557,37 @@ const App = (() => {
     html += piezas.map(o => {
       const cadUlt = (o.cad || [])[Math.max(0, (o.cad || []).length - 1)];
       const cadTxt =
-        (o.cadJose && (o.cadJose.fotos || []).length) ? ' · 📐 CAD ✓' :
-        !cadUlt ? (o.cadOmitido ? ' · ⏭ CAD' : '') :
-        cadUlt.feedback && cadUlt.feedback.tipo === 'aprobado' ? ` · ${T('c_aprobado')}` :
-        cadUlt.feedback ? ` · ${T('c_cambios')}` : ` · 🖌 CAD v${cadUlt.v}`;
+        (o.cadJose && (o.cadJose.fotos || []).length) ? '📐 CAD ✓' :
+        !cadUlt ? (o.cadOmitido ? '⏭ CAD' : '') :
+        cadUlt.feedback && cadUlt.feedback.tipo === 'aprobado' ? T('c_aprobado') :
+        cadUlt.feedback ? T('c_cambios') : `🖌 CAD v${cadUlt.v}`;
+      /* ficha completa a la vista: material·talla·qty·cert / piedra / fecha·costo */
+      const linea1 = [
+        esc(o.material || ''),
+        o.size ? esc(o.size) : '',
+        Number(o.qty) > 1 ? '×' + esc(o.qty) : '',
+        o.cert === 'Yes' ? '📜 cert' : '',
+      ].filter(Boolean).join(' · ');
+      const piedra = esc(String(o.stone || '').split('\n')[0].slice(0, 72));
+      const costoV = o.cot ? (o.cot.subtotalFinal ?? o.cot.subtotal) : null;
+      const linea3 = [
+        o.target ? '🎯 ' + fmtFecha(o.target) : '',
+        costoV != null ? `<span class="money">${fmtUSD(costoV)}</span>` : '',
+        cadTxt,
+        (o.comentarios || []).length ? '💬 ' + o.comentarios.length : '',
+        o.editadaEl ? '✏️' : '',
+      ].filter(Boolean).join(' · ');
+      const foto = (o.fotos || [])[0];
       return `
       <div class="card click" data-orden="${o.id}">
-        <div class="fila"><div class="crece">
-          <div class="nombre">${esc(nomOrden(o))}${o.destino === 'etsy' ? ' 🛍' : ''}</div>
-          <div class="sub">${esc(o.material || '')}${cadTxt}${(o.comentarios || []).length ? ' · 💬 ' + o.comentarios.length : ''}</div>
-        </div><span class="sub">›</span></div>
+        <div class="fila">
+          ${foto ? `<img data-path="${foto.path}" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:9px;border:1px solid var(--border);flex:0 0 auto">` : ''}
+          <div class="crece">
+            <div class="nombre">${esc(nomOrden(o))}${o.destino === 'etsy' ? ' 🛍' : ''}</div>
+            ${linea1 ? `<div class="sub">${linea1}</div>` : ''}
+            ${piedra ? `<div class="sub">💎 ${piedra}</div>` : ''}
+            ${linea3 ? `<div class="sub">${linea3}</div>` : ''}
+          </div><span class="sub">›</span></div>
       </div>`;
     }).join('') || `<div class="vacio"><span>🧵</span>${karen ? 'Empty batch.' : 'Sin piezas — agrégalas desde ＋ Nueva orden.'}</div>`;
 
@@ -756,6 +777,7 @@ const App = (() => {
     }
 
     c.innerHTML = html;
+    pintarImagenes(c);   // mini-fotos de las piezas
     wireLote(l, piezas);
   }
 
