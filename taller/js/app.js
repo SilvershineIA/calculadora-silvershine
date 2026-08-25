@@ -909,15 +909,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
       if (!cads.length && !o.cadOmitido) html += `<button class="btn ghost" id="btnOmitirCad">${T('c_omitir')}</button>`;
     }
 
-    /* comentarios por pieza */
+    /* Observaciones por pieza: SIEMPRE visibles y abiertas a los DOS
+       lados, en cualquier etapa — Julia puede observar la piedra, la
+       talla, la factibilidad o los tiempos de ESTE modelo, y José lo
+       ve aquí mismo (con novedad al otro lado al guardar). */
     const coms = o.comentarios || [];
-    if (coms.length || (!karen && l && est === 'cotizado')) {
-      html += `<div class="h-sec">💬</div>`;
-      coms.forEach(cm => {
-        html += `<div class="card"><div class="sub"><b>${cm.de === 'jose' ? 'José' : 'Julia'}</b> · ${fmtFecha(cm.fecha)}</div><div style="font-size:14px;margin-top:2px">${esc(cm.texto)}</div></div>`;
-      });
-      if (!karen && l && !l.aprobada && l.cot) html += `<button class="btn ghost" id="btnComentar">${T('l_comentar')}</button>`;
-    }
+    html += `<div class="h-sec">${T('obs_titulo')}${coms.length ? ` (${coms.length})` : ''}</div>`;
+    coms.forEach(cm => {
+      html += `<div class="card" style="border-left:3px solid ${cm.de === 'jose' ? 'var(--rose)' : 'var(--jade)'}">
+        <div class="sub"><b>${cm.de === 'jose' ? 'José' : 'Julia'}</b> · ${fmtFecha(cm.fecha)}</div>
+        <div style="font-size:14px;margin-top:2px">${esc(cm.texto)}</div></div>`;
+    });
+    if (!coms.length) html += `<div class="card"><div class="sub">${T('obs_vacio')}</div></div>`;
+    html += `<button class="btn ${karen ? 'jade' : 'ghost'}" id="btnComentar">${T('l_comentar')}</button>`;
 
     /* Karen: no disponible (solo antes de aprobar) */
     if (karen && l && (est === 'enviado' || est === 'cotizado') && !o.noDisponible) {
@@ -969,16 +973,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
 
     on('#btnComentar', () => {
+      const deJulia = I18N.esKaren();
       abrirModal(T('l_comentar'), `
-        <textarea id="cmTxt" placeholder=""></textarea>
-        <button class="btn rosa" id="cmOk">${T('guardar')}</button>`);
+        <textarea id="cmTxt" placeholder="${deJulia
+          ? 'e.g. this stone size is out of stock — we suggest 2.5mm rounds'
+          : 'Ej: súbele el grosor del aro a 2mm'}"></textarea>
+        <button class="btn ${deJulia ? 'jade' : 'rosa'}" id="cmOk">${T('guardar')}</button>`);
       $('#cmOk').addEventListener('click', async () => {
         const texto = $('#cmTxt').value.trim();
         if (!texto) return;
         o.comentarios = o.comentarios || [];
-        o.comentarios.push({ de: 'jose', texto, fecha: hoyISO() });
+        o.comentarios.push({ de: deJulia ? 'julia' : 'jose', texto, fecha: hoyISO() });
         await guardarDoc(o);
-        await avisar('comentario', `${o.nombre}: ${texto.slice(0, 60)}`, o.loteId, o.id);
+        await avisar(deJulia ? 'obsJulia' : 'comentario', `${o.nombre}: ${texto.slice(0, 60)}`, o.loteId, o.id);
         cerrarModal();
         render();
       });
