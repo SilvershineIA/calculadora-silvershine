@@ -564,11 +564,56 @@ const App = (() => {
         </div>`;
       if (l.cot.leida) {
         const le = l.cot.leida;
+        const ps = le.pieces || [];
+        /* Vista fiel al PI de Tonglin: cada pieza expandible con TODAS
+           sus columnas, para cazar errores contra el PDF de un vistazo */
+        const COLS = [
+          ['gold_weight_g', 'Gold weight', v => `${v} g`],
+          ['gold_cost', 'Gold cost', fmtUSD],
+          ['labor', 'Labor', fmtUSD],
+          ['stone_cost', 'Stone cost', fmtUSD],
+          ['stone_setting_fee', 'Stone setting fee', fmtUSD],
+          ['exw_unit', 'EXW unit price', fmtUSD],
+          ['qty', 'Qty', v => v],
+          ['cad_mold', 'CAD & mold', fmtUSD],
+        ];
+        html += ps.map((p, i) => `
+          <div class="card">
+            <div class="fila" data-desg="${i}" style="cursor:pointer">
+              <div class="crece">
+                <div style="font-size:13.5px">${esc(p.description || ('#' + p.n))}${p.gold_weight_g ? ` <span class="sub mono">${p.gold_weight_g} g</span>` : ''}</div>
+                <div class="sub" id="desgTog-${i}">${T('q_ver')}</div>
+              </div>
+              <span class="money">${fmtUSD(p.subtotal || p.exw_unit || 0)}</span>
+            </div>
+            <div id="desg-${i}" style="display:none;margin-top:8px">
+              <table class="qt">
+                ${COLS.filter(([k]) => p[k] !== null && p[k] !== undefined && p[k] !== '').map(([k, lbl, fmt]) =>
+                  `<tr><td>${lbl}</td><td class="${k === 'gold_weight_g' || k === 'qty' ? 'mono' : 'money'}">${fmt(p[k])}</td></tr>`).join('')}
+                <tr class="total"><td>Subtotal</td><td class="money">${fmtUSD(p.subtotal || 0)}</td></tr>
+              </table>
+              ${!karen ? `<label>${T('q_asignar')}</label>
+                <select data-asigna="${i}">
+                  <option value="">—</option>
+                  ${piezas.map(o => `<option value="${o.id}" ${(p.ordenId || (piezas[i] || {}).id) === o.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join('')}
+                </select>` : ''}
+            </div>
+          </div>`).join('');
+        /* chequeo de cuadre: suma de piezas vs total del PDF */
+        const suma = ps.reduce((s, p) => s + (Number(p.subtotal) || 0), 0);
+        const tot = Number(le.total) || 0;
+        if (ps.length && tot && Math.abs(suma - tot) > 0.01) {
+          html += `<div class="card" style="border-color:var(--red)"><div class="sub rojo"><b>${T('q_descuadre')}</b> · ${fmtUSD(suma)} vs ${fmtUSD(tot)}</div></div>`;
+        }
         html += `<div class="card"><table class="qt">
-          ${(le.pieces || []).map(p => `<tr><td>${esc(p.description || ('#' + p.n))}${p.gold_weight_g ? ` <span class="sub mono">${p.gold_weight_g} g</span>` : ''}</td><td class="money">${fmtUSD(p.subtotal || p.exw_unit || 0)}</td></tr>`).join('')}
-          <tr class="total"><td>${T('l_total')}</td><td class="money">${fmtUSD(le.total || 0)}</td></tr>
-          <tr><td>${T('l_deposito')}</td><td class="money">${fmtUSD(le.deposit || (le.total || 0) / 2)}</td></tr>
+          <tr class="total"><td>${T('l_total')}</td><td class="money">${fmtUSD(tot)}</td></tr>
+          <tr><td>${T('l_deposito')}</td><td class="money">${fmtUSD(le.deposit || tot / 2)}</td></tr>
         </table></div>`;
+        if (!karen && ps.length) {
+          html += l.cot.aplicado
+            ? `<div class="card"><div class="sub verde"><b>${T('q_aplicado')}</b> · ${fmtFecha(l.cot.aplicado)}</div></div>`
+            : `<button class="btn rosa" id="btnAplicarCostos">${T('q_aplicar')}</button>`;
+        }
       } else if (!karen) {
         html += `<button class="btn rosa" id="btnLeerPI">${T('l_leerIA')}</button>`;
       }
@@ -681,6 +726,48 @@ const App = (() => {
     $$('#cuerpo [data-copiar]').forEach(b => b.addEventListener('click', () => { navigator.clipboard.writeText(b.dataset.copiar); toast(T('copiado')); }));
 
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
+
+    /* desglose por pieza: abrir/cerrar, asignar orden, aplicar costos */
+    $$('#cuerpo [data-desg]').forEach(f => f.addEventListener('click', e => {
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+      const i = f.dataset.desg;
+      const d = $('#desg-' + i);
+      const abierto = d.style.display !== 'none';
+      d.style.display = abierto ? 'none' : 'block';
+      $('#desgTog-' + i).textContent = abierto ? T('q_ver') : T('q_ocultar');
+    }));
+    $$('#cuerpo [data-asigna]').forEach(sel => {
+      sel.addEventListener('click', e => e.stopPropagation());
+      sel.addEventListener('change', async () => {
+        const p = l.cot.leida.pieces[Number(sel.dataset.asigna)];
+        p.ordenId = sel.value || null;
+        await guardarDoc(l);
+      });
+    });
+    on('#btnAplicarCostos', async () => {
+      const ps = (l.cot.leida.pieces || []);
+      let n = 0;
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i];
+        const ordenId = p.ordenId || (piezas[i] || {}).id;   // por defecto: mismo orden de la lista
+        const o = ordenId ? doc(ordenId) : null;
+        if (!o) continue;
+        p.ordenId = ordenId;
+        o.cot = {
+          goldWeight: p.gold_weight_g ?? null, goldCost: p.gold_cost ?? null,
+          labor: p.labor ?? null, stoneCost: p.stone_cost ?? null,
+          settingFee: p.stone_setting_fee ?? null, exw: p.exw_unit ?? null,
+          qty: p.qty ?? 1, cadMold: p.cad_mold ?? null,
+          subtotal: p.subtotal ?? null, fecha: hoyISO(), loteId: l.id,
+        };
+        await guardarDoc(o);
+        n++;
+      }
+      l.cot.aplicado = hoyISO();
+      await guardarDoc(l);
+      toast(`💾 ${n} ✓`);
+      render();
+    });
 
     on('#btnEnviar', async () => {
       l.enviado = hoyISO();
@@ -874,6 +961,36 @@ Si no es legible responde {"error": "motivo corto"}.`;
     <div class="galeria">${(o.fotos || []).map(f => `<img data-path="${f.path}" alt="">`).join('')}</div>
     </div>`;
 
+    /* costo Tonglin de esta pieza (aplicado desde la cotización del lote) */
+    if (o.cot && o.cot.subtotal != null) {
+      html += `<div class="h-sec">${T('o_costo')}</div>
+      <div class="card"><table class="qt">
+        ${o.cot.goldWeight != null ? `<tr><td>Gold weight</td><td class="mono">${o.cot.goldWeight} g</td></tr>` : ''}
+        ${o.cot.goldCost != null ? `<tr><td>Gold cost</td><td class="money">${fmtUSD(o.cot.goldCost)}</td></tr>` : ''}
+        ${o.cot.labor != null ? `<tr><td>Labor</td><td class="money">${fmtUSD(o.cot.labor)}</td></tr>` : ''}
+        ${o.cot.stoneCost != null ? `<tr><td>Stone cost</td><td class="money">${fmtUSD(o.cot.stoneCost)}</td></tr>` : ''}
+        ${o.cot.settingFee != null ? `<tr><td>Stone setting fee</td><td class="money">${fmtUSD(o.cot.settingFee)}</td></tr>` : ''}
+        ${o.cot.exw != null ? `<tr><td>EXW unit price</td><td class="money">${fmtUSD(o.cot.exw)}</td></tr>` : ''}
+        ${o.cot.cadMold != null ? `<tr><td>CAD &amp; mold</td><td class="money">${fmtUSD(o.cot.cadMold)}</td></tr>` : ''}
+        <tr class="total"><td>Subtotal</td><td class="money">${fmtUSD(o.cot.subtotal)}</td></tr>
+      </table></div>`;
+    }
+
+    /* José: enlazar la pieza con su factura del CRM (el costo viaja solo) */
+    if (!karen) {
+      html += `<div class="h-sec">${T('f_titulo')}</div>`;
+      if (o.facturaCRM) {
+        const fc = o.facturaCRM;
+        html += `<div class="card">
+          <div class="nombre" style="font-size:14px">${esc(fc.cliente || '')} <span class="sub">${esc(fc.rotulo || '')}</span></div>
+          ${fc.costoAplicado ? `<div class="sub">💵 Costo puesto en la factura: <b>${UI_RD(fc.costoAplicado.rd)}</b> (${fmtUSD(fc.costoAplicado.usd)} × ${fc.costoAplicado.tasa}) · ${fmtFecha(fc.costoAplicado.fecha)}</div>` : `<div class="sub">Enlazada sin costo</div>`}
+          <button class="btn ghost" id="btnQuitarFactura">${T('f_quitar')}</button>
+        </div>`;
+      } else {
+        html += `<button class="btn ghost" id="btnEnlazarFactura">${T('f_enlazar')}</button>`;
+      }
+    }
+
     /* CAD */
     html += `<div class="h-sec">${T('c_titulo')}</div>`;
     const cads = o.cad || [];
@@ -995,6 +1112,14 @@ Si no es legible responde {"error": "motivo corto"}.`;
       });
     });
 
+    on('#btnEnlazarFactura', () => enlazarFactura(o));
+    on('#btnQuitarFactura', async () => {
+      if (!confirm(T('confirmar'))) return;
+      delete o.facturaCRM;
+      await guardarDoc(o);
+      render();
+    });
+
     on('#btnOmitirCad', () => {
       abrirModal(T('c_omitir'), `
         <textarea id="ocNota" placeholder="${T('c_omitirPor')}"></textarea>
@@ -1042,6 +1167,88 @@ Si no es legible responde {"error": "motivo corto"}.`;
       await Nube.borrarDoc(o.id);
       nav('lotes');
     });
+  }
+
+  const UI_RD = v => 'RD$ ' + Number(v || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  /* ── Enlazar una pieza con su factura del CRM: se busca en la misma
+     base y el costo Tonglin (US$ × tasa de la calculadora) queda puesto
+     en f.costo — Finanzas lo usa para la ganancia sin doble digitación ── */
+  async function enlazarFactura(o) {
+    abrirModal(T('f_titulo'), `<p class="sub">${T('cargando')}</p>`);
+    let filas;
+    try { filas = await Nube.listarFacturas(); }
+    catch (e) { $('#modalCuerpo').innerHTML = `<p class="sub rojo">⚠ ${esc(e.message)}</p>`; return; }
+    const facturas = filas.map(x => x.data).filter(f => f && f.estado !== 'anulada');
+    const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+
+    $('#modalCuerpo').innerHTML = `
+      <input type="search" id="efBuscar" placeholder="${T('f_buscar')}" autocomplete="off">
+      <div id="efLista" style="margin-top:10px"></div>`;
+
+    const pintar = q => {
+      const txt = q.trim().toLowerCase();
+      const hits = (txt
+        ? facturas.filter(f => (f.clienteNombre || '').toLowerCase().includes(txt) ||
+            String(f.orden || '').includes(txt) || (f.numero || '').toLowerCase().includes(txt))
+        : facturas).slice(0, 12);
+      $('#efLista').innerHTML = hits.map((f, i) => `
+        <div class="card click" data-ef="${i}">
+          <div class="fila"><div class="crece">
+            <div class="nombre" style="font-size:14px">${esc(f.clienteNombre || '(sin cliente)')} <span class="sub">${esc(rotulo(f))}</span></div>
+            <div class="sub">${fmtFecha(f.fecha)} · total ${esc(f.moneda || 'DOP')} ${Number(f.total || 0).toLocaleString()}</div>
+          </div><span class="sub">›</span></div>
+        </div>`).join('') || `<div class="vacio"><span>🔍</span>—</div>`;
+      $$('#efLista [data-ef]').forEach(el => el.addEventListener('click', () => confirmar(hits[Number(el.dataset.ef)])));
+    };
+    $('#efBuscar').addEventListener('input', e => pintar(e.target.value));
+    pintar('');
+
+    const confirmar = f => {
+      const usd = o.cot && o.cot.subtotal != null ? Number(o.cot.subtotal) : 0;
+      const tasa = Nube.tasaCRM() || '';
+      $('#modalCuerpo').innerHTML = `
+        <div class="card"><div class="nombre" style="font-size:14px">${esc(f.clienteNombre || '')} <span class="sub">${esc(rotulo(f))}</span></div>
+        <div class="sub">${fmtFecha(f.fecha)} · total ${esc(f.moneda || 'DOP')} ${Number(f.total || 0).toLocaleString()}${f.costo ? ` · <b class="rojo">ya tiene costo ${UI_RD(f.costo)} — se REEMPLAZA</b>` : ''}</div></div>
+        ${usd ? `
+        <div class="dos">
+          <div><label>Costo Tonglin (US$)</label><input id="efUsd" type="number" step="0.01" value="${usd}"></div>
+          <div><label>Tasa (RD$ por US$)</label><input id="efTasa" type="number" step="0.01" value="${tasa}" placeholder="Ej: 58.19"></div>
+        </div>
+        <p class="sub" id="efRd" style="margin-top:4px"></p>
+        <button class="btn rosa" id="efConCosto">${T('f_conCosto')}</button>` : `
+        <p class="sub">Esta pieza aún no tiene costo aplicado (usa «${T('q_aplicar')}» en la cotización del lote).</p>`}
+        <button class="btn ghost" id="efSinCosto">${T('f_sinCosto')}</button>`;
+
+      const pintaRd = () => {
+        const u = Number(($('#efUsd') || {}).value) || 0;
+        const t = Number(($('#efTasa') || {}).value) || 0;
+        if ($('#efRd')) $('#efRd').innerHTML = u && t ? `= <b>${UI_RD(u * t)}</b> irá a f.costo (Finanzas)` : 'Pon la tasa para calcular los pesos.';
+      };
+      if ($('#efUsd')) { $('#efUsd').addEventListener('input', pintaRd); $('#efTasa').addEventListener('input', pintaRd); pintaRd(); }
+
+      const enlazar = async conCosto => {
+        o.facturaCRM = { id: f.id, rotulo: rotulo(f), cliente: f.clienteNombre || '' };
+        if (conCosto) {
+          const u = Number($('#efUsd').value) || 0;
+          const t = Number($('#efTasa').value) || 0;
+          if (!(u > 0 && t > 0)) { toast('⚠ Pon el costo y la tasa'); return; }
+          const rd = Math.round(u * t * 100) / 100;
+          f.costo = rd;
+          f.costoDeUSD = true;
+          f.costoTaller = { usd: u, tasa: t, fecha: hoyISO(), ordenTaller: o.id };
+          try { await Nube.upsertFactura(f); }
+          catch (e) { toast('⚠ ' + e.message); return; }
+          o.facturaCRM.costoAplicado = { usd: u, tasa: t, rd, fecha: hoyISO() };
+        }
+        await guardarDoc(o);
+        cerrarModal();
+        toast('🧾 ✓');
+        render();
+      };
+      $('#efSinCosto').addEventListener('click', () => enlazar(false));
+      if ($('#efConCosto')) $('#efConCosto').addEventListener('click', () => enlazar(true));
+    };
   }
 
   /* ── rayar el CAD: dibujo sobre la imagen + nota + fotos de referencia ── */

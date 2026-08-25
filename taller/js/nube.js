@@ -197,6 +197,15 @@ const Nube = (() => {
     return JSON.parse(m[0]);
   }
 
+  /* ── Facturas del CRM (solo el rol de José pasa el blindaje RLS) ── */
+  const listarFacturas = () => rest('GET', 'facturas?select=id,data&order=updated_at.desc&limit=300');
+  const upsertFactura = f => rest('POST', 'facturas', [{ id: f.id, data: f }], 'resolution=merge-duplicates');
+  /* La tasa del dólar de la calculadora del CRM (mismo origen) */
+  const tasaCRM = () => {
+    try { return Number((JSON.parse(localStorage.getItem('calcAnillos.v1')) || {}).tasa) || 0; }
+    catch { return 0; }
+  };
+
   function desconectar() {
     localStorage.removeItem(K_CFG);
     cfg = null;
@@ -224,6 +233,7 @@ const Nube = (() => {
     listarDocs, upsertDoc, borrarDoc,
     subirArchivo, bajarArchivo, bajarBlob,
     iaClave, iaGuardarClave, iaLeerPDF,
+    listarFacturas, upsertFactura, tasaCRM,
     armarLink, leerLink,
     info: () => cfg ? { url: cfg.url, email: cfg.email, rol: cfg.rol, nombre: cfg.nombre } : null,
   };

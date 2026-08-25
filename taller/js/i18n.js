@@ -111,6 +111,21 @@ const I18N = (() => {
     l_cuenta:       ['La cuenta del lote (US$)', 'Batch account (USD)'],
     l_shipDirect:   ['✈️ DESPACHO DIRECTO al cliente de Etsy — dirección en la orden', '✈️ Ship DIRECT to the Etsy customer — address in the order'],
 
+    /* ── desglose de cotización / factura CRM ── */
+    q_ver:          ['ver desglose ▾', 'details ▾'],
+    q_ocultar:      ['ocultar ▴', 'hide ▴'],
+    q_asignar:      ['Pieza de la app', '—'],
+    q_aplicar:      ['💾 Aplicar estos costos a las piezas', '—'],
+    q_aplicado:     ['✓ Costos aplicados a las piezas', '—'],
+    q_descuadre:    ['⚠ La suma de las piezas NO cuadra con el total del PDF — revísalo', '⚠ Sum of pieces ≠ PDF total — please check'],
+    o_costo:        ['💵 Costo Tonglin (de la cotización)', '💵 Quoted cost'],
+    f_titulo:       ['🧾 Factura del CRM', '—'],
+    f_enlazar:      ['🔗 Enlazar con su factura del CRM', '—'],
+    f_buscar:       ['Buscar por cliente, # de orden o NCF…', '—'],
+    f_quitar:       ['✕ Quitar enlace', '—'],
+    f_sinCosto:     ['Enlazar SIN tocar el costo', '—'],
+    f_conCosto:     ['Enlazar y poner el costo en la factura', '—'],
+
     /* ── CAD ── */
     c_titulo:       ['🖌 CAD', '🖌 CAD'],
     c_subir:        ['📐 Subir CAD', '📐 Upload CAD'],
