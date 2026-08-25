@@ -118,6 +118,8 @@ const I18N = (() => {
     q_aplicar:      ['💾 Aplicar estos costos a las piezas', '—'],
     q_aplicado:     ['✓ Costos aplicados a las piezas', '—'],
     q_descuadre:    ['⚠ La suma de las piezas NO cuadra con el total del PDF — revísalo', '⚠ Sum of pieces ≠ PDF total — please check'],
+    qf_aplicar:     ['💾 Aplicar los costos FINALES a las piezas (y a sus facturas)', '—'],
+    qf_aplicado:    ['✓ Costos finales aplicados', '—'],
     o_costo:        ['💵 Costo Tonglin (de la cotización)', '💵 Quoted cost'],
     f_titulo:       ['🧾 Factura del CRM', '—'],
     f_enlazar:      ['🔗 Enlazar con su factura del CRM', '—'],

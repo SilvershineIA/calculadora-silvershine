@@ -653,8 +653,19 @@ const App = (() => {
         if (l.cotFinal.leida) {
           const lf = l.cotFinal.leida, tot = totalCot(l), fin = lf.total_final || 0;
           const dif = fin && tot ? fin - tot : 0;
-          const pesoEst = ((l.cot && l.cot.leida && l.cot.leida.pieces) || []).reduce((s, p) => s + (Number(p.gold_weight_g) || 0), 0);
+          const inic = (l.cot && l.cot.leida && l.cot.leida.pieces) || [];
+          const pesoEst = inic.reduce((s, p) => s + (Number(p.gold_weight_g) || 0), 0);
           const pesoReal = (lf.pieces || []).reduce((s, p) => s + (Number(p.gold_weight_g) || 0), 0);
+          /* pieza por pieza: subtotal final con su diferencia vs lo cotizado */
+          html += (lf.pieces || []).map((p, i) => {
+            const pi = inic.find(x => x.n === p.n) || inic[i];
+            const d = pi && pi.subtotal != null && p.subtotal != null ? p.subtotal - pi.subtotal : null;
+            return `<div class="card"><div class="fila">
+              <div class="crece"><div style="font-size:13.5px">${esc(p.description || ('#' + p.n))}${p.gold_weight_g ? ` <span class="sub mono">${p.gold_weight_g} g</span>` : ''}</div>
+              ${d !== null && Math.abs(d) > 0.005 ? `<div class="sub ${d > 0 ? 'rojo' : 'verde'}">${d > 0 ? '+' : '−'}${fmtUSD(Math.abs(d))} vs cotizado</div>` : (d !== null ? `<div class="sub">igual a lo cotizado</div>` : '')}</div>
+              <span class="money">${fmtUSD(p.subtotal || 0)}</span>
+            </div></div>`;
+          }).join('');
           html += `<div class="card"><table class="qt">
             ${pesoEst && pesoReal ? `<tr><td>${T('l_pesoEstReal')}</td><td class="mono">${pesoEst.toFixed(2)} g → ${pesoReal.toFixed(2)} g</td></tr>` : ''}
             <tr><td>${T('l_precioFinal')}</td><td class="money">${fmtUSD(fin)}</td></tr>
@@ -662,6 +673,11 @@ const App = (() => {
             ${lf.shipping ? `<tr><td>Shipping</td><td class="money">${fmtUSD(lf.shipping)}</td></tr>` : ''}
             <tr class="total"><td>${T('l_balance')}</td><td class="money">${fmtUSD(lf.balance_due || 0)}</td></tr>
           </table></div>`;
+          if (!karen && (lf.pieces || []).length) {
+            html += l.cotFinal.aplicado
+              ? `<div class="card"><div class="sub verde"><b>${T('qf_aplicado')}</b> · ${fmtFecha(l.cotFinal.aplicado)}</div></div>`
+              : `<button class="btn rosa" id="btnAplicarFinales">${T('qf_aplicar')}</button>`;
+          }
         } else if (!karen) {
           html += `<button class="btn rosa" id="btnLeerFinal">${T('l_leerIA')}</button>`;
         }
@@ -766,6 +782,52 @@ const App = (() => {
       l.cot.aplicado = hoyISO();
       await guardarDoc(l);
       toast(`💾 ${n} ✓`);
+      render();
+    });
+
+    /* Costos FINALES: actualiza cada pieza con el peso real y su subtotal
+       final, y si la pieza ya está ENLAZADA a una factura del CRM con
+       costo aplicado, la factura se re-calcula sola (misma tasa) */
+    on('#btnAplicarFinales', async () => {
+      const inic = (l.cot && l.cot.leida && l.cot.leida.pieces) || [];
+      const lf = l.cotFinal.leida;
+      let n = 0, factos = 0;
+      const errores = [];
+      for (let i = 0; i < (lf.pieces || []).length; i++) {
+        const p = lf.pieces[i];
+        const pi = inic.find(x => x.n === p.n) || inic[i] || {};
+        const ordenId = pi.ordenId || (piezas[i] || {}).id;
+        const o = ordenId ? doc(ordenId) : null;
+        if (!o) continue;
+        o.cot = o.cot || { fecha: hoyISO(), loteId: l.id };
+        if (o.cot.subtotalInicial == null && o.cot.subtotal != null) o.cot.subtotalInicial = o.cot.subtotal;
+        o.cot.goldWeightReal = p.gold_weight_g ?? o.cot.goldWeightReal ?? null;
+        o.cot.subtotalFinal = p.subtotal ?? null;
+        o.cot.fechaFinal = hoyISO();
+        /* factura enlazada con costo puesto → re-calcular con la misma tasa */
+        if (o.facturaCRM && o.facturaCRM.costoAplicado && o.cot.subtotalFinal != null) {
+          const ca = o.facturaCRM.costoAplicado;
+          try {
+            const rd = Math.round(o.cot.subtotalFinal * ca.tasa * 100) / 100;
+            const lista = await Nube.listarFacturas();
+            const fila = lista.find(x => x.id === o.facturaCRM.id);
+            if (fila) {
+              const f = fila.data;
+              f.costo = rd;
+              f.costoDeUSD = true;
+              f.costoTaller = { usd: o.cot.subtotalFinal, tasa: ca.tasa, fecha: hoyISO(), ordenTaller: o.id, final: true };
+              await Nube.upsertFactura(f);
+              o.facturaCRM.costoAplicado = { usd: o.cot.subtotalFinal, tasa: ca.tasa, rd, fecha: hoyISO(), final: true };
+              factos++;
+            }
+          } catch (e) { errores.push(`${o.nombre}: ${e.message}`); }
+        }
+        await guardarDoc(o);
+        n++;
+      }
+      l.cotFinal.aplicado = hoyISO();
+      await guardarDoc(l);
+      toast(`💾 ${n} pieza${n === 1 ? '' : 's'}${factos ? ` · ${factos} factura${factos === 1 ? '' : 's'} del CRM actualizada${factos === 1 ? '' : 's'}` : ''} ✓${errores.length ? ' · ⚠ ' + errores.join('; ') : ''}`);
       render();
     });
 
@@ -972,7 +1034,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
         ${o.cot.settingFee != null ? `<tr><td>Stone setting fee</td><td class="money">${fmtUSD(o.cot.settingFee)}</td></tr>` : ''}
         ${o.cot.exw != null ? `<tr><td>EXW unit price</td><td class="money">${fmtUSD(o.cot.exw)}</td></tr>` : ''}
         ${o.cot.cadMold != null ? `<tr><td>CAD &amp; mold</td><td class="money">${fmtUSD(o.cot.cadMold)}</td></tr>` : ''}
-        <tr class="total"><td>Subtotal</td><td class="money">${fmtUSD(o.cot.subtotal)}</td></tr>
+        <tr class="${o.cot.subtotalFinal != null ? '' : 'total'}"><td>Subtotal${o.cot.subtotalFinal != null ? ' (cotizado)' : ''}</td><td class="money">${fmtUSD(o.cot.subtotal)}</td></tr>
+        ${o.cot.goldWeightReal != null ? `<tr><td>Actual gold weight</td><td class="mono">${o.cot.goldWeightReal} g</td></tr>` : ''}
+        ${o.cot.subtotalFinal != null ? `<tr class="total"><td>Subtotal FINAL</td><td class="money">${fmtUSD(o.cot.subtotalFinal)}</td></tr>
+        ${Math.abs(o.cot.subtotalFinal - o.cot.subtotal) > 0.005 ? `<tr><td></td><td class="money ${o.cot.subtotalFinal > o.cot.subtotal ? 'rojo' : 'verde'}">${o.cot.subtotalFinal > o.cot.subtotal ? '+' : '−'}${fmtUSD(Math.abs(o.cot.subtotalFinal - o.cot.subtotal))} vs cotizado</td></tr>` : ''}` : ''}
       </table></div>`;
     }
 
@@ -1205,7 +1270,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
     pintar('');
 
     const confirmar = f => {
-      const usd = o.cot && o.cot.subtotal != null ? Number(o.cot.subtotal) : 0;
+      /* si ya hay costo FINAL (peso real), ese manda sobre el cotizado */
+      const usd = o.cot ? Number(o.cot.subtotalFinal ?? o.cot.subtotal) || 0 : 0;
       const tasa = Nube.tasaCRM() || '';
       $('#modalCuerpo').innerHTML = `
         <div class="card"><div class="nombre" style="font-size:14px">${esc(f.clienteNombre || '')} <span class="sub">${esc(rotulo(f))}</span></div>
