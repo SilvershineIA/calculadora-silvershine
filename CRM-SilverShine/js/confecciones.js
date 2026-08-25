@@ -950,11 +950,16 @@ const Confecciones = (() => {
     (f.lineas || []).some(l => /confecci/i.test(l.descripcion || ''));
 
   /* Modal de plazo compartido: lo usan "+ Nueva confección", la factura
-     recién creada y la conversión de cotización */
+     recién creada y la conversión de cotización.
+     Primera pregunta: ¿QUIÉN la hace? Si es Tonglin, la orden nace en la
+     app del Taller (tabla `taller` de la misma nube) YA ENLAZADA a esta
+     factura — en la app solo se completan los detalles que Tonglin pide. */
   function pactar(f, alListo) {
     const listo = () => { if (alListo) alListo(); else { cerrarModal(); render(); } };
     abrirModal(`Confección — ${rotulo(f)}`, `
-      <p class="muted" style="margin-bottom:14px">Esta pieza es de confección 🧵 ¿Para cuándo está pactada la de ${esc(f.clienteNombre)}?</p>
+      <p class="muted" style="margin-bottom:14px">Esta pieza es de confección 🧵 ¿Quién la hace?</p>
+      <button class="btn-gold btn-block" id="confTonglin" style="margin-bottom:14px">🇨🇳 Tonglin — crear la orden en la app del Taller</button>
+      <p class="muted" style="margin-bottom:10px">O el taller local (plazo pactado con el cliente):</p>
       <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
       <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
       <div class="row" style="margin-top:12px;align-items:flex-end">
@@ -964,6 +969,28 @@ const Confecciones = (() => {
       <button class="btn-ghost btn-block" id="confLuego" style="margin-top:12px">Ahora no — la registro luego</button>
     `);
     const arrancar = async dias => { if (await iniciar(f, dias)) listo(); };
+    $('#confTonglin').addEventListener('click', async () => {
+      if (typeof Sync === 'undefined' || !Sync.conectado()) {
+        toast('⚠ Conecta la nube en Ajustes primero — la orden del Taller vive en Supabase');
+        return;
+      }
+      const linea = (f.lineas || []).find(l => /confecci/i.test(l.descripcion || '')) || (f.lineas || [])[0] || {};
+      const uidT = () => 'ord-' + (crypto.randomUUID ? crypto.randomUUID()
+        : Date.now().toString(36) + Math.random().toString(36).slice(2));
+      const orden = {
+        id: uidT(), tipo: 'orden', creado: new Date().toISOString(),
+        numero: String(f.orden || ''),
+        nombre: (linea.descripcion || 'Confección').replace(/confecci[oó]n( personalizada)?:?\s*/i, '').trim().slice(0, 90) || 'Confección',
+        destino: 'cliente', material: '', fotos: [], loteId: null, desdeCRM: true,
+        facturaCRM: { id: f.id, rotulo: rotulo(f), cliente: f.clienteNombre || '' },
+      };
+      /* misma cola del sync: si no hay internet, sube apenas vuelva */
+      Sync.notificar('taller', 'upsert', orden);
+      f.tallerOrdenId = orden.id;
+      await DB.facturas.upsert(f);
+      toast(`🇨🇳 Orden ${orden.numero ? '#' + orden.numero : ''} creada en el Taller — ábrelo para completar fotos y detalles`);
+      listo();
+    });
     $('#conf5').addEventListener('click', () => arrancar(5));
     $('#conf20').addEventListener('click', () => arrancar(20));
     $('#confOtroOk').addEventListener('click', () => {

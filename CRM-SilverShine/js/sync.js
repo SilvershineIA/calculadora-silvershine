@@ -9,8 +9,10 @@ const Sync = (() => {
   const K_CFG = 'sscrm_sync_cfg';
   const K_COLA = 'sscrm_sync_cola';
   const TABLAS = ['clientes', 'productos', 'facturas', 'pagos', 'cotizaciones', 'tareas', 'inventario', 'config'];
-  // 'config' puede no existir aún en Supabase (tabla nueva): sus errores no rompen el sync
-  const OPCIONALES = new Set(['config', 'inventario']);
+  // 'config' puede no existir aún en Supabase (tabla nueva): sus errores no rompen el sync.
+  // 'taller' (la app compartida con Tonglin) solo se ESCRIBE por la cola —
+  // nunca entra en subirTodo/bajarTodo (no está en TABLAS a propósito).
+  const OPCIONALES = new Set(['config', 'inventario', 'taller']);
 
   let cfg = null;
   try { cfg = JSON.parse(localStorage.getItem(K_CFG)); } catch { cfg = null; }

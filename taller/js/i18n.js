@@ -127,6 +127,8 @@ const I18N = (() => {
     f_enlazar:      ['🔗 Enlazar con su factura del CRM', '—'],
     f_buscar:       ['Buscar por cliente, # de orden o NCF…', '—'],
     f_quitar:       ['✕ Quitar enlace', '—'],
+    f_ponerCosto:   ['💵 Poner el costo en la factura enlazada', '—'],
+    o_completar:    ['✏️ completar detalles para Tonglin', '—'],
     f_sinCosto:     ['Enlazar SIN tocar el costo', '—'],
     f_conCosto:     ['Enlazar y poner el costo en la factura', '—'],
 

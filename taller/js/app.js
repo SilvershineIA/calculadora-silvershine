@@ -486,7 +486,7 @@ const App = (() => {
           <div class="card click" data-orden="${o.id}">
             <div class="fila"><div class="crece">
               <div class="nombre">${esc(nomOrden(o))}</div>
-              <div class="sub">${esc(o.material || '')}${o.noDisponible ? ` · <b class="rojo">${T('o_noDisp')}</b>` : ''}</div>
+              <div class="sub">${esc(o.material || '')}${o.desdeCRM && !o.material ? ` <b class="rojo">${T('o_completar')}</b>` : ''}${o.noDisponible ? ` · <b class="rojo">${T('o_noDisp')}</b>` : ''}</div>
             </div><span class="sub">›</span></div>
           </div>`).join('');
       }
@@ -1076,6 +1076,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         html += `<div class="card">
           <div class="nombre" style="font-size:14px">${esc(fc.cliente || '')} <span class="sub">${esc(fc.rotulo || '')}</span></div>
           ${fc.costoAplicado ? `<div class="sub">💵 Costo puesto en la factura: <b>${UI_RD(fc.costoAplicado.rd)}</b> (${fmtUSD(fc.costoAplicado.usd)} × ${fc.costoAplicado.tasa}) · ${fmtFecha(fc.costoAplicado.fecha)}</div>` : `<div class="sub">Enlazada sin costo</div>`}
+          ${!fc.costoAplicado && o.cot && (o.cot.subtotalFinal ?? o.cot.subtotal) != null ? `<button class="btn rosa" id="btnCostoFactura">${T('f_ponerCosto')}</button>` : ''}
           <button class="btn ghost" id="btnQuitarFactura">${T('f_quitar')}</button>
         </div>`;
       } else {
@@ -1205,6 +1206,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
 
     on('#btnEnlazarFactura', () => enlazarFactura(o));
+    on('#btnCostoFactura', () => enlazarFactura(o, (o.facturaCRM || {}).id));
     on('#btnQuitarFactura', async () => {
       if (!confirm(T('confirmar'))) return;
       delete o.facturaCRM;
@@ -1267,13 +1269,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
   /* ── Enlazar una pieza con su factura del CRM: se busca en la misma
      base y el costo Tonglin (US$ × tasa de la calculadora) queda puesto
      en f.costo — Finanzas lo usa para la ganancia sin doble digitación ── */
-  async function enlazarFactura(o) {
+  async function enlazarFactura(o, directoId) {
     abrirModal(T('f_titulo'), `<p class="sub">${T('cargando')}</p>`);
     let filas;
     try { filas = await Nube.listarFacturas(); }
     catch (e) { $('#modalCuerpo').innerHTML = `<p class="sub rojo">⚠ ${esc(e.message)}</p>`; return; }
     const facturas = filas.map(x => x.data).filter(f => f && f.estado !== 'anulada');
     const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+
+    /* modo directo: la factura ya está enlazada, solo falta ponerle el costo */
+    if (directoId) {
+      const fd = facturas.find(f => f.id === directoId) || (filas.find(x => x.id === directoId) || {}).data;
+      if (fd) { confirmar(fd); return; }
+    }
 
     $('#modalCuerpo').innerHTML = `
       <input type="search" id="efBuscar" placeholder="${T('f_buscar')}" autocomplete="off">
@@ -1300,7 +1308,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (o.numero) { $('#efBuscar').value = o.numero; pintar(o.numero); }
     else pintar('');
 
-    const confirmar = f => {
+    function confirmar(f) {
       /* si ya hay costo FINAL (peso real), ese manda sobre el cotizado */
       const usd = o.cot ? Number(o.cot.subtotalFinal ?? o.cot.subtotal) || 0 : 0;
       const tasa = Nube.tasaCRM() || '';
@@ -1345,7 +1353,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       };
       $('#efSinCosto').addEventListener('click', () => enlazar(false));
       if ($('#efConCosto')) $('#efConCosto').addEventListener('click', () => enlazar(true));
-    };
+    }
   }
 
   /* ── rayar el CAD: dibujo sobre la imagen + nota + fotos de referencia ── */
