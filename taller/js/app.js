@@ -1910,6 +1910,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
         <label>Email</label><input id="ajKEmail" autocomplete="off" placeholder="taller@silvershine.com.do">
         <label>Password</label><input id="ajKPass" autocomplete="off">
         <label>Nombre de quien usará este link</label><input id="ajKNombre" autocomplete="off" value="Julia" placeholder="Julia / Karen…">
+        <label>⭐ O pega un link que YA FUNCIONA (el de Julia) — clona sus credenciales exactas con el nombre nuevo, sin retecleos</label>
+        <input id="ajLinkBase" autocomplete="off" placeholder="https://…/taller/#k=…">
         <button class="btn rosa" id="ajGenerar">${T('a_generar')}</button>
         <div id="ajLink" style="display:none">
           <label>Link</label><textarea id="ajLinkTxt" readonly style="min-height:90px;font-size:12px"></textarea>
@@ -1933,8 +1935,16 @@ Si no es legible responde {"error": "motivo corto"}.`;
       <button class="btn peligro" id="ajSalir">${T('a_salir')}</button>`;
 
     $('#ajGenerar').addEventListener('click', () => {
-      const e = $('#ajKEmail').value.trim(), p = $('#ajKPass').value.trim();
       const n = $('#ajKNombre').value.trim() || 'Julia';
+      const base = $('#ajLinkBase').value.trim();
+      if (base) {
+        const clon = Nube.renombrarLink(base, n);
+        if (!clon) { toast('⚠ Ese link no se pudo leer — pega el link COMPLETO (con el #k=…)'); return; }
+        $('#ajLinkTxt').value = clon;
+        $('#ajLink').style.display = 'block';
+        return;
+      }
+      const e = $('#ajKEmail').value.trim(), p = $('#ajKPass').value.trim();
       if (!e || !p) return;
       $('#ajLinkTxt').value = Nube.armarLink(e, p, n);
       $('#ajLink').style.display = 'block';

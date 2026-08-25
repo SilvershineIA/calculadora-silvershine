@@ -228,13 +228,25 @@ const Nube = (() => {
     } catch { return null; }
   };
 
+  /* Clonar un link que YA FUNCIONA con otro nombre — mismas credenciales
+     exactas, sin retecleos (que fue lo que mató el primer link de Karen) */
+  const renombrarLink = (linkTexto, nombre) => {
+    const t = String(linkTexto || '').trim();
+    const p = leerLink(t.includes('#') ? t.slice(t.indexOf('#')) : '#k=' + t);
+    if (!p || !p.e || !p.p) return null;
+    const payload = { u: p.u, a: p.a, e: p.e, p: p.p, n: nombre || 'Julia' };
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `${location.origin}${location.pathname}#k=${b64}`;
+  };
+
   return {
     conectado, rol, pistaCRM, conectarJose, conectarTaller, desconectar,
     listarDocs, upsertDoc, borrarDoc,
     subirArchivo, bajarArchivo, bajarBlob,
     iaClave, iaGuardarClave, iaLeerPDF,
     listarFacturas, upsertFactura, tasaCRM,
-    armarLink, leerLink,
+    armarLink, leerLink, renombrarLink,
     info: () => cfg ? { url: cfg.url, email: cfg.email, rol: cfg.rol, nombre: cfg.nombre } : null,
   };
 })();
