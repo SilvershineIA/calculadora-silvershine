@@ -81,8 +81,9 @@ const App = (() => {
     i.onchange = () => res([...i.files]);
     i.click();
   });
-  /* Zona de arrastre: soltar imágenes encima también funciona */
-  function zonaArrastre(el, alSoltar) {
+  /* Zona de arrastre: soltar imágenes encima también funciona.
+     Con `cualquierArchivo` acepta además archivos 3D (.stl, .obj…) */
+  function zonaArrastre(el, alSoltar, cualquierArchivo) {
     if (!el) return;
     el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('arrastrando'); });
     el.addEventListener('dragleave', () => el.classList.remove('arrastrando'));
@@ -90,10 +91,15 @@ const App = (() => {
       e.preventDefault();
       e.stopPropagation();   // que la zona de adentro no se lo pase a la de afuera (foto doble)
       el.classList.remove('arrastrando');
-      const archivos = [...((e.dataTransfer && e.dataTransfer.files) || [])].filter(f => f.type.startsWith('image/'));
+      const archivos = [...((e.dataTransfer && e.dataTransfer.files) || [])]
+        .filter(f => cualquierArchivo || f.type.startsWith('image/'));
       if (archivos.length) alSoltar(archivos);
     });
   }
+  /* Los CAD pueden ser imagen (render) o archivo 3D que se sube tal cual */
+  const ACEPTA_CAD = 'image/*,.stl,.3dm,.obj,.ply,.glb,.gltf,.step,.stp,.igs,.iges,.zip,.rar';
+  const esImagenFile = f => (f.type || '').startsWith('image/');
+  const extDe = n => ((String(n).match(/\.[a-z0-9]{2,5}$/i) || [''])[0]).toLowerCase();
   async function blobAB64(blob) {
     const buf = new Uint8Array(await blob.arrayBuffer());
     let s = '';
@@ -1091,7 +1097,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (tieneCadJose) {
       html += `<div class="card">
         <div class="sub" style="margin-bottom:6px"><b>${T('c_deJose')}</b> · ${fmtFecha(o.cadJose.fecha)}</div>
-        ${o.cadJose.fotos.map(f => `<img class="cad-img" data-path="${f.path}" alt="CAD" style="margin-bottom:6px">`).join('')}
+        ${o.cadJose.fotos.map(f => f.archivo
+          ? `<div class="tira"><span class="ico">📐</span>
+              <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(f.nombre || 'CAD file')}</div>
+              <div class="sub">${I18N.esKaren() ? 'Tap to download the 3D file' : 'Toca para descargar el archivo 3D'}</div></div>
+              <button class="btn-sm" data-bajar="${f.path}">⬇</button></div>`
+          : `<img class="cad-img" data-path="${f.path}" alt="CAD" style="margin-bottom:6px">`).join('')}
       </div>`;
     }
     if (!cads.length && !tieneCadJose) {
@@ -1103,14 +1114,18 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const fb = cv.feedback;
       html += `<div class="card">
         <div class="sub" style="margin-bottom:6px"><b>CAD ${T('c_v')} ${cv.v}</b> · ${fmtFecha(cv.fecha)}</div>
-        <img class="cad-img" data-path="${cv.imgPath}" alt="CAD v${cv.v}">
+        ${cv.archivoPath
+          ? `<div class="tira"><span class="ico">📐</span>
+              <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(cv.nombre || 'CAD file')}</div></div>
+              <button class="btn-sm" data-bajar="${cv.archivoPath}">⬇</button></div>`
+          : `<img class="cad-img" data-path="${cv.imgPath}" alt="CAD v${cv.v}">`}
         ${fb ? `<div class="sub" style="margin-top:8px">${fb.tipo === 'aprobado'
           ? `<b class="verde">${T('c_aprobado')}</b> · ${fmtFecha(fb.fecha)}`
           : `<b class="rojo">${T('c_cambios')}</b>: ${esc(fb.nota || '')}`}</div>` : ''}
         ${fb && fb.marcadoPath ? `<div class="sub" style="margin-top:6px">✏️:</div><img class="cad-img" data-path="${fb.marcadoPath}" alt="">` : ''}
         ${fb && (fb.refs || []).length ? `<div class="sub" style="margin-top:6px">${T('c_refs')}:</div><div class="galeria">${fb.refs.map(p => `<img data-path="${p}" alt="">`).join('')}</div>` : ''}
         ${!karen && i === cads.length - 1 && (!fb) ? `
-          <button class="btn ghost" data-marcar="${i}">${T('c_marcar')}</button>
+          ${cv.imgPath ? `<button class="btn ghost" data-marcar="${i}">${T('c_marcar')}</button>` : ''}
           <button class="btn rosa" data-cadok="${i}">${T('c_aprobar')}</button>` : ''}
       </div>`;
     });
@@ -1151,6 +1166,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     pintarImagenes(c);
     $('#btnVolver').addEventListener('click', () => { if (l) { loteAbierto = l.id; nav('lote'); } else nav('lotes'); });
     $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verImagen(img.dataset.path)));
+    $$('#cuerpo [data-bajar]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verArchivo(b.dataset.bajar); }));
 
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
 
@@ -1165,16 +1181,23 @@ Si no es legible responde {"error": "motivo corto"}.`;
     $$('#cuerpo [data-marcar]').forEach(b => b.addEventListener('click', () => marcarCad(o, Number(b.dataset.marcar))));
 
     on('#btnSubirCad', async () => {
-      const f = await elegirArchivo('image/*');
+      const f = await elegirArchivo(ACEPTA_CAD);
       if (!f) return;
       toast(T('subiendo'));
       try {
-        const blob = await comprimir(f, 1800, 0.88);
         const v = (o.cad || []).length + 1;
-        const path = `ordenes/${o.id}/cad-v${v}-${Date.now()}.jpg`;
-        await Nube.subirArchivo(path, blob, 'image/jpeg');
         o.cad = o.cad || [];
-        o.cad.push({ v, imgPath: path, fecha: hoyISO() });
+        if (esImagenFile(f)) {
+          const blob = await comprimir(f, 1800, 0.88);
+          const path = `ordenes/${o.id}/cad-v${v}-${Date.now()}.jpg`;
+          await Nube.subirArchivo(path, blob, 'image/jpeg');
+          o.cad.push({ v, imgPath: path, fecha: hoyISO() });
+        } else {
+          /* archivo 3D (.stl…): tal cual, sin comprimir */
+          const path = `ordenes/${o.id}/cad-v${v}-${Date.now()}${extDe(f.name) || '.bin'}`;
+          await Nube.subirArchivo(path, f, f.type || 'application/octet-stream');
+          o.cad.push({ v, archivoPath: path, nombre: f.name, fecha: hoyISO() });
+        }
         delete o.cadOmitido;   // subió CAD al final: el salto ya no aplica
         await guardarDoc(o);
         await avisar('cad', `${o.nombre} · v${v}`, o.loteId, o.id);
@@ -1615,40 +1638,66 @@ Si no es legible responde {"error": "motivo corto"}.`;
     zonaArrastre($('#noFotos'), agregarFotos);
     zonaArrastre($('#noForm'), agregarFotos);
 
-    /* CAD propio de José: mismo mecanismo que las fotos */
+    /* CAD propio de José: mismo mecanismo que las fotos (imagen o archivo 3D) */
     if (editando) {
       for (const f of cadExistentes) {
         const cont = document.createElement('div');
         cont.style.cssText = 'position:relative;display:inline-block';
-        const im = document.createElement('img');
-        im.dataset.path = f.path;
+        if (f.archivo) {
+          const chip = document.createElement('div');
+          chip.className = 'btn-sm';
+          chip.style.cssText = 'display:flex;align-items:center;gap:6px;max-width:160px;overflow:hidden';
+          chip.innerHTML = `📐 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.nombre || 'CAD')}</span>`;
+          cont.appendChild(chip);
+        } else {
+          const im = document.createElement('img');
+          im.dataset.path = f.path;
+          cont.appendChild(im);
+        }
         const x = document.createElement('button');
         x.textContent = '✕'; x.type = 'button';
         x.style.cssText = 'position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:12px;cursor:pointer';
         x.addEventListener('click', () => { cadExistentes = cadExistentes.filter(z => z !== f); cont.remove(); });
-        cont.appendChild(im); cont.appendChild(x);
+        cont.appendChild(x);
         $('#noCad').insertBefore(cont, $('#noCadMas'));
       }
       pintarImagenes($('#noCad'));
     }
-    for (const blob of cadNueva) {
-      const im = document.createElement('img');
-      im.src = URL.createObjectURL(blob);
-      $('#noCad').insertBefore(im, $('#noCadMas'));
+    const chipCad = nombre => {
+      const d = document.createElement('div');
+      d.className = 'btn-sm';
+      d.style.cssText = 'display:flex;align-items:center;gap:6px;max-width:160px;overflow:hidden';
+      d.innerHTML = `📐 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nombre)}</span>`;
+      return d;
+    };
+    for (const c of cadNueva) {
+      if (c.esImagen) {
+        const im = document.createElement('img');
+        im.src = URL.createObjectURL(c.blob);
+        $('#noCad').insertBefore(im, $('#noCadMas'));
+      } else {
+        $('#noCad').insertBefore(chipCad(c.nombre), $('#noCadMas'));
+      }
     }
     const agregarCads = async archivos => {
       for (const f of archivos) {
-        try {
-          const blob = await comprimir(f, 1800, 0.88);
-          cadNueva.push(blob);
-          const im = document.createElement('img');
-          im.src = URL.createObjectURL(blob);
-          $('#noCad').insertBefore(im, $('#noCadMas'));
-        } catch { toast('⚠ ' + f.name); }
+        if (esImagenFile(f)) {
+          try {
+            const blob = await comprimir(f, 1800, 0.88);
+            cadNueva.push({ blob, nombre: f.name, esImagen: true });
+            const im = document.createElement('img');
+            im.src = URL.createObjectURL(blob);
+            $('#noCad').insertBefore(im, $('#noCadMas'));
+          } catch { toast('⚠ ' + f.name); }
+        } else {
+          /* archivo 3D (.stl, .obj…): va tal cual, sin comprimir */
+          cadNueva.push({ blob: f, nombre: f.name, esImagen: false });
+          $('#noCad').insertBefore(chipCad(f.name), $('#noCadMas'));
+        }
       }
     };
-    $('#noCadMas').addEventListener('click', async () => agregarCads(await elegirArchivos('image/*')));
-    zonaArrastre($('#noCad'), agregarCads);
+    $('#noCadMas').addEventListener('click', async () => agregarCads(await elegirArchivos(ACEPTA_CAD)));
+    zonaArrastre($('#noCad'), agregarCads, true);
 
     /* material rápido: base + color (el campo queda en el inglés que
        Tonglin entiende, y sigue editable a mano) */
@@ -1780,12 +1829,15 @@ Si no es legible responde {"error": "motivo corto"}.`;
           await Nube.subirArchivo(p, fotosNueva[i], 'image/jpeg');
           o.fotos.push({ path: p });
         }
-        /* CAD propio: si la orden lo lleva, el paso del CAD queda saltado */
+        /* CAD propio: si la orden lo lleva, el paso del CAD queda saltado.
+           Las imágenes van comprimidas; los archivos 3D (.stl…) tal cual */
         const cadFotos = editando ? cadExistentes.slice() : [];
         for (let i = 0; i < cadNueva.length; i++) {
-          const p = `ordenes/${o.id}/cad-jose-${Date.now()}-${i + 1}.jpg`;
-          await Nube.subirArchivo(p, cadNueva[i], 'image/jpeg');
-          cadFotos.push({ path: p });
+          const c = cadNueva[i];
+          const ext = c.esImagen ? '.jpg' : (extDe(c.nombre) || '.bin');
+          const p = `ordenes/${o.id}/cad-jose-${Date.now()}-${i + 1}${ext}`;
+          await Nube.subirArchivo(p, c.blob, c.esImagen ? 'image/jpeg' : (c.blob.type || 'application/octet-stream'));
+          cadFotos.push({ path: p, nombre: c.nombre, archivo: !c.esImagen });
         }
         if (cadFotos.length) o.cadJose = { fotos: cadFotos, fecha: o.cadJose ? o.cadJose.fecha : hoyISO() };
         else delete o.cadJose;
