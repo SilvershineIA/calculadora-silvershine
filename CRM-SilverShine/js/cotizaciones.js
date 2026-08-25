@@ -40,24 +40,59 @@ const Cotizaciones = (() => {
   /* Mensaje de seguimiento (compartido por el detalle y por Mi Día).
      Abiertas: saludo suave con la pregunta que reactiva. Aceptadas sin
      facturar (lead caliente): cerrar con el 70/30. */
+  /* ── Secuencia de seguimiento estilo "carrito abandonado": 3 toques
+     DISTINTOS que escalan solos. El toque lo decide cuántos seguimientos
+     REGISTRADOS lleva la cotización (se registran con ⋯ "Ya le escribí"
+     o con los botones del detalle):
+       1º — pregunta personal, sin presión
+       2º — beneficios y facilidades (garantía, 70/30, EasyPay)
+       3º — urgencia REAL (el precio del oro cambia + fecha límite)
+            e incentivo configurable en Ajustes 🎁 ── */
+  const toqueDe = c => Math.min((c.seguimientos || []).length, 2);
+  const NOMBRE_TOQUE = ['1º · saludo personal', '2º · beneficios', '3º · urgencia'];
+
   function mensajeSeguimientoDe(c, emp) {
     const t = c.moneda || 'DOP';
-    return esLeadCaliente(c)
-      ? `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
-        `¡Qué alegría que le encantó su pieza de la cotización *COT-${c.numero}*! 😍\n` +
-        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'Su pieza'}\n\n` +
+    const saludo = `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n`;
+    const pieza = `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}`;
+    const pie = `\n${emp.nombre} · ${emp.web}`;
+
+    if (esLeadCaliente(c)) {
+      return saludo +
+        `¡Qué alegría que le encantó su pieza de la cotización *COT-${c.numero}*! 😍\n${pieza}\n\n` +
         `Cuando guste comenzamos: con el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* iniciamos la confección y el 30% restante se paga a la entrega.${
           c.easypay ? ' También puede tomarla con su plan EasyPay si lo prefiere.' : ''}\n\n` +
-        `Estamos a la orden para lo que necesite 💎\n${emp.nombre} · ${emp.web}`
-      : `Hola ${c.clienteNombre} 👋 Le saluda *${UI.quienSaluda(emp)}* ✨\n\n` +
-        `Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n` +
-        `💍 ${c.lineas[0] ? c.lineas[0].descripcion : 'su pieza'}\n\n` +
+        `Estamos a la orden para lo que necesite 💎` + pie;
+    }
+
+    const toque = toqueDe(c);
+    if (toque === 0) {
+      return saludo +
+        `Hace unos días le compartimos la cotización *COT-${c.numero}* de:\n${pieza}\n\n` +
         `¿Qué le pareció? 😊 ¿Le gustó la pieza, o le gustaría modificar algo — el peso, el material o el presupuesto? Con gusto la ajustamos hasta que quede perfecta para usted.\n\n` +
-        `Quedamos atentos, sin ningún compromiso 💎\n${emp.nombre} · ${emp.web}`;
+        `Quedamos atentos, sin ningún compromiso 💎` + pie;
+    }
+    if (toque === 1) {
+      return saludo +
+        `Su cotización *COT-${c.numero}* sigue vigente 😊\n${pieza} — *${fmtMoneda(c.total, t)}*\n\n` +
+        `Le recuerdo todo lo que incluye su pieza con nosotros:\n` +
+        `✨ Hecha a su medida, con *garantía de por vida* y limpieza profesional gratis cada año\n` +
+        `💳 Puede iniciarla con solo el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* y el 30% a la entrega${
+          t === 'DOP' ? '\n📅 O llevarla en cuotas cómodas con nuestro plan EasyPay' : ''}\n\n` +
+        `¿Le gustaría que se la vayamos preparando? Cualquier ajuste se lo hacemos con gusto 💎` + pie;
+    }
+    const vence = c.vence ? fmtFecha(c.vence) : null;
+    const incentivo = String(emp.incentivo || '').trim();
+    return saludo +
+      `No quiero que se le pase 🙏 Su cotización *COT-${c.numero}*:\n${pieza} — *${fmtMoneda(c.total, t)}*\n\n` +
+      `⏳ El precio del oro cambia todos los días y su cotización fue calculada con el precio de ese momento. ${
+        vence ? `Se la puedo mantener hasta el *${vence}*` : 'Se la puedo mantener unos días más'} — después tendría que recotizarla al precio del día.\n` +
+      (incentivo ? `\n🎁 Y si la aparta antes: *${incentivo}*\n` : '') +
+      `\n¿Se la aparto? Con el *70% (${fmtMoneda((c.total || 0) * 0.7, t)})* arrancamos hoy mismo 💎` + pie;
   }
 
-  /* Seguimiento en 1 toque desde Mi Día: envía el mensaje correcto
-     (suave o de cierre), lo registra y sale */
+  /* Seguimiento en 1 toque desde Mi Día: prepara el mensaje del toque
+     que corresponde; el usuario lo marca enviado con ⋯ */
   async function seguimientoRapido(id) {
     const c = await DB.cotizaciones.get(id);
     if (!c) return false;
@@ -65,9 +100,9 @@ const Cotizaciones = (() => {
     if (!UI.tieneWhatsApp(cliente)) { detalle(id); return false; }
     const emp = await UI.getEmpresa();
     UI.abrirWhatsApp(cliente, mensajeSeguimientoDe(c, emp));
-    /* NO se anota nada solo por abrir el mensaje: el usuario decide
-       cuándo quedó enviado (⋯ → "Ya le escribí") — la fila no se mueve */
-    toast('💬 Mensaje listo — cuando lo envíes, márcalo con ⋯');
+    toast(esLeadCaliente(c)
+      ? '💬 Mensaje de cierre listo — cuando lo envíes, márcalo con ⋯'
+      : `💬 Toque ${NOMBRE_TOQUE[toqueDe(c)]} listo — cuando lo envíes, márcalo con ⋯`);
     return true;
   }
 

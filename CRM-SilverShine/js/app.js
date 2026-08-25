@@ -540,7 +540,7 @@
   async function cargarFormEmpresa() {
     const emp = await UI.getEmpresa();
     const f = $('#formEmpresa');
-    for (const campo of ['nombre', 'vendedor', 'razon', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
+    for (const campo of ['nombre', 'vendedor', 'razon', 'rnc', 'incentivo', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
       f[campo].value = emp[campo] || '';
     }
   }
@@ -548,7 +548,7 @@
     e.preventDefault();
     const fd = new FormData(e.target);
     const emp = { id: 'empresa' };
-    for (const campo of ['nombre', 'vendedor', 'razon', 'rnc', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
+    for (const campo of ['nombre', 'vendedor', 'razon', 'rnc', 'incentivo', 'direccion', 'telefono', 'correo', 'web', 'garantia', 'pie', 'cuentas']) {
       emp[campo] = String(fd.get(campo) || '').trim();
     }
     await DB.config.upsert(emp);
