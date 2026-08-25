@@ -111,6 +111,21 @@ const App = (() => {
     catch (e) { toast('⚠ ' + e.message); }
   }
 
+  /* Descargar con su NOMBRE real (un blob abierto a secas baja con un
+     nombre aleatorio sin extensión — un .stl así no sirve de nada) */
+  async function descargarArchivo(path, nombre) {
+    try {
+      const url = await Nube.bajarArchivo(path);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre || path.split('/').pop();
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('⬇ ' + (nombre || ''));
+    } catch (e) { toast('⚠ ' + e.message); }
+  }
+
   /* ── Visor de imágenes a pantalla completa: pellizco para zoom en el
      teléfono, rueda en la PC, doble toque acerca/aleja, arrastre para
      moverse. Lo usan el CAD, las fotos y los comprobantes. ── */
@@ -541,7 +556,9 @@ const App = (() => {
     /* piezas */
     html += piezas.map(o => {
       const cadUlt = (o.cad || [])[Math.max(0, (o.cad || []).length - 1)];
-      const cadTxt = !cadUlt ? '' :
+      const cadTxt =
+        (o.cadJose && (o.cadJose.fotos || []).length) ? ' · 📐 CAD ✓' :
+        !cadUlt ? (o.cadOmitido ? ' · ⏭ CAD' : '') :
         cadUlt.feedback && cadUlt.feedback.tipo === 'aprobado' ? ` · ${T('c_aprobado')}` :
         cadUlt.feedback ? ` · ${T('c_cambios')}` : ` · 🖌 CAD v${cadUlt.v}`;
       return `
@@ -1101,7 +1118,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
           ? `<div class="tira"><span class="ico">📐</span>
               <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(f.nombre || 'CAD file')}</div>
               <div class="sub">${I18N.esKaren() ? 'Tap to download the 3D file' : 'Toca para descargar el archivo 3D'}</div></div>
-              <button class="btn-sm" data-bajar="${f.path}">⬇</button></div>`
+              <button class="btn-sm" data-bajar="${f.path}" data-nombre="${esc(f.nombre || '')}">⬇</button></div>`
           : `<img class="cad-img" data-path="${f.path}" alt="CAD" style="margin-bottom:6px">`).join('')}
       </div>`;
     }
@@ -1117,7 +1134,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         ${cv.archivoPath
           ? `<div class="tira"><span class="ico">📐</span>
               <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(cv.nombre || 'CAD file')}</div></div>
-              <button class="btn-sm" data-bajar="${cv.archivoPath}">⬇</button></div>`
+              <button class="btn-sm" data-bajar="${cv.archivoPath}" data-nombre="${esc(cv.nombre || '')}">⬇</button></div>`
           : `<img class="cad-img" data-path="${cv.imgPath}" alt="CAD v${cv.v}">`}
         ${fb ? `<div class="sub" style="margin-top:8px">${fb.tipo === 'aprobado'
           ? `<b class="verde">${T('c_aprobado')}</b> · ${fmtFecha(fb.fecha)}`
@@ -1166,7 +1183,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     pintarImagenes(c);
     $('#btnVolver').addEventListener('click', () => { if (l) { loteAbierto = l.id; nav('lote'); } else nav('lotes'); });
     $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verImagen(img.dataset.path)));
-    $$('#cuerpo [data-bajar]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verArchivo(b.dataset.bajar); }));
+    $$('#cuerpo [data-bajar]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); descargarArchivo(b.dataset.bajar, b.dataset.nombre); }));
 
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
 
