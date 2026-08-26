@@ -1002,14 +1002,20 @@ const App = (() => {
 
     on('#btnLinkPago', () => modalLinkPago(l, 'linkPago', 'linkPago'));
 
-    on('#btnComprobante', async () => {
-      const f = await elegirArchivo('image/*', true);
+    /* comprobante: captura (se comprime) o PDF del banco (va tal cual) */
+    const subirComprobante = async f => {
       if (!f) return;
       toast(T('subiendo'));
       try {
-        const blob = await comprimir(f);
-        const path = `lotes/${l.id}/comprobante-${Date.now()}.jpg`;
-        await Nube.subirArchivo(path, blob, 'image/jpeg');
+        let path;
+        if (esImagenFile(f)) {
+          const blob = await comprimir(f);
+          path = `lotes/${l.id}/comprobante-${Date.now()}.jpg`;
+          await Nube.subirArchivo(path, blob, 'image/jpeg');
+        } else {
+          path = `lotes/${l.id}/comprobante-${Date.now()}.pdf`;
+          await Nube.subirArchivo(path, f, 'application/pdf');
+        }
         l.comprobante = { path, fecha: hoyISO() };
         l.prodInicio = hoyISO();
         l.entregaEst = diasHabiles(hoyISO(), 15);
@@ -1018,7 +1024,9 @@ const App = (() => {
         toast(T('l_comprobanteOk'));
         render();
       } catch (e) { toast('⚠ ' + e.message); }
-    });
+    };
+    on('#btnComprobante', async () => subirComprobante(await elegirArchivo('image/*,application/pdf', true)));
+    zonaArrastre($('#btnComprobante'), archivos => subirComprobante(archivos[0]), true);
 
     const subirFinalPdf = async f => {
       toast(T('subiendo'));
@@ -1041,19 +1049,28 @@ const App = (() => {
     zonaArrastre($('#btnSubirFinal'), archivos => subirFinalPdf(archivos[0]), true);
 
     on('#btnComprobanteFinal', async () => {
-      const f = await elegirArchivo('image/*', true);
+      subirComprobanteFinal(await elegirArchivo('image/*,application/pdf', true));
+    });
+    const subirComprobanteFinal = async f => {
       if (!f) return;
       toast(T('subiendo'));
       try {
-        const blob = await comprimir(f);
-        const path = `lotes/${l.id}/comprobante-final-${Date.now()}.jpg`;
-        await Nube.subirArchivo(path, blob, 'image/jpeg');
+        let path;
+        if (esImagenFile(f)) {
+          const blob = await comprimir(f);
+          path = `lotes/${l.id}/comprobante-final-${Date.now()}.jpg`;
+          await Nube.subirArchivo(path, blob, 'image/jpeg');
+        } else {
+          path = `lotes/${l.id}/comprobante-final-${Date.now()}.pdf`;
+          await Nube.subirArchivo(path, f, 'application/pdf');
+        }
         l.comprobanteFinal = { path, fecha: hoyISO() };
         await guardarDoc(l);
         await avisar('pagoFinal', l.nombre, l.id);
         render();
       } catch (e) { toast('⚠ ' + e.message); }
-    });
+    };
+    zonaArrastre($('#btnComprobanteFinal'), archivos => subirComprobanteFinal(archivos[0]), true);
 
     on('#btnTracking', () => {
       abrirModal(T('l_ponerTracking'), `
