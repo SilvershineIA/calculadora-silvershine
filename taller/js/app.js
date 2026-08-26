@@ -576,6 +576,7 @@ const App = (() => {
       const piedra = esc(String(o.stone || '').split('\n')[0].slice(0, 72));
       const costoV = o.cot ? (o.cot.subtotalFinal ?? o.cot.subtotal) : null;
       const linea3 = [
+        o.batchTonglin ? `<span class="badge b-jade">🏷 ${esc(o.batchTonglin)}</span>` : '',
         o.target ? '🎯 ' + fmtFecha(o.target) : '',
         costoV != null ? `<span class="money">${fmtUSD(costoV)}</span>` : '',
         cadTxt,
@@ -1179,6 +1180,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     /* la orden — formato Tonglin */
     html += `<div class="card"><div class="spec">
       ${filaSpec(T('o_numero'), o.numero ? '#' + esc(o.numero) : '')}
+      ${filaSpec('🏷 Batch', esc(o.batchTonglin || ''))}
       ${filaSpec(T('o_material'), esc(o.material))}
       ${filaSpec(T('o_size'), esc(o.size))}
       ${filaSpec(T('o_engraving'), esc(o.engraving))}
@@ -1306,13 +1308,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
     $('#btnVolver').addEventListener('click', () => { if (l) { loteAbierto = l.id; nav('lote'); } else nav('lotes'); });
     $('#btnInicioOrden').addEventListener('click', () => nav('novedades'));
     $('#btnRefOrden').addEventListener('click', () => {
-      abrirModal(T('o_ref'), `
+      abrirModal('🏷', `
+        <label>${T('o_ref')}</label>
         <input id="roTxt" autocomplete="off" placeholder="JTR7349" value="${esc(o.refTonglin || '')}">
+        <label>${T('o_batch')}</label>
+        <input id="roBatch" autocomplete="off" placeholder="41P" value="${esc(o.batchTonglin || '')}">
         <button class="btn ${I18N.esKaren() ? 'jade' : 'rosa'}" id="roOk">${T('guardar')}</button>`);
       $('#roOk').addEventListener('click', async () => {
         o.refTonglin = $('#roTxt').value.trim();
+        o.batchTonglin = $('#roBatch').value.trim();
         await guardarDoc(o);
-        if (I18N.esKaren() && o.refTonglin) await avisar('refTonglin', `${o.nombre} → ${o.refTonglin}`, o.loteId, o.id);
+        if (I18N.esKaren() && (o.refTonglin || o.batchTonglin)) {
+          await avisar('refTonglin', `${o.nombre} → ${[o.refTonglin, o.batchTonglin].filter(Boolean).join(' · ')}`, o.loteId, o.id);
+        }
         cerrarModal();
         render();
       });
@@ -2026,8 +2034,26 @@ Si no es legible responde {"error": "motivo corto"}.`;
       c.innerHTML = `
         <div class="h-sec">${T('ajustes')}</div>
         <div class="card"><div class="sub">👤 ${esc(info.email || '')}</div></div>
+        <div class="h-sec">${T('sug_titulo')}</div>
+        <div class="card">
+          <p class="sub">${T('sug_expl')}</p>
+          <textarea id="sugTxt" style="min-height:110px" placeholder="What / where / example…"></textarea>
+          <button class="btn jade" id="sugEnviar">${T('sug_enviar')}</button>
+        </div>
         <div class="card"><div class="sub">To sign back in, just open your link again — it never expires.</div></div>
         <button class="btn peligro" id="ajSalir">${T('a_salir')}</button>`;
+      $('#sugEnviar').addEventListener('click', async () => {
+        const texto = $('#sugTxt').value.trim();
+        if (!texto) return;
+        await guardarDoc({
+          id: uid('sug'), tipo: 'sug', texto,
+          nombre: (Nube.info() || {}).nombre || 'Julia',
+          fecha: new Date().toISOString(),
+        });
+        await avisar('sugerencia', texto.slice(0, 80));
+        $('#sugTxt').value = '';
+        toast(T('sug_ok'));
+      });
       $('#ajSalir').addEventListener('click', () => {
         if (!confirm(T('confirmar'))) return;
         Nube.desconectar();
@@ -2054,6 +2080,18 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button class="btn ghost" id="ajCopiar">${T('copiar')}</button>
         </div>
       </div>
+      ${(() => {
+        const sugs = docs.filter(d => d.tipo === 'sug')
+          .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+        if (!sugs.length) return '';
+        return `<div class="h-sec">${T('sug_titulo')} (${sugs.length})</div>
+          <div class="card"><p class="sub">${T('sug_expl')}</p></div>` +
+          sugs.map(s => `<div class="card" style="border-left:3px solid var(--jade)">
+            <div class="sub"><b>${esc(s.nombre || 'Tonglin')}</b> · ${fmtFecha(s.fecha)}</div>
+            <div style="font-size:14px;margin-top:4px;white-space:pre-wrap">${esc(s.texto)}</div>
+            <button class="btn-sm" data-sugx="${s.id}" style="margin-top:8px;color:var(--red)">🗑</button>
+          </div>`).join('');
+      })()}
       <div class="h-sec">💬 WhatsApp (avisos en ambas direcciones)</div>
       <div class="card">
         <p class="sub">Si hablan por un GRUPO: pega el link de invitación del grupo (WhatsApp → el grupo → nombre → «Invitar mediante enlace»). Los botones copiarán el mensaje y abrirán el grupo — solo pegas y envías. Si lo dejas vacío, se usan los números individuales.</p>
@@ -2070,6 +2108,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
       </div>
       <button class="btn peligro" id="ajSalir">${T('a_salir')}</button>`;
 
+    $$('#cuerpo [data-sugx]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm(T('confirmar'))) return;
+      docs = docs.filter(d => d.id !== b.dataset.sugx);
+      await Nube.borrarDoc(b.dataset.sugx);
+      render();
+    }));
     $('#ajGenerar').addEventListener('click', () => {
       const n = $('#ajKNombre').value.trim() || 'Julia';
       const base = $('#ajLinkBase').value.trim();

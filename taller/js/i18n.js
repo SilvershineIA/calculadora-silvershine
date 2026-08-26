@@ -118,6 +118,13 @@ const I18N = (() => {
     ev_lotesUnidos: ['Lotes unidos en uno', 'Batches were merged'],
     ev_refTonglin:  ['Tonglin puso su referencia', 'Reference saved'],
     volverInicio:   ['🏠 Volver al inicio', '🏠 Back to home'],
+    o_batch:        ['🏷 Batch de Tonglin de ESTA pieza (ej. 41P)', '🏷 Your batch for THIS piece (e.g. 41P)'],
+    sug_titulo:     ['💡 Sugerencias de Tonglin', '💡 Suggest an improvement'],
+    sug_expl:       ['Lo que Julia/Karen piden para mejorar la app — el texto completo, como te lo escribieron.',
+                     'Tell José IN DETAIL what you would like to change or add: which screen, what you expect to see, and an example. E.g. "each piece should show which of our batches it belongs to, like 41P". He reads every suggestion and ships improvements.'],
+    sug_enviar:     ['—', 'Send suggestion to José'],
+    sug_ok:         ['—', '✓ Sent — thank you!'],
+    ev_sugerencia:  ['💡 Sugerencia de Tonglin — léela en Ajustes', 'Suggestion sent to José'],
 
     /* ── desglose de cotización / factura CRM ── */
     q_ver:          ['ver desglose ▾', 'details ▾'],
