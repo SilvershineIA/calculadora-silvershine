@@ -217,7 +217,7 @@ const App = (() => {
   /* ═══ datos ═══ */
   let docs = [];        // todos los documentos de la tabla `taller`
   const ordenes = () => docs.filter(d => d.tipo === 'orden');
-  const lotes = () => docs.filter(d => d.tipo === 'lote');
+  const lotes = () => docs.filter(d => d.tipo === 'lote' && !d.fusionadoEn);
   const eventos = () => docs.filter(d => d.tipo === 'ev');
   const doc = id => docs.find(d => d.id === id) || null;
   const piezasDe = loteId => ordenes().filter(o => o.loteId === loteId)
@@ -228,7 +228,8 @@ const App = (() => {
   /* El nombre visible de una orden SIEMPRE arranca por su número (si lo
      tiene) — es el hilo que la une con la factura del CRM y con el PI
      de Tonglin, que también escribe "order 1882" en sus filas */
-  const nomOrden = o => (o.numero ? '#' + o.numero + ' · ' : '') + (o.nombre || '');
+  const nomOrden = o => (o.numero ? '#' + o.numero + ' · ' : '') + (o.nombre || '') +
+    (o.refTonglin ? ' — ' + o.refTonglin : '');
 
   async function guardarDoc(d) {
     const i = docs.findIndex(x => x.id === d.id);
@@ -480,7 +481,7 @@ const App = (() => {
       <div class="card click" data-lote="${l.id}">
         <div class="fila">${meToca ? '<span class="punto-rojo"></span>' : ''}
           <div class="crece">
-            <div class="nombre">🗂 ${esc(l.nombre)}</div>
+            <div class="nombre">🗂 ${esc(l.nombre)}${l.refTonglin ? ` <span class="badge b-jade">🏷 ${esc(l.refTonglin)}</span>` : ''}</div>
             <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${l.comprobante && !l.tracking ? ` · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b>` : ''}</div>
           </div>
           <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span>
@@ -550,8 +551,12 @@ const App = (() => {
 
     let html = `
       <button class="btn-sm" id="btnVolver">${T('volver')}</button>
-      <div class="h-sec">🗂 ${esc(l.nombre)} · <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span></div>
-      <div class="pasos">${ORDEN_ESTADOS.map((_, i) => `<span class="${i <= idx ? 'ok' : ''}"></span>`).join('')}</div>`;
+      <div class="h-sec">🗂 ${esc(l.nombre)}${l.refTonglin ? ` · 🏷 ${esc(l.refTonglin)}` : ''} · <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span></div>
+      <div class="pasos">${ORDEN_ESTADOS.map((_, i) => `<span class="${i <= idx ? 'ok' : ''}"></span>`).join('')}</div>
+      <div class="fila" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn-sm" id="btnRefLote">${l.refTonglin ? '🏷 ' + esc(l.refTonglin) : T('l_ref')}</button>
+        ${['armando', 'enviado', 'cotizado'].includes(est) ? `<button class="btn-sm" id="btnUnirLote">${T('l_unir')}</button>` : ''}
+      </div>`;
 
     /* piezas */
     html += piezas.map(o => {
@@ -776,6 +781,7 @@ const App = (() => {
       html += `<button class="btn ghost" id="btnAvisarJose">💬 Message José on WhatsApp (ready to send)</button>`;
     }
 
+    html += `<button class="btn ghost" id="btnInicioLote">${T('volverInicio')}</button>`;
     c.innerHTML = html;
     pintarImagenes(c);   // mini-fotos de las piezas
     wireLote(l, piezas);
@@ -783,6 +789,56 @@ const App = (() => {
 
   function wireLote(l, piezas) {
     $('#btnVolver').addEventListener('click', () => nav('lotes'));
+    const bInicio = $('#btnInicioLote');
+    if (bInicio) bInicio.addEventListener('click', () => nav('novedades'));
+
+    /* 🏷 referencia de Tonglin del lote (ej. 41P) — editable por ambos */
+    const bRef = $('#btnRefLote');
+    if (bRef) bRef.addEventListener('click', () => {
+      abrirModal(T('l_ref'), `
+        <input id="rlTxt" autocomplete="off" placeholder="41P" value="${esc(l.refTonglin || '')}">
+        <button class="btn ${I18N.esKaren() ? 'jade' : 'rosa'}" id="rlOk">${T('guardar')}</button>`);
+      $('#rlOk').addEventListener('click', async () => {
+        l.refTonglin = $('#rlTxt').value.trim();
+        await guardarDoc(l);
+        if (I18N.esKaren() && l.refTonglin) await avisar('refTonglin', `${l.nombre} → ${l.refTonglin}`, l.id);
+        cerrarModal();
+        render();
+      });
+    });
+
+    /* 🔗 unir otro lote a este: las piezas se mudan y el otro se absorbe */
+    const bUnir = $('#btnUnirLote');
+    if (bUnir) bUnir.addEventListener('click', () => {
+      const candidatos = lotes().filter(x => x.id !== l.id &&
+        ['armando', 'enviado', 'cotizado'].includes(estadoLote(x)));
+      if (!candidatos.length) { toast('—'); return; }
+      abrirModal(T('l_unir'), `
+        <p class="sub">${T('l_unirExpl')}</p>
+        ${candidatos.map((x, i) => `
+          <div class="card click" data-unir="${i}">
+            <div class="fila"><div class="crece">
+              <div class="nombre">🗂 ${esc(x.nombre)}${x.refTonglin ? ' · 🏷 ' + esc(x.refTonglin) : ''}</div>
+              <div class="sub">${piezasDe(x.id).length} ${T('piezas')} · ${T('e_' + estadoLote(x))}</div>
+            </div><span class="sub">›</span></div>
+          </div>`).join('')}`);
+      $$('#modalCuerpo [data-unir]').forEach(el => el.addEventListener('click', async () => {
+        const fuente = candidatos[Number(el.dataset.unir)];
+        if (!confirm(T('confirmar'))) return;
+        for (const o of piezasDe(fuente.id)) {
+          o.loteId = l.id;
+          await guardarDoc(o);
+        }
+        fuente.fusionadoEn = l.id;
+        await guardarDoc(fuente);
+        if (!l.refTonglin && fuente.refTonglin) l.refTonglin = fuente.refTonglin;
+        await guardarDoc(l);
+        await avisar('lotesUnidos', `${fuente.nombre} → ${l.nombre}`, l.id);
+        cerrarModal();
+        toast(T('l_unidos'));
+        render();
+      }));
+    });
     const bJulia = $('#btnAvisarJulia');
     if (bJulia) bJulia.addEventListener('click', () => avisarJulia(l, estadoLote(l)));
     const bJose = $('#btnAvisarJose');
@@ -910,10 +966,8 @@ const App = (() => {
       render();
     });
 
-    on('#btnSubirPI', async () => {
-      /* PDF o imagen: Tonglin a veces manda el PI como captura PNG/JPG */
-      const f = await elegirArchivo('application/pdf,image/*');
-      if (!f) return;
+    /* PDF o imagen: Tonglin a veces manda el PI como captura PNG/JPG */
+    const subirPIpdf = async f => {
       toast(T('subiendo'));
       try {
         const tipo = f.type && f.type.startsWith('image/') ? f.type : 'application/pdf';
@@ -926,7 +980,13 @@ const App = (() => {
         toast(T('l_piSubido'));
         render();
       } catch (e) { toast('⚠ ' + e.message); }
+    };
+    on('#btnSubirPI', async () => {
+      const f = await elegirArchivo('application/pdf,image/*');
+      if (f) subirPIpdf(f);
     });
+    /* Karen puede ARRASTRAR el PDF (o la captura) directo sobre el botón */
+    zonaArrastre($('#btnSubirPI'), archivos => subirPIpdf(archivos[0]), true);
 
     on('#btnLeerPI', () => leerPDF(l, 'inicial'));
     on('#btnLeerFinal', () => leerPDF(l, 'final'));
@@ -959,9 +1019,7 @@ const App = (() => {
       } catch (e) { toast('⚠ ' + e.message); }
     });
 
-    on('#btnSubirFinal', async () => {
-      const f = await elegirArchivo('application/pdf,image/*');
-      if (!f) return;
+    const subirFinalPdf = async f => {
       toast(T('subiendo'));
       try {
         const tipo = f.type && f.type.startsWith('image/') ? f.type : 'application/pdf';
@@ -974,7 +1032,12 @@ const App = (() => {
         toast(T('l_finalSubido'));
         modalLinkPago(l, 'linkPagoFinal', 'final');
       } catch (e) { toast('⚠ ' + e.message); }
+    };
+    on('#btnSubirFinal', async () => {
+      const f = await elegirArchivo('application/pdf,image/*');
+      if (f) subirFinalPdf(f);
     });
+    zonaArrastre($('#btnSubirFinal'), archivos => subirFinalPdf(archivos[0]), true);
 
     on('#btnComprobanteFinal', async () => {
       const f = await elegirArchivo('image/*', true);
@@ -1128,6 +1191,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     </div>
     ${o.igLink ? `<div class="sub" style="margin-top:8px">🔗 <a href="${esc(o.igLink)}" target="_blank" rel="noopener">${esc(o.igLink)}</a></div>` : ''}
     <div class="galeria">${(o.fotos || []).map(f => `<img data-path="${f.path}" alt="">`).join('')}</div>
+    <button type="button" class="btn-sm" id="btnRefOrden" style="margin-top:10px">${o.refTonglin ? '🏷 ' + esc(o.refTonglin) : T('o_ref')}</button>
     </div>`;
 
     /* costo Tonglin de esta pieza (aplicado desde la cotización del lote) */
@@ -1236,9 +1300,23 @@ Si no es legible responde {"error": "motivo corto"}.`;
       html += `<button class="btn peligro" id="btnBorrarOrden">🗑 ${T('eliminar')}</button>`;
     }
 
+    html += `<button class="btn ghost" id="btnInicioOrden">${T('volverInicio')}</button>`;
     c.innerHTML = html;
     pintarImagenes(c);
     $('#btnVolver').addEventListener('click', () => { if (l) { loteAbierto = l.id; nav('lote'); } else nav('lotes'); });
+    $('#btnInicioOrden').addEventListener('click', () => nav('novedades'));
+    $('#btnRefOrden').addEventListener('click', () => {
+      abrirModal(T('o_ref'), `
+        <input id="roTxt" autocomplete="off" placeholder="JTR7349" value="${esc(o.refTonglin || '')}">
+        <button class="btn ${I18N.esKaren() ? 'jade' : 'rosa'}" id="roOk">${T('guardar')}</button>`);
+      $('#roOk').addEventListener('click', async () => {
+        o.refTonglin = $('#roTxt').value.trim();
+        await guardarDoc(o);
+        if (I18N.esKaren() && o.refTonglin) await avisar('refTonglin', `${o.nombre} → ${o.refTonglin}`, o.loteId, o.id);
+        cerrarModal();
+        render();
+      });
+    });
     $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verImagen(img.dataset.path)));
     $$('#cuerpo [data-bajar]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); descargarArchivo(b.dataset.bajar, b.dataset.nombre); }));
 
@@ -1254,8 +1332,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     }));
     $$('#cuerpo [data-marcar]').forEach(b => b.addEventListener('click', () => marcarCad(o, Number(b.dataset.marcar))));
 
-    on('#btnSubirCad', async () => {
-      const f = await elegirArchivo(ACEPTA_CAD);
+    const subirCadDesde = async f => {
       if (!f) return;
       toast(T('subiendo'));
       try {
@@ -1277,7 +1354,9 @@ Si no es legible responde {"error": "motivo corto"}.`;
         await avisar('cad', `${o.nombre} · v${v}`, o.loteId, o.id);
         render();
       } catch (e) { toast('⚠ ' + e.message); }
-    });
+    };
+    on('#btnSubirCad', async () => subirCadDesde(await elegirArchivo(ACEPTA_CAD)));
+    zonaArrastre($('#btnSubirCad'), archivos => subirCadDesde(archivos[0]), true);
 
     on('#btnComentar', () => {
       const deJulia = I18N.esKaren();

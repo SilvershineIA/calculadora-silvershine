@@ -110,6 +110,14 @@ const I18N = (() => {
     l_deposito:     ['Depósito (50%)', 'Deposit (50%)'],
     l_cuenta:       ['La cuenta del lote (US$)', 'Batch account (USD)'],
     l_shipDirect:   ['✈️ DESPACHO DIRECTO al cliente de Etsy — dirección en la orden', '✈️ Ship DIRECT to the Etsy customer — address in the order'],
+    l_ref:          ['🏷 Ref. de Tonglin del lote (ej. 41P)', '🏷 Your batch ref (e.g. 41P)'],
+    o_ref:          ['🏷 Ref. de Tonglin de la pieza (ej. JTR7349)', '🏷 Your item # (e.g. JTR7349)'],
+    l_unir:         ['🔗 Unir otro lote a este', '🔗 Merge another batch into this one'],
+    l_unirExpl:     ['Las piezas del lote elegido pasan a ESTE lote (solo lotes sin depósito pagado).', 'All pieces of the chosen batch move into THIS one (only batches without a paid deposit).'],
+    l_unidos:       ['🔗 Lotes unidos', '🔗 Batches merged'],
+    ev_lotesUnidos: ['Lotes unidos en uno', 'Batches were merged'],
+    ev_refTonglin:  ['Tonglin puso su referencia', 'Reference saved'],
+    volverInicio:   ['🏠 Volver al inicio', '🏠 Back to home'],
 
     /* ── desglose de cotización / factura CRM ── */
     q_ver:          ['ver desglose ▾', 'details ▾'],
