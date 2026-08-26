@@ -8,6 +8,20 @@
    → tracking → recibido.
    ═══════════════════════════════════════════════════════════ */
 const App = (() => {
+  /* ═══ Changelog que ve Tonglin en su Settings ("What's new in the app").
+     REGLA: cada feature nuevo agrega su línea aquí (inglés, nuevo primero)
+     en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
+     ✅ implementada desde el Ajustes de José. ═══ */
+  const NOVEDADES_APP = [
+    { f: '2026-08-26', en: 'Drag & drop EVERYWHERE: every upload button now accepts dropping the file on it — photos, CADs, PI pdfs and payment receipts (receipts also accept bank PDFs now).' },
+    { f: '2026-08-26', en: 'Suggestion box (this section!) — and each piece can now carry YOUR batch (41P) shown right on its card, plus your item # (JTR…).' },
+    { f: '2026-08-26', en: 'Batch ref on the batch header (41P), merge two batches into one (before deposit), and a Back-to-home button at the bottom of pages.' },
+    { f: '2026-08-25', en: '3D CAD files (.stl, .obj, .3dm…) can be uploaded as-is and download with their real file name.' },
+    { f: '2026-08-25', en: 'Tap any photo or CAD to see it FULL SCREEN — pinch to zoom, drag to pan.' },
+    { f: '2026-08-24', en: 'Piece cards show everything at a glance: photo, stones, size, target date, cost and CAD status.' },
+    { f: '2026-08-24', en: 'Skip CAD option for repeat designs, and José can attach an existing CAD to the order (no upload needed on your side).' },
+    { f: '2026-08-24', en: 'Orders show the order # first, and if José edits an order after sending it you get a notice.' },
+  ];
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2057,6 +2071,22 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <textarea id="sugTxt" style="min-height:110px" placeholder="What / where / example…"></textarea>
           <button class="btn jade" id="sugEnviar">${T('sug_enviar')}</button>
         </div>
+        ${(() => {
+          const mias = docs.filter(d => d.tipo === 'sug')
+            .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+          if (!mias.length) return '';
+          return `<div class="h-sec">${T('sug_mias')}</div>` + mias.map(s => `
+            <div class="card" style="border-left:3px solid ${s.implementada ? 'var(--green)' : 'var(--border)'}">
+              <div class="fila"><div class="crece">
+                <div class="sub">${esc(s.nombre || '')} · ${fmtFecha(s.fecha)}</div>
+                <div style="font-size:13.5px;margin-top:2px">${esc(s.texto.slice(0, 120))}${s.texto.length > 120 ? '…' : ''}</div>
+              </div><span class="badge ${s.implementada ? 'b-verde' : 'b-gris'}">${s.implementada ? T('sug_hecha') : T('sug_pendiente')}</span></div>
+            </div>`).join('');
+        })()}
+        <div class="h-sec">${T('nov_titulo')}</div>
+        ${NOVEDADES_APP.slice(0, 10).map(n => `
+          <div class="card"><div class="sub">${fmtFecha(n.f)}</div>
+          <div style="font-size:13.5px;margin-top:2px">${n.en}</div></div>`).join('')}
         <div class="card"><div class="sub">To sign back in, just open your link again — it never expires.</div></div>
         <button class="btn peligro" id="ajSalir">${T('a_salir')}</button>`;
       $('#sugEnviar').addEventListener('click', async () => {
@@ -2103,10 +2133,13 @@ Si no es legible responde {"error": "motivo corto"}.`;
         if (!sugs.length) return '';
         return `<div class="h-sec">${T('sug_titulo')} (${sugs.length})</div>
           <div class="card"><p class="sub">${T('sug_expl')}</p></div>` +
-          sugs.map(s => `<div class="card" style="border-left:3px solid var(--jade)">
-            <div class="sub"><b>${esc(s.nombre || 'Tonglin')}</b> · ${fmtFecha(s.fecha)}</div>
+          sugs.map(s => `<div class="card" style="border-left:3px solid ${s.implementada ? 'var(--green)' : 'var(--jade)'}">
+            <div class="sub"><b>${esc(s.nombre || 'Tonglin')}</b> · ${fmtFecha(s.fecha)}${s.implementada ? ` · <b class="verde">${T('sug_hecha')} ${fmtFecha(s.implementada)}</b>` : ''}</div>
             <div style="font-size:14px;margin-top:4px;white-space:pre-wrap">${esc(s.texto)}</div>
-            <button class="btn-sm" data-sugx="${s.id}" style="margin-top:8px;color:var(--red)">🗑</button>
+            <div class="fila" style="gap:8px;margin-top:8px">
+              ${!s.implementada ? `<button class="btn-sm" data-sugok="${s.id}" style="color:var(--green)">✅ Implementada</button>` : ''}
+              <button class="btn-sm" data-sugx="${s.id}" style="color:var(--red)">🗑</button>
+            </div>
           </div>`).join('');
       })()}
       <div class="h-sec">💬 WhatsApp (avisos en ambas direcciones)</div>
@@ -2129,6 +2162,16 @@ Si no es legible responde {"error": "motivo corto"}.`;
       if (!confirm(T('confirmar'))) return;
       docs = docs.filter(d => d.id !== b.dataset.sugx);
       await Nube.borrarDoc(b.dataset.sugx);
+      render();
+    }));
+    /* ✅ marcar implementada: queda verde para ambos y a Tonglin le llega la noticia */
+    $$('#cuerpo [data-sugok]').forEach(b => b.addEventListener('click', async () => {
+      const s = doc(b.dataset.sugok);
+      if (!s) return;
+      s.implementada = hoyISO();
+      await guardarDoc(s);
+      await avisar('sugLista', s.texto.slice(0, 60));
+      toast('✅ ✓');
       render();
     }));
     $('#ajGenerar').addEventListener('click', () => {

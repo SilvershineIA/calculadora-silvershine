@@ -125,6 +125,11 @@ const I18N = (() => {
     sug_enviar:     ['—', 'Send suggestion to José'],
     sug_ok:         ['—', '✓ Sent — thank you!'],
     ev_sugerencia:  ['💡 Sugerencia de Tonglin — léela en Ajustes', 'Suggestion sent to José'],
+    ev_sugLista:    ['✅ Sugerencia marcada como implementada', '🎉 Your suggestion was IMPLEMENTED — see "What\'s new" in Settings'],
+    sug_mias:       ['—', 'Your suggestions'],
+    sug_pendiente:  ['⏳ Recibida', '⏳ Received'],
+    sug_hecha:      ['✅ Implementada', '✅ Implemented'],
+    nov_titulo:     ['—', '📣 What\'s new in the app'],
 
     /* ── desglose de cotización / factura CRM ── */
     q_ver:          ['ver desglose ▾', 'details ▾'],
