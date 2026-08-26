@@ -159,11 +159,14 @@ const Nube = (() => {
   const iaClave = () => localStorage.getItem('sscrm_ia_key') || localStorage.getItem('sstaller_ia_key');
   const iaGuardarClave = v => localStorage.setItem('sstaller_ia_key', v.trim());
 
-  async function iaLeerPDF(b64pdf, prompt) {
+  /* media: 'application/pdf' o un image/* — el PI de Tonglin a veces
+     llega como captura PNG/JPG y la IA lo lee igual */
+  async function iaLeerPDF(b64pdf, prompt, signal, media = 'application/pdf') {
     const clave = iaClave();
     if (!clave) throw new Error('SIN_CLAVE_IA');
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal,   // permite cancelar/timeout desde afuera (antes se colgaba sin salida)
       headers: {
         'content-type': 'application/json',
         'x-api-key': clave,
@@ -175,10 +178,15 @@ const Nube = (() => {
         model: 'claude-opus-5',
         max_tokens: 4096,
         fallbacks: 'default',
+        /* extraer campos de un PI es mecánico: esfuerzo bajo = respuesta
+           en segundos en vez de minutos (el modelo no se pone a razonar) */
+        output_config: { effort: 'low' },
         messages: [{
           role: 'user',
           content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64pdf } },
+            media === 'application/pdf'
+              ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64pdf } }
+              : { type: 'image', source: { type: 'base64', media_type: media, data: b64pdf } },
             { type: 'text', text: prompt },
           ],
         }],

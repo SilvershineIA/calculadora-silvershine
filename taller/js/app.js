@@ -911,12 +911,15 @@ const App = (() => {
     });
 
     on('#btnSubirPI', async () => {
-      const f = await elegirArchivo('application/pdf');
+      /* PDF o imagen: Tonglin a veces manda el PI como captura PNG/JPG */
+      const f = await elegirArchivo('application/pdf,image/*');
       if (!f) return;
       toast(T('subiendo'));
       try {
-        const path = `lotes/${l.id}/pi-${Date.now()}.pdf`;
-        await Nube.subirArchivo(path, f, 'application/pdf');
+        const tipo = f.type && f.type.startsWith('image/') ? f.type : 'application/pdf';
+        const ext = tipo === 'application/pdf' ? 'pdf' : (tipo.split('/')[1] || 'png');
+        const path = `lotes/${l.id}/pi-${Date.now()}.${ext}`;
+        await Nube.subirArchivo(path, f, tipo);
         l.cot = { pdfPath: path, pdfNombre: f.name, fecha: hoyISO() };
         await guardarDoc(l);
         await avisar('cotizado', l.nombre, l.id);
@@ -957,12 +960,14 @@ const App = (() => {
     });
 
     on('#btnSubirFinal', async () => {
-      const f = await elegirArchivo('application/pdf');
+      const f = await elegirArchivo('application/pdf,image/*');
       if (!f) return;
       toast(T('subiendo'));
       try {
-        const path = `lotes/${l.id}/pi-final-${Date.now()}.pdf`;
-        await Nube.subirArchivo(path, f, 'application/pdf');
+        const tipo = f.type && f.type.startsWith('image/') ? f.type : 'application/pdf';
+        const ext = tipo === 'application/pdf' ? 'pdf' : (tipo.split('/')[1] || 'png');
+        const path = `lotes/${l.id}/pi-final-${Date.now()}.${ext}`;
+        await Nube.subirArchivo(path, f, tipo);
         l.cotFinal = { pdfPath: path, pdfNombre: f.name, fecha: hoyISO() };
         await guardarDoc(l);
         await avisar('final', l.nombre, l.id);
@@ -1037,9 +1042,34 @@ const App = (() => {
       return;
     }
     const obj = cual === 'inicial' ? l.cot : l.cotFinal;
-    abrirModal('🧠', `<p class="sub" style="text-align:center;padding:20px 8px">${T('l_leyendo')}</p>`);
+    /* Con progreso, cancelar y tope de 3 min: antes un PDF pesado o una
+       red lenta dejaban el modal 🧠 congelado sin salida */
+    const ctl = new AbortController();
+    let cancelado = false;
+    abrirModal('🧠', `
+      <p class="sub" style="text-align:center;padding:20px 8px" id="lecturaPaso">${T('l_leyendo')}</p>
+      <button class="btn ghost" id="lecturaCancelar">✕ Cancelar</button>`);
+    $('#lecturaCancelar').addEventListener('click', () => { cancelado = true; ctl.abort(); cerrarModal(); });
+    const tope = setTimeout(() => ctl.abort(), 180000);
+    const paso = txt => { const el = $('#lecturaPaso'); if (el) el.textContent = txt; };
     try {
-      const b64 = await blobAB64(await Nube.bajarBlob(obj.pdfPath));
+      paso('📥 1/2 — Bajando el PDF de la nube…');
+      const blob = await Nube.bajarBlob(obj.pdfPath);
+      if (blob.size > 20 * 1024 * 1024) {
+        throw new Error(`El PDF pesa ${(blob.size / 1048576).toFixed(1)} MB (tope 20) — pídele a Tonglin una versión más liviana o mira los números directo en el PDF`);
+      }
+      /* Tipo REAL por los bytes (no por el nombre): Tonglin a veces manda
+         el PI como captura PNG/JPG con nombre .pdf — la IA lo lee igual */
+      const cab = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+      const media =
+        cab[0] === 0x25 && cab[1] === 0x50 ? 'application/pdf' :   // %PDF
+        cab[0] === 0x89 && cab[1] === 0x50 ? 'image/png' :          // .PNG
+        cab[0] === 0xFF && cab[1] === 0xD8 ? 'image/jpeg' :         // JPEG
+        cab[0] === 0x52 && cab[1] === 0x49 ? 'image/webp' : null;   // RIFF
+      if (!media) throw new Error('El archivo no es un PDF ni una imagen legible — pídele a Tonglin que lo reenvíe');
+      const b64 = await blobAB64(blob);
+      if (cancelado) return;
+      paso('🧠 2/2 — La IA está leyendo el PI… con archivos grandes puede tardar hasta 1-2 minutos, no cierres la app');
       const prompt = cual === 'inicial'
         ? `Este PDF es una PROFORMA INVOICE (PI) de Tonglin Jewelry Factory (joyería, precios en US$). Extrae los datos y responde SOLO un objeto JSON, sin texto extra:
 {"invoice_no": "o null", "date": "YYYY-MM-DD o null", "total": total final (número), "deposit": depósito pedido (número o null), "pieces": [{"n": número de fila, "description": "qué es (ej: Ring 14K Yellow Gold, ruby)", "size": "o null", "gold_weight_g": peso de oro en gramos (número o null), "gold_cost": número o null, "labor": número o null, "stone_cost": número o null, "stone_setting_fee": número o null, "exw_unit": precio unitario EXW (número o null), "qty": cantidad, "cad_mold": costo CAD & mold (número o null), "subtotal": subtotal de la fila (número)}]}
@@ -1047,7 +1077,7 @@ Si el PDF no es una cotización legible responde {"error": "motivo corto"}.`
         : `Este PDF es la factura/cotización FINAL de Tonglin Jewelry Factory (joyería, US$), con el peso REAL de oro tras producción. Extrae y responde SOLO un objeto JSON:
 {"total_final": total final del lote (número), "shipping": costo de envío (número o null), "balance_due": lo que falta por pagar (número; si no aparece, calcula total_final + shipping − depósitos que mencione), "pieces": [{"n": fila, "description": "qué es", "gold_weight_g": peso REAL en gramos (número o null), "subtotal": subtotal final (número)}]}
 Si no es legible responde {"error": "motivo corto"}.`;
-      const datos = await Nube.iaLeerPDF(b64, prompt);
+      const datos = await Nube.iaLeerPDF(b64, prompt, ctl.signal, media);
       if (datos.error) throw new Error(datos.error);
       obj.leida = datos;
       await guardarDoc(l);
@@ -1055,9 +1085,14 @@ Si no es legible responde {"error": "motivo corto"}.`;
       toast('🧠 ✓');
       render();
     } catch (e) {
+      if (cancelado) return;
       cerrarModal();
-      const msj = e.message === 'CLAVE_IA_INVALIDA' ? 'La clave de IA no es válida — revísala en Ajustes' : e.message;
+      const msj = e.name === 'AbortError'
+        ? 'La lectura tardó más de 3 minutos y se cortó — revisa tu internet y reintenta'
+        : e.message === 'CLAVE_IA_INVALIDA' ? 'La clave de IA no es válida — revísala en Ajustes' : e.message;
       abrirModal('🧠 ⚠', `<p class="sub">${esc(msj)}</p><p class="sub" style="margin-top:8px">El PDF quedó guardado — puedes reintentar la lectura o mirar los números directo en el PDF.</p>`);
+    } finally {
+      clearTimeout(tope);
     }
   }
 
