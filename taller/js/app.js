@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-08-26', en: 'Stone picker fixed: selecting a stone now counts even without tapping "+ piedra" — and the size is optional, the stone always shows on the order.' },
     { f: '2026-08-26', en: 'Drag & drop EVERYWHERE: every upload button now accepts dropping the file on it — photos, CADs, PI pdfs and payment receipts (receipts also accept bank PDFs now).' },
     { f: '2026-08-26', en: 'Suggestion box (this section!) — and each piece can now carry YOUR batch (41P) shown right on its card, plus your item # (JTR…).' },
     { f: '2026-08-26', en: 'Batch ref on the batch header (41P), merge two batches into one (before deposit), and a Back-to-home button at the bottom of pages.' },
@@ -1724,7 +1725,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         <label>${T('o_stone')}</label>
         <div class="chips" id="noPiedraTipo" style="margin-bottom:6px">
           <button data-p="Cubic Zirconia">Circonia</button>
-          <button data-p="Moissanite" class="on">Moissanita</button>
+          <button data-p="Moissanite">Moissanita</button>
           <button data-p="Lab grown diamond">Diamante lab</button>
         </div>
         <div class="chips chips-mini" id="noPiedraCorte" style="margin-bottom:6px">
@@ -1950,6 +1951,9 @@ Si no es legible responde {"error": "motivo corto"}.`;
       $('#noPiedraMm').value = '';
       $('#noPiedraMm2').value = '';
       $('#noPiedraCt').value = '';
+      /* la piedra ya quedó anotada: soltar el chip para que al guardar
+         no se duplique (el corte se queda para los laterales) */
+      $$('#noPiedraTipo button').forEach(x => x.classList.remove('on'));
       anotar();
     });
 
@@ -1983,6 +1987,9 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
 
     $('#noGuardar').addEventListener('click', async () => {
+      /* Piedra elegida en los chips sin darle a «＋ piedra»: se incluye
+         SOLA al guardar — el tamaño es opcional, la piedra nunca se pierde */
+      if ($('#noPiedraTipo button.on')) $('#noPiedraAdd').click();
       const nombre = $('#noNombre').value.trim();
       if (!nombre) { toast('⚠ ' + T('o_nombre')); $('#noNombre').focus(); return; }
       $('#noGuardar').disabled = true;
