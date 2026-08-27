@@ -276,17 +276,10 @@ const Finanzas = (() => {
       .filter(g => g.gasto.ambito === 'negocio' && !esMaterial(g))
       .reduce((s, g) => s + g.enRD, 0);
     const neta = ganancia - gastosNeg;
-    /* Sueldos = TODO lo personal (lo que el dueño se llevó);
-       Cuadre = lo que NO se ve en ningún otro renglón de la vista:
-       materiales (fuera de operativos a propósito) y cualquier otra
-       salida sin casilla. Operativos + Sueldos + Cuadre = todos los
-       gastos del período, sin repetir nada. */
+    /* Sueldos = TODO lo personal (lo que el dueño se llevó) */
     const sueldos = todosGastos
       .filter(g => g.gasto.ambito === 'personal')
       .reduce((s, g) => s + g.enRD, 0);
-    const esCuadre = g => g.gasto.ambito !== 'personal' &&
-      !(g.gasto.ambito === 'negocio' && !esMaterial(g));
-    const cuadreGastos = todosGastos.filter(esCuadre).reduce((s, g) => s + g.enRD, 0);
 
     $('#finStats').innerHTML =
       statTile(fmtDinero(ventas), `Ventas · ${fs.length} facturas`, '', 'stat-hero') +
@@ -297,8 +290,7 @@ const Finanzas = (() => {
       statTile(margen === null ? '—' : margen + '%', 'Margen') +
       statTile(fmtDinero(gastosNeg), 'Gastos operativos') +
       statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo') +
-      statTile(fmtDinero(sueldos), 'Sueldos (personal) · toca 🔍', '', 'tile-sueldos') +
-      statTile(fmtDinero(cuadreGastos), 'Cuadre', '', 'tile-cuadre');
+      statTile(fmtDinero(sueldos), 'Sueldos (personal) · toca 🔍', '', 'tile-sueldos');
 
     /* Desglose tocable: para cuadrar el número contra los papeles */
     const desgloseGastos = (titulo, arr, total) => UI.abrirModal(titulo, (arr.length
@@ -314,11 +306,8 @@ const Finanzas = (() => {
           <span><b>Total del período</b></span><b>${fmtDinero(total)}</b></div>`
       : '<p class="muted">Sin gastos de este tipo en el período.</p>'));
     const tS = document.querySelector('.tile-sueldos');
-    const tC = document.querySelector('.tile-cuadre');
     if (tS) { tS.style.cursor = 'pointer'; tS.addEventListener('click', () =>
       desgloseGastos('💼 Sueldos (personal) — desglose', todosGastos.filter(g => g.gasto.ambito === 'personal'), sueldos)); }
-    if (tC) { tC.style.cursor = 'pointer'; tC.addEventListener('click', () =>
-      desgloseGastos('🏦 Cuadre — gastos que no salen en otros renglones (materiales y demás)', todosGastos.filter(esCuadre), cuadreGastos)); }
 
     $('#finNota').innerHTML =
       (conCosto < fs.length
