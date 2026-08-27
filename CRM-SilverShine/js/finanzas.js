@@ -298,7 +298,7 @@ const Finanzas = (() => {
       statTile(fmtDinero(gastosNeg), 'Gastos operativos') +
       statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo') +
       statTile(fmtDinero(sueldos), 'Sueldos (personal) · toca 🔍', '', 'tile-sueldos') +
-      statTile(fmtDinero(cuadreGastos), 'Cuadre (lo no visible arriba) · toca 🔍', '', 'tile-cuadre');
+      statTile(fmtDinero(cuadreGastos), 'Cuadre', '', 'tile-cuadre');
 
     /* Desglose tocable: para cuadrar el número contra los papeles */
     const desgloseGastos = (titulo, arr, total) => UI.abrirModal(titulo, (arr.length
