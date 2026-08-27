@@ -121,6 +121,7 @@ const I18N = (() => {
     volverAtras:    ['‹ Volver a la página anterior', '‹ Back to last page'],
     l_desaprobar:   ['↩ Quitar mi aprobación (deja corregir la cotización)', '—'],
     l_corregirPI:   ['—', '📄 Upload a CORRECTED PI — replaces the quote, José re-approves'],
+    l_unificadoPI:  ['—', '📄 Upload the UNIFIED PI for the merged batch — replaces the old PDFs'],
     l_piViejo:      ['PI anterior (archivado)', 'Previous PI (archived)'],
     l_piUnido:      ['PI del lote unido', 'PI from merged batch'],
     ev_desaprobado: ['Quitaste tu aprobación del lote', '⚠ José removed his approval — please upload a corrected PI'],

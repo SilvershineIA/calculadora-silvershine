@@ -14,7 +14,7 @@ const App = (() => {
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
     { f: '2026-08-27', en: 'Quote corrections: you can upload a CORRECTED PI even after approval (until the deposit) — the old PI is archived and José simply re-approves. José can also withdraw his approval.' },
-    { f: '2026-08-27', en: 'Merge batches even when approved (until the deposit): quotes and deposits ADD UP, both PDFs stay attached — send ONE payment link for the total.' },
+    { f: '2026-08-27', en: 'Merge batches even when approved (until the deposit): quotes and deposits ADD UP — then just upload your new UNIFIED PI (it replaces the old PDFs) and send ONE payment link for the total.' },
     { f: '2026-08-27', en: 'Real back navigation: your phone’s BACK button now goes back page by page inside the app, plus a "Back to last page" button at the bottom.' },
     { f: '2026-08-26', en: 'Stone picker fixed: selecting a stone now counts even without tapping "+ piedra" — and the size is optional, the stone always shows on the order.' },
     { f: '2026-08-26', en: 'Drag & drop EVERYWHERE: every upload button now accepts dropping the file on it — photos, CADs, PI pdfs and payment receipts (receipts also accept bank PDFs now).' },
@@ -662,7 +662,9 @@ const App = (() => {
           <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(p.pdfNombre || 'PI.pdf')}</div>
           <div class="sub">${T('l_piViejo')} · ${fmtFecha(p.fecha)}</div></div>
           <button class="btn-sm" data-ver="${p.pdfPath}">${T('verPdf')}</button></div>`).join('')}
-        ${karen && !l.comprobante ? `<button class="btn ghost" id="btnCorregirPI">${T('l_corregirPI')}</button>` : ''}`;
+        ${karen && !l.comprobante ? ((l.cot.pdfsExtra || []).length
+          ? `<button class="btn jade" id="btnCorregirPI">${T('l_unificadoPI')}</button>`
+          : `<button class="btn ghost" id="btnCorregirPI">${T('l_corregirPI')}</button>`) : ''}`;
       if (l.cot.leida) {
         const le = l.cot.leida;
         const ps = le.pieces || [];
@@ -1066,8 +1068,11 @@ const App = (() => {
         const path = `lotes/${l.id}/pi-${Date.now()}.${ext}`;
         await Nube.subirArchivo(path, f, tipo);
         if (correccion) {
+          /* se archivan el PI principal Y los adjuntos de lotes unidos:
+             el PDF nuevo (corregido o UNIFICADO) queda como único vigente */
           l.cotAnteriores = l.cotAnteriores || [];
           l.cotAnteriores.push({ pdfPath: l.cot.pdfPath, pdfNombre: l.cot.pdfNombre, fecha: l.cot.fecha });
+          l.cotAnteriores.push(...(l.cot.pdfsExtra || []));
           delete l.aprobada;
           delete l.linkPago;
         }
