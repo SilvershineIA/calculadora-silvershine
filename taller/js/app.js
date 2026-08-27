@@ -408,7 +408,7 @@ const App = (() => {
     const sinVer = eventos().filter(e => e.para === (karen ? 'karen' : 'jose') && !e.visto).length;
     const tabs = karen
       ? [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['ajustes','⚙️',T('ajustes')]]
-      : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['ajustes','⚙️',T('ajustes')]];
+      : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['historial','📚','Historial'],['ajustes','⚙️',T('ajustes')]];
     const tabOn = (vista === 'lote' || vista === 'orden') ? 'lotes' : vista;
 
     app.innerHTML = `
@@ -433,6 +433,7 @@ const App = (() => {
     else if (vista === 'lote') vLote(c);
     else if (vista === 'orden') vOrden(c);
     else if (vista === 'nueva') vNueva(c);
+    else if (vista === 'historial') vHistorial(c);
     else if (vista === 'ajustes') vAjustes(c);
   }
 
@@ -2165,6 +2166,173 @@ Si no es legible responde {"error": "motivo corto"}.`;
         $('#noGuardar').disabled = false;
       }
     });
+  }
+
+  /* ═══ 📚 Historial (SOLO José): archivo de cotizaciones con el
+     desglose completo del PI, y el dinero — pagado / adeudado al
+     taller / por cobrar al entregar — agrupable por día, mes o año ═══ */
+  let histPeriodo = 'mes';   // dia · mes · año
+  const MESL = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function vHistorial(c) {
+    const ls = docs.filter(d => d.tipo === 'lote' && d.cot && d.cot.leida)
+      .sort((a, b) => (b.cot.fecha || b.creado || '').localeCompare(a.cot.fecha || a.creado || ''));
+
+    /* ── pagos hechos al taller (depósitos y balances, con su fecha) ── */
+    const pagos = [];
+    for (const l of ls) {
+      const le = l.cot.leida;
+      const dep = Number(le.deposit) || (Number(le.total) || 0) / 2;
+      if (l.comprobante) pagos.push({ fecha: l.comprobante.fecha, lote: l, tipo: 'Depósito', monto: dep });
+      if (l.comprobanteFinal) {
+        const lf = (l.cotFinal && l.cotFinal.leida) || {};
+        const monto = Number(lf.balance_due) ||
+          Math.max((Number(lf.total_final) || Number(le.total) || 0) + (Number(lf.shipping) || 0) - dep, 0);
+        pagos.push({ fecha: l.comprobanteFinal.fecha, lote: l, tipo: 'Balance + shipping', monto });
+      }
+    }
+    pagos.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    const pagadoTotal = pagos.reduce((s, p) => s + p.monto, 0);
+
+    /* ── adeudado HOY al taller (lo vivo, lote por lote) ── */
+    let adeudado = 0;
+    const deudaDet = [];
+    for (const l of ls) {
+      const est = estadoLote(l);
+      const le = l.cot.leida;
+      const dep = Number(le.deposit) || (Number(le.total) || 0) / 2;
+      let v = 0, nota = '';
+      if (est === 'aprobado' || est === 'porPagar') { v = dep; nota = 'depósito pendiente'; }
+      else if (est === 'produccion') { v = Math.max((Number(le.total) || 0) - dep, 0); nota = 'balance estimado (falta el peso real)'; }
+      else if (est === 'final') {
+        const lf = (l.cotFinal && l.cotFinal.leida) || {};
+        v = Number(lf.balance_due) || Math.max((Number(lf.total_final) || 0) + (Number(lf.shipping) || 0) - dep, 0);
+        nota = 'balance final por pagar';
+      }
+      if (v > 0.005) { adeudado += v; deudaDet.push({ l, v, nota }); }
+    }
+
+    /* ── periodo de agrupación de pagos ── */
+    const clave = f => {
+      const d = String(f || '').slice(0, 10);
+      return histPeriodo === 'dia' ? d : histPeriodo === 'mes' ? d.slice(0, 7) : d.slice(0, 4);
+    };
+    const etiqueta = k => {
+      if (histPeriodo === 'año') return k;
+      if (histPeriodo === 'mes') { const [y, m] = k.split('-'); return `${MESL[Number(m) - 1]} ${y}`; }
+      return fmtFecha(k) + ' ' + k.slice(0, 4);
+    };
+    const grupos = new Map();
+    for (const p of pagos) {
+      const k = clave(p.fecha);
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(p);
+    }
+
+    const COLS_H = [
+      ['gold_weight_g', 'Gold weight', v => `${v} g`],
+      ['gold_cost', 'Gold cost', fmtUSD], ['labor', 'Labor', fmtUSD],
+      ['stone_cost', 'Stone cost', fmtUSD], ['stone_setting_fee', 'Setting fee', fmtUSD],
+      ['exw_unit', 'EXW unit', fmtUSD], ['qty', 'Qty', v => v], ['cad_mold', 'CAD & mold', fmtUSD],
+    ];
+
+    c.innerHTML = `
+      <div class="h-sec">💰 Ahora mismo</div>
+      <div class="card"><table class="qt">
+        <tr><td>Pagado al taller (histórico)</td><td class="money verde">${fmtUSD(pagadoTotal)}</td></tr>
+        <tr><td>Adeudado al taller</td><td class="money ${adeudado > 0 ? 'rojo' : ''}">${fmtUSD(adeudado)}</td></tr>
+        <tr><td>Por cobrar al entregar</td><td class="money" id="histPorCobrar">…</td></tr>
+      </table>
+      ${deudaDet.map(d => `<div class="sub" style="margin-top:4px">· 🗂 ${esc(d.l.nombre)}: <b class="rojo">${fmtUSD(d.v)}</b> — ${d.nota}</div>`).join('')}
+      </div>
+
+      <div class="h-sec">📅 Pagos por período</div>
+      <div class="chips" style="margin-bottom:8px">
+        ${[['dia', 'Día'], ['mes', 'Mes'], ['año', 'Año']].map(([k, t]) =>
+          `<button data-per="${k}" class="${histPeriodo === k ? 'on' : ''}">${t}</button>`).join('')}
+      </div>
+      ${[...grupos.entries()].map(([k, arr]) => `
+        <div class="card">
+          <div class="fila"><div class="crece"><div class="nombre">${etiqueta(k)}</div>
+            <div class="sub">${arr.length} pago${arr.length === 1 ? '' : 's'}</div></div>
+            <span class="money">${fmtUSD(arr.reduce((s, p) => s + p.monto, 0))}</span></div>
+          ${arr.map(p => `<div class="sub" style="margin-top:4px">${fmtFecha(p.fecha)} · 🗂 ${esc(p.lote.nombre)}${p.lote.refTonglin ? ' · 🏷 ' + esc(p.lote.refTonglin) : ''} · ${p.tipo} — <span class="money">${fmtUSD(p.monto)}</span></div>`).join('')}
+        </div>`).join('') || '<div class="card"><div class="sub">Sin pagos registrados todavía.</div></div>'}
+
+      <div class="h-sec">🧾 Cotizaciones (${ls.length})</div>
+      ${ls.map((l, i) => {
+        const le = l.cot.leida;
+        const lf = (l.cotFinal && l.cotFinal.leida) || null;
+        const est = estadoLote(l);
+        return `
+        <div class="card">
+          <div class="fila" data-hist="${i}" style="cursor:pointer">
+            <div class="crece">
+              <div class="nombre">🗂 ${esc(l.nombre)}${l.refTonglin ? ` <span class="badge b-jade">🏷 ${esc(l.refTonglin)}</span>` : ''}</div>
+              <div class="sub">${fmtFecha(l.cot.fecha)} · ${(le.pieces || []).length} ${T('piezas')} · <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span></div>
+              <div class="sub" id="histTog-${i}">${T('q_ver')}</div>
+            </div>
+            <span class="money">${fmtUSD(lf ? lf.total_final : le.total)}</span>
+          </div>
+          <div id="hist-${i}" style="display:none;margin-top:8px">
+            ${(le.pieces || []).map(p => `
+              <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+                <div style="font-size:13.5px;margin-bottom:4px"><b>${esc(p.description || ('#' + p.n))}</b></div>
+                <table class="qt">
+                  ${COLS_H.filter(([k]) => p[k] !== null && p[k] !== undefined && p[k] !== '').map(([k, lbl, fmt]) =>
+                    `<tr><td>${lbl}</td><td class="${k === 'gold_weight_g' || k === 'qty' ? 'mono' : 'money'}">${fmt(p[k])}</td></tr>`).join('')}
+                  <tr class="total"><td>Subtotal</td><td class="money">${fmtUSD(p.subtotal || 0)}</td></tr>
+                </table>
+              </div>`).join('')}
+            <table class="qt" style="margin-top:8px">
+              <tr class="total"><td>${T('l_total')} cotizado</td><td class="money">${fmtUSD(le.total || 0)}</td></tr>
+              <tr><td>${T('l_deposito')}</td><td class="money">${fmtUSD(le.deposit || (le.total || 0) / 2)}</td></tr>
+              ${lf ? `<tr><td>Total FINAL (peso real)</td><td class="money">${fmtUSD(lf.total_final || 0)}</td></tr>
+              ${lf.shipping ? `<tr><td>Shipping</td><td class="money">${fmtUSD(lf.shipping)}</td></tr>` : ''}` : ''}
+            </table>
+            <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button class="btn-sm" data-ver="${l.cot.pdfPath}">📄 PI</button>
+              ${l.cotFinal ? `<button class="btn-sm" data-ver="${l.cotFinal.pdfPath}">📄 PI final</button>` : ''}
+              ${(l.cotAnteriores || []).map(p => `<button class="btn-sm" style="opacity:.6" data-ver="${p.pdfPath}">🗄 ${esc((p.pdfNombre || 'PI').slice(0, 14))}</button>`).join('')}
+              <button class="btn-sm" data-irlote="${l.id}">Abrir lote ›</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('') || '<div class="vacio"><span>🧾</span>Aún no hay cotizaciones leídas.</div>'}`;
+
+    /* interacción */
+    $$('#cuerpo [data-per]').forEach(b => b.addEventListener('click', () => { histPeriodo = b.dataset.per; render(); }));
+    $$('#cuerpo [data-hist]').forEach(f => f.addEventListener('click', () => {
+      const i = f.dataset.hist;
+      const d = $('#hist-' + i);
+      const abierto = d.style.display !== 'none';
+      d.style.display = abierto ? 'none' : 'block';
+      $('#histTog-' + i).textContent = abierto ? T('q_ver') : T('q_ocultar');
+    }));
+    $$('#cuerpo [data-ver]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verSegunTipo(b.dataset.ver); }));
+    $$('#cuerpo [data-irlote]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); loteAbierto = b.dataset.irlote; nav('lote'); }));
+
+    /* por cobrar al entregar: los saldos de las facturas del CRM
+       enlazadas a piezas que aún están en camino */
+    (async () => {
+      try {
+        const filas = await Nube.listarFacturas();
+        const porId = new Map(filas.map(x => [x.id, x.data]));
+        const sumas = {};
+        for (const l of ls.filter(x => !x.recibido && estadoLote(x) !== 'recibido')) {
+          for (const o of piezasDe(l.id)) {
+            const f = o.facturaCRM && porId.get(o.facturaCRM.id);
+            if (f && Number(f.saldo) > 0) {
+              const m = f.moneda || 'DOP';
+              sumas[m] = (sumas[m] || 0) + Number(f.saldo);
+            }
+          }
+        }
+        const el = $('#histPorCobrar');
+        if (el) el.innerHTML = Object.keys(sumas).length
+          ? Object.entries(sumas).map(([m, v]) => `<b>${m === 'USD' ? fmtUSD(v) : UI_RD(v)}</b>`).join(' + ')
+          : '—';
+      } catch { const el = $('#histPorCobrar'); if (el) el.textContent = '—'; }
+    })();
   }
 
   /* ═══ ajustes ═══ */
