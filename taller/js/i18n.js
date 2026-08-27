@@ -160,6 +160,14 @@ const I18N = (() => {
     f_sinCosto:     ['Enlazar SIN tocar el costo', '—'],
     f_conCosto:     ['Enlazar y poner el costo en la factura', '—'],
 
+    /* ── archivos del diseño (3DM · STL · CAD) ── */
+    d_titulo:       ['📐 Archivos del diseño (3DM · STL · CAD)', '📐 Design files (3DM · STL · CAD)'],
+    d_reminder:     ['—', '⚠ REMINDER: when the design is finished, attach ALL 3 files for this piece — the .3DM, the .STL and the CAD. José needs the three of them.'],
+    d_completo:     ['✅ Los 3 archivos del diseño están adjuntos', '✅ All 3 design files attached — thank you!'],
+    d_falta:        ['⚠ Tonglin aún no adjunta:', '—'],
+    ev_archivoDiseno: ['📐 Tonglin adjuntó un archivo del diseño', 'Design file uploaded'],
+    ev_disenoCompleto: ['📐 ¡Los 3 archivos del diseño llegaron! (3DM + STL + CAD)', 'All 3 design files uploaded 🎉'],
+
     /* ── CAD ── */
     c_titulo:       ['🖌 CAD', '🖌 CAD'],
     c_subir:        ['📐 Subir CAD', '📐 Upload CAD'],

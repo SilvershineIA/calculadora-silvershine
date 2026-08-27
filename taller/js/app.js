@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-08-27', en: 'Design files section on each piece: when the design is finished, attach the 3 files — .3DM, .STL and CAD — each in its own slot (drag & drop works). The app reminds you until all 3 are in, and José gets notified when the set is complete.' },
     { f: '2026-08-27', en: 'Quote corrections: you can upload a CORRECTED PI even after approval (until the deposit) — the old PI is archived and José simply re-approves. José can also withdraw his approval.' },
     { f: '2026-08-27', en: 'Merge batches even when approved (until the deposit): quotes and deposits ADD UP — then just upload your new UNIFIED PI (it replaces the old PDFs) and send ONE payment link for the total.' },
     { f: '2026-08-27', en: 'Real back navigation: your phone’s BACK button now goes back page by page inside the app, plus a "Back to last page" button at the bottom.' },
@@ -1411,6 +1412,34 @@ Si no es legible responde {"error": "motivo corto"}.`;
       if (!cads.length && !o.cadOmitido) html += `<button class="btn ghost" id="btnOmitirCad">${T('c_omitir')}</button>`;
     }
 
+    /* 📐 Archivos del diseño: al TERMINAR el diseño, Tonglin adjunta los
+       3 archivos (3DM, STL y CAD) a la pieza — con recordatorio hasta
+       que estén los tres */
+    const SLOTS_D = [['3dm', '.3DM', '.3dm'], ['stl', '.STL', '.stl'], ['cad', 'CAD', ACEPTA_CAD]];
+    const ad = o.archivosDiseno || {};
+    const dTiene = SLOTS_D.filter(([k]) => ad[k]).length;
+    if (l && (l.comprobante || dTiene)) {
+      html += `<div class="h-sec">${T('d_titulo')} · ${dTiene}/3</div>`;
+      if (dTiene === 3) {
+        html += `<div class="card"><div class="sub verde"><b>${T('d_completo')}</b></div></div>`;
+      } else if (karen) {
+        html += `<div class="card" style="border-color:var(--red)"><div class="sub rojo"><b>${T('d_reminder')}</b></div></div>`;
+      } else {
+        html += `<div class="card"><div class="sub rojo"><b>${T('d_falta')}</b> ${SLOTS_D.filter(([k]) => !ad[k]).map(([, lbl]) => lbl).join(' · ')}</div></div>`;
+      }
+      for (const [k, lbl] of SLOTS_D) {
+        if (ad[k]) {
+          html += `<div class="tira"><span class="ico">📐</span>
+            <div class="crece"><div class="nombre" style="font-size:13.5px">${lbl} — ${esc(ad[k].nombre || '')}</div>
+            <div class="sub">${fmtFecha(ad[k].fecha)}</div></div>
+            <button class="btn-sm" data-bajar="${ad[k].path}" data-nombre="${esc(ad[k].nombre || '')}">⬇</button>
+            ${karen ? `<button class="btn-sm" data-dslot="${k}">↻</button>` : ''}</div>`;
+        } else if (karen) {
+          html += `<button class="btn jade" data-dslot="${k}" style="margin-top:8px">📐 Upload the ${lbl} file</button>`;
+        }
+      }
+    }
+
     /* Observaciones por pieza: SIEMPRE visibles y abiertas a los DOS
        lados, en cualquier etapa — Julia puede observar la piedra, la
        talla, la factibilidad o los tiempos de ESTE modelo, y José lo
@@ -1526,6 +1555,37 @@ Si no es legible responde {"error": "motivo corto"}.`;
         cerrarModal();
         render();
       });
+    });
+
+    /* 📐 subir cada archivo del diseño a su casilla (con arrastre, claro) */
+    const subirDiseno = async (slot, f) => {
+      if (!f) return;
+      const esperada = slot === 'cad' ? null : '.' + slot;
+      if (esperada && !f.name.toLowerCase().endsWith(esperada)) {
+        toast(`⚠ ${slot.toUpperCase()}: expected a ${esperada} file — got "${f.name}"`);
+        return;
+      }
+      toast(T('subiendo'));
+      try {
+        const path = `ordenes/${o.id}/diseno-${slot}-${Date.now()}${extDe(f.name) || '.bin'}`;
+        await Nube.subirArchivo(path, f, f.type || 'application/octet-stream');
+        o.archivosDiseno = o.archivosDiseno || {};
+        o.archivosDiseno[slot] = { path, nombre: f.name, fecha: hoyISO() };
+        await guardarDoc(o);
+        const n = ['3dm', 'stl', 'cad'].filter(k => o.archivosDiseno[k]).length;
+        if (n === 3) await avisar('disenoCompleto', o.nombre, o.loteId, o.id);
+        else await avisar('archivoDiseno', `${o.nombre} · ${slot.toUpperCase()} (${n}/3)`, o.loteId, o.id);
+        render();
+      } catch (e) { toast('⚠ ' + e.message); }
+    };
+    $$('#cuerpo [data-dslot]').forEach(b => {
+      const slot = b.dataset.dslot;
+      const acepta = slot === 'cad' ? ACEPTA_CAD : '.' + slot;
+      b.addEventListener('click', async e => {
+        e.stopPropagation();
+        subirDiseno(slot, await elegirArchivo(acepta));
+      });
+      zonaArrastre(b, archivos => subirDiseno(slot, archivos[0]), true);
     });
 
     on('#btnEnlazarFactura', () => enlazarFactura(o));
