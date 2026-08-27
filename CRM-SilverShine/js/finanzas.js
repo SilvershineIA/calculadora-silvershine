@@ -277,13 +277,16 @@ const Finanzas = (() => {
       .reduce((s, g) => s + g.enRD, 0);
     const neta = ganancia - gastosNeg;
     /* Sueldos = TODO lo personal (lo que el dueño se llevó);
-       Cuadre = todo lo demás que salió (negocio + materiales) */
+       Cuadre = lo que NO se ve en ningún otro renglón de la vista:
+       materiales (fuera de operativos a propósito) y cualquier otra
+       salida sin casilla. Operativos + Sueldos + Cuadre = todos los
+       gastos del período, sin repetir nada. */
     const sueldos = todosGastos
       .filter(g => g.gasto.ambito === 'personal')
       .reduce((s, g) => s + g.enRD, 0);
-    const cuadreGastos = todosGastos
-      .filter(g => g.gasto.ambito !== 'personal')
-      .reduce((s, g) => s + g.enRD, 0);
+    const esCuadre = g => g.gasto.ambito !== 'personal' &&
+      !(g.gasto.ambito === 'negocio' && !esMaterial(g));
+    const cuadreGastos = todosGastos.filter(esCuadre).reduce((s, g) => s + g.enRD, 0);
 
     $('#finStats').innerHTML =
       statTile(fmtDinero(ventas), `Ventas · ${fs.length} facturas`, '', 'stat-hero') +
@@ -294,8 +297,28 @@ const Finanzas = (() => {
       statTile(margen === null ? '—' : margen + '%', 'Margen') +
       statTile(fmtDinero(gastosNeg), 'Gastos operativos') +
       statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo') +
-      statTile(fmtDinero(sueldos), 'Sueldos (personal)') +
-      statTile(fmtDinero(cuadreGastos), 'Cuadre (todo lo demás)');
+      statTile(fmtDinero(sueldos), 'Sueldos (personal) · toca 🔍', '', 'tile-sueldos') +
+      statTile(fmtDinero(cuadreGastos), 'Cuadre (lo no visible arriba) · toca 🔍', '', 'tile-cuadre');
+
+    /* Desglose tocable: para cuadrar el número contra los papeles */
+    const desgloseGastos = (titulo, arr, total) => UI.abrirModal(titulo, (arr.length
+      ? arr.slice().sort((a, b) => b.enRD - a.enRD).map(g => `
+        <div class="abono-row">
+          <span>${fmtFecha(g.fecha)} · ${esc(g.desc || (g.gasto && g.gasto.categoria) || 'Gasto')}<br>
+            <span class="muted" style="font-size:.78rem">${esc((g.gasto && g.gasto.categoria) || '')}${
+              g.gasto && g.gasto.cuentaNombre ? ' · ' + esc(g.gasto.cuentaNombre) : ''}${
+              g.moneda === 'USD' ? ` · US$${Number(g.monto).toLocaleString('en-US')} a tasa` : ''}</span></span>
+          <b>${fmtDinero(g.enRD)}</b>
+        </div>`).join('') +
+        `<div class="abono-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:10px">
+          <span><b>Total del período</b></span><b>${fmtDinero(total)}</b></div>`
+      : '<p class="muted">Sin gastos de este tipo en el período.</p>'));
+    const tS = document.querySelector('.tile-sueldos');
+    const tC = document.querySelector('.tile-cuadre');
+    if (tS) { tS.style.cursor = 'pointer'; tS.addEventListener('click', () =>
+      desgloseGastos('💼 Sueldos (personal) — desglose', todosGastos.filter(g => g.gasto.ambito === 'personal'), sueldos)); }
+    if (tC) { tC.style.cursor = 'pointer'; tC.addEventListener('click', () =>
+      desgloseGastos('🏦 Cuadre — gastos que no salen en otros renglones (materiales y demás)', todosGastos.filter(esCuadre), cuadreGastos)); }
 
     $('#finNota').innerHTML =
       (conCosto < fs.length
