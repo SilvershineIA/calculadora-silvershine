@@ -271,10 +271,19 @@ const Finanzas = (() => {
     // "Materiales" queda fuera: es inversión en inventario y ya resta
     // en la bruta vía el costo de cada pieza (evita contarlo dos veces).
     const esMaterial = g => /^materiales/i.test((g.gasto && g.gasto.categoria) || '');
-    const gastosNeg = (await gastosEn(d, h))
+    const todosGastos = await gastosEn(d, h);
+    const gastosNeg = todosGastos
       .filter(g => g.gasto.ambito === 'negocio' && !esMaterial(g))
       .reduce((s, g) => s + g.enRD, 0);
     const neta = ganancia - gastosNeg;
+    /* Sueldos = TODO lo personal (lo que el dueño se llevó);
+       Cuadre = todo lo demás que salió (negocio + materiales) */
+    const sueldos = todosGastos
+      .filter(g => g.gasto.ambito === 'personal')
+      .reduce((s, g) => s + g.enRD, 0);
+    const cuadreGastos = todosGastos
+      .filter(g => g.gasto.ambito !== 'personal')
+      .reduce((s, g) => s + g.enRD, 0);
 
     $('#finStats').innerHTML =
       statTile(fmtDinero(ventas), `Ventas · ${fs.length} facturas`, '', 'stat-hero') +
@@ -284,7 +293,9 @@ const Finanzas = (() => {
       statTile(fmtDinero(ganancia), 'Ganancia bruta', ganancia >= 0 ? 'verde' : 'rojo') +
       statTile(margen === null ? '—' : margen + '%', 'Margen') +
       statTile(fmtDinero(gastosNeg), 'Gastos operativos') +
-      statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo');
+      statTile(fmtDinero(neta), 'Ganancia neta', neta >= 0 ? 'verde' : 'rojo') +
+      statTile(fmtDinero(sueldos), 'Sueldos (personal)') +
+      statTile(fmtDinero(cuadreGastos), 'Cuadre (todo lo demás)');
 
     $('#finNota').innerHTML =
       (conCosto < fs.length
