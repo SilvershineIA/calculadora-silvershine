@@ -614,7 +614,9 @@ const App = (() => {
       const piedra = esc(String(o.stone || '').split('\n')[0].slice(0, 72));
       const costoV = o.cot ? (o.cot.subtotalFinal ?? o.cot.subtotal) : null;
       const linea3 = [
-        o.batchTonglin ? `<span class="badge b-jade">🏷 ${esc(o.batchTonglin)}</span>` : '',
+        /* batch propio en jade; sin batch propio hereda el del lote en gris clarito */
+        o.batchTonglin ? `<span class="badge b-jade">🏷 ${esc(o.batchTonglin)}</span>`
+          : (l.refTonglin ? `<span class="badge b-gris" style="opacity:.6">🏷 ${esc(l.refTonglin)}</span>` : ''),
         o.target ? '🎯 ' + fmtFecha(o.target) : '',
         costoV != null ? `<span class="money">${fmtUSD(costoV)}</span>` : '',
         cadTxt,
