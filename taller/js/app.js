@@ -13,6 +13,9 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-08-27', en: 'Quote corrections: you can upload a CORRECTED PI even after approval (until the deposit) — the old PI is archived and José simply re-approves. José can also withdraw his approval.' },
+    { f: '2026-08-27', en: 'Merge batches even when approved (until the deposit): quotes and deposits ADD UP, both PDFs stay attached — send ONE payment link for the total.' },
+    { f: '2026-08-27', en: 'Real back navigation: your phone’s BACK button now goes back page by page inside the app, plus a "Back to last page" button at the bottom.' },
     { f: '2026-08-26', en: 'Stone picker fixed: selecting a stone now counts even without tapping "+ piedra" — and the size is optional, the stone always shows on the order.' },
     { f: '2026-08-26', en: 'Drag & drop EVERYWHERE: every upload button now accepts dropping the file on it — photos, CADs, PI pdfs and payment receipts (receipts also accept bank PDFs now).' },
     { f: '2026-08-26', en: 'Suggestion box (this section!) — and each piece can now carry YOUR batch (41P) shown right on its card, plus your item # (JTR…).' },
@@ -372,9 +375,28 @@ const App = (() => {
     vista = v;
     if (v !== 'lote') loteAbierto = null;
     if (v !== 'orden') ordenAbierta = null;
+    /* historial del navegador: el botón ATRÁS del teléfono retrocede de
+       pantalla en pantalla en vez de cerrar la app */
+    history.pushState({ v: vista, l: loteAbierto, o: ordenAbierta }, '');
     render();
     window.scrollTo(0, 0);
   }
+
+  window.addEventListener('popstate', e => {
+    /* atrás con un modal abierto: primero se cierra el modal */
+    if ($('#modalFondo')) {
+      cerrarModal();
+      history.pushState({ v: vista, l: loteAbierto, o: ordenAbierta }, '');
+      return;
+    }
+    const s = e.state;
+    if (!s || !s.v) return;
+    vista = s.v;
+    loteAbierto = s.l || null;
+    ordenAbierta = s.o || null;
+    render();
+    window.scrollTo(0, 0);
+  });
 
   function render() {
     const karen = I18N.esKaren();
@@ -570,7 +592,7 @@ const App = (() => {
       <div class="pasos">${ORDEN_ESTADOS.map((_, i) => `<span class="${i <= idx ? 'ok' : ''}"></span>`).join('')}</div>
       <div class="fila" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn-sm" id="btnRefLote">${l.refTonglin ? '🏷 ' + esc(l.refTonglin) : T('l_ref')}</button>
-        ${['armando', 'enviado', 'cotizado'].includes(est) ? `<button class="btn-sm" id="btnUnirLote">${T('l_unir')}</button>` : ''}
+        ${['armando', 'enviado', 'cotizado', 'aprobado', 'porPagar'].includes(est) ? `<button class="btn-sm" id="btnUnirLote">${T('l_unir')}</button>` : ''}
       </div>`;
 
     /* piezas */
@@ -631,7 +653,16 @@ const App = (() => {
           <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(l.cot.pdfNombre || 'PI.pdf')}</div>
           <div class="sub">${l.cot.leida ? T('l_leido') : fmtFecha(l.cot.fecha)}</div></div>
           <button class="btn-sm" data-ver="${l.cot.pdfPath}">${T('verPdf')}</button>
-        </div>`;
+        </div>
+        ${(l.cot.pdfsExtra || []).map(p => `<div class="tira"><span class="ico">📄</span>
+          <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(p.pdfNombre || 'PI.pdf')}</div>
+          <div class="sub">${T('l_piUnido')} · ${fmtFecha(p.fecha)}</div></div>
+          <button class="btn-sm" data-ver="${p.pdfPath}">${T('verPdf')}</button></div>`).join('')}
+        ${(l.cotAnteriores || []).map(p => `<div class="tira" style="opacity:.65"><span class="ico">🗄</span>
+          <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(p.pdfNombre || 'PI.pdf')}</div>
+          <div class="sub">${T('l_piViejo')} · ${fmtFecha(p.fecha)}</div></div>
+          <button class="btn-sm" data-ver="${p.pdfPath}">${T('verPdf')}</button></div>`).join('')}
+        ${karen && !l.comprobante ? `<button class="btn ghost" id="btnCorregirPI">${T('l_corregirPI')}</button>` : ''}`;
       if (l.cot.leida) {
         const le = l.cot.leida;
         const ps = le.pieces || [];
@@ -689,7 +720,11 @@ const App = (() => {
         html += `<button class="btn rosa" id="btnLeerPI">${T('l_leerIA')}</button>`;
       }
       if (!karen && !l.aprobada && l.cot.leida) html += `<button class="btn rosa" id="btnAprobar">${T('l_aprobar')}</button>`;
-      if (l.aprobada) html += `<div class="card"><div class="sub verde"><b>${T('l_aprobada')}</b> · ${fmtFecha(l.aprobada)}</div></div>`;
+      if (l.aprobada) {
+        html += `<div class="card"><div class="sub verde"><b>${T('l_aprobada')}</b> · ${fmtFecha(l.aprobada)}</div>
+          ${!karen && !l.comprobante ? `<button class="btn ghost" id="btnDesaprobar" style="margin-top:8px">${T('l_desaprobar')}</button>` : ''}
+        </div>`;
+      }
     }
 
     /* link de pago + comprobante (depósito) */
@@ -797,7 +832,8 @@ const App = (() => {
       html += `<button class="btn ghost" id="btnAvisarJose">💬 Message José on WhatsApp (ready to send)</button>`;
     }
 
-    html += `<button class="btn ghost" id="btnInicioLote">${T('volverInicio')}</button>`;
+    html += `<button class="btn ghost" id="btnAtrasLote">${T('volverAtras')}</button>
+      <button class="btn ghost" id="btnInicioLote">${T('volverInicio')}</button>`;
     c.innerHTML = html;
     pintarImagenes(c);   // mini-fotos de las piezas
     wireLote(l, piezas);
@@ -807,6 +843,8 @@ const App = (() => {
     $('#btnVolver').addEventListener('click', () => nav('lotes'));
     const bInicio = $('#btnInicioLote');
     if (bInicio) bInicio.addEventListener('click', () => nav('novedades'));
+    const bAtras = $('#btnAtrasLote');
+    if (bAtras) bAtras.addEventListener('click', () => history.back());
 
     /* 🏷 referencia de Tonglin del lote (ej. 41P) — editable por ambos */
     const bRef = $('#btnRefLote');
@@ -823,11 +861,16 @@ const App = (() => {
       });
     });
 
-    /* 🔗 unir otro lote a este: las piezas se mudan y el otro se absorbe */
+    /* 🔗 unir otro lote a este: vale HASTA ANTES del depósito. Si ambos
+       están cotizados, las cotizaciones se SUMAN (piezas, total y
+       depósito) y los PDFs quedan adjuntos; si ambos estaban aprobados
+       sigue aprobado — Karen manda UN solo link por el total. El link
+       de pago viejo se anula porque el monto cambió. */
+    const EST_UNIBLES = ['armando', 'enviado', 'cotizado', 'aprobado', 'porPagar'];
     const bUnir = $('#btnUnirLote');
     if (bUnir) bUnir.addEventListener('click', () => {
       const candidatos = lotes().filter(x => x.id !== l.id &&
-        ['armando', 'enviado', 'cotizado'].includes(estadoLote(x)));
+        EST_UNIBLES.includes(estadoLote(x)));
       if (!candidatos.length) { toast('—'); return; }
       abrirModal(T('l_unir'), `
         <p class="sub">${T('l_unirExpl')}</p>
@@ -845,6 +888,34 @@ const App = (() => {
           o.loteId = l.id;
           await guardarDoc(o);
         }
+        /* cotizaciones: sumar si ambas están leídas; los PDFs se conservan */
+        const ambosAprobados = !!(l.aprobada && fuente.aprobada);
+        if (fuente.cot) {
+          if (!l.cot) {
+            l.cot = fuente.cot;
+            l.aprobada = fuente.aprobada;
+          } else {
+            l.cot.pdfsExtra = [
+              ...(l.cot.pdfsExtra || []), ...(fuente.cot.pdfsExtra || []),
+              { pdfPath: fuente.cot.pdfPath, pdfNombre: fuente.cot.pdfNombre, fecha: fuente.cot.fecha },
+            ];
+            if (l.cot.leida && fuente.cot.leida) {
+              const A = l.cot.leida, B = fuente.cot.leida;
+              A.pieces = [...(A.pieces || []), ...(B.pieces || [])];
+              const depA = Number(A.deposit) || (Number(A.total) || 0) / 2;
+              const depB = Number(B.deposit) || (Number(B.total) || 0) / 2;
+              A.total = (Number(A.total) || 0) + (Number(B.total) || 0);
+              A.deposit = depA + depB;
+              if (ambosAprobados) l.aprobada = hoyISO();   // la suma de dos aprobados sigue aprobada
+              else delete l.aprobada;
+            } else {
+              delete l.aprobada;   // falta leer una de las dos: re-aprobar el conjunto
+            }
+            delete l.cot.aplicado;
+          }
+          l.cotAnteriores = [...(l.cotAnteriores || []), ...(fuente.cotAnteriores || [])];
+        }
+        delete l.linkPago;   // el monto cambió: Karen manda UN link nuevo por el total
         fuente.fusionadoEn = l.id;
         await guardarDoc(fuente);
         if (!l.refTonglin && fuente.refTonglin) l.refTonglin = fuente.refTonglin;
@@ -982,17 +1053,27 @@ const App = (() => {
       render();
     });
 
-    /* PDF o imagen: Tonglin a veces manda el PI como captura PNG/JPG */
+    /* PDF o imagen: Tonglin a veces manda el PI como captura PNG/JPG.
+       Si YA había cotización (corrección de un error): el PI viejo se
+       archiva, la aprobación y el link de pago se ANULAN solos, y a
+       José le llega "vuelve a aprobar". Vale hasta el depósito. */
     const subirPIpdf = async f => {
       toast(T('subiendo'));
       try {
+        const correccion = !!l.cot;
         const tipo = f.type && f.type.startsWith('image/') ? f.type : 'application/pdf';
         const ext = tipo === 'application/pdf' ? 'pdf' : (tipo.split('/')[1] || 'png');
         const path = `lotes/${l.id}/pi-${Date.now()}.${ext}`;
         await Nube.subirArchivo(path, f, tipo);
+        if (correccion) {
+          l.cotAnteriores = l.cotAnteriores || [];
+          l.cotAnteriores.push({ pdfPath: l.cot.pdfPath, pdfNombre: l.cot.pdfNombre, fecha: l.cot.fecha });
+          delete l.aprobada;
+          delete l.linkPago;
+        }
         l.cot = { pdfPath: path, pdfNombre: f.name, fecha: hoyISO() };
         await guardarDoc(l);
-        await avisar('cotizado', l.nombre, l.id);
+        await avisar(correccion ? 'cotCorregida' : 'cotizado', l.nombre, l.id);
         toast(T('l_piSubido'));
         render();
       } catch (e) { toast('⚠ ' + e.message); }
@@ -1003,6 +1084,22 @@ const App = (() => {
     });
     /* Karen puede ARRASTRAR el PDF (o la captura) directo sobre el botón */
     zonaArrastre($('#btnSubirPI'), archivos => subirPIpdf(archivos[0]), true);
+    /* PI corregido (mismo mecanismo, con archivo del viejo + des-aprobación) */
+    on('#btnCorregirPI', async () => {
+      const f = await elegirArchivo('application/pdf,image/*');
+      if (f) subirPIpdf(f);
+    });
+    zonaArrastre($('#btnCorregirPI'), archivos => subirPIpdf(archivos[0]), true);
+    /* José reabre la cotización aprobada (hasta el depósito) */
+    on('#btnDesaprobar', async () => {
+      if (!confirm(T('confirmar'))) return;
+      delete l.aprobada;
+      delete l.linkPago;
+      await guardarDoc(l);
+      await avisar('desaprobado', l.nombre, l.id);
+      toast('↩ ✓');
+      render();
+    });
 
     on('#btnLeerPI', () => leerPDF(l, 'inicial'));
     on('#btnLeerFinal', () => leerPDF(l, 'final'));
@@ -1334,10 +1431,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
       html += `<button class="btn peligro" id="btnBorrarOrden">🗑 ${T('eliminar')}</button>`;
     }
 
-    html += `<button class="btn ghost" id="btnInicioOrden">${T('volverInicio')}</button>`;
+    html += `<button class="btn ghost" id="btnAtrasOrden">${T('volverAtras')}</button>
+      <button class="btn ghost" id="btnInicioOrden">${T('volverInicio')}</button>`;
     c.innerHTML = html;
     pintarImagenes(c);
     $('#btnVolver').addEventListener('click', () => { if (l) { loteAbierto = l.id; nav('lote'); } else nav('lotes'); });
+    $('#btnAtrasOrden').addEventListener('click', () => history.back());
     $('#btnInicioOrden').addEventListener('click', () => nav('novedades'));
     $('#btnRefOrden').addEventListener('click', () => {
       abrirModal('🏷', `
@@ -2243,6 +2342,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (Nube.conectado()) {
       I18N.setRol(Nube.rol());
       vista = 'novedades';
+      history.replaceState({ v: 'novedades', l: null, o: null }, '');
       $('#app').innerHTML = `<div class="vacio" style="padding-top:30vh"><span>🧵</span>${T('cargando')}</div>`;
       await cargar();
       if (avisoLink) toast(avisoLink);
