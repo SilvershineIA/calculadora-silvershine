@@ -491,7 +491,7 @@ Si la imagen no es una factura legible responde {"error": "motivo corto"}.` },
     const hoyTxt = UI.fmtFecha(hoyISO());
     const secciones = [secSaldos, secResumen, secMovs];
     const archivo = `silvershine-cuadre-${hoyISO()}`;
-    if (salida === 'csv') Reportes.descargarCSV(archivo + '.csv', secciones);
+    if (salida === 'csv') Reportes.descargarXLSX(archivo + '.xlsx', secciones);
     else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', 'Cuadre de caja y bancos', `Saldos al ${hoyTxt}`, secciones);
     else await Reportes.imprimir('Cuadre de caja y bancos', `Saldos al ${hoyTxt}`, secciones);
   }

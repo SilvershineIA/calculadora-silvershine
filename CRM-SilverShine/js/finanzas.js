@@ -767,7 +767,7 @@ const Finanzas = (() => {
     }
     const sub = textoPeriodo(d, h) + (nota ? ` · ${nota}` : '');
     const archivo = `silvershine-${tipo}-${(d || 'inicio')}-a-${(h || 'hoy')}`;
-    if (salida === 'csv') Reportes.descargarCSV(archivo + '.csv', secciones);
+    if (salida === 'csv') Reportes.descargarXLSX(archivo + '.xlsx', secciones);
     else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', titulo, sub, secciones, { horizontal });
     else await Reportes.imprimir(titulo, sub, secciones, { horizontal });
   }
