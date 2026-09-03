@@ -83,12 +83,14 @@ const Cobros = (() => {
   async function render() {
     $('#cobrosTabs').innerHTML = `
       <button class="chip-tab ${modo === 'pendientes' ? 'on' : ''}" data-modo="pendientes">💰 Por cobrar</button>
+      <button class="chip-tab ${modo === 'easypay' ? 'on' : ''}" data-modo="easypay">📅 EasyPay</button>
       <button class="chip-tab ${modo === 'recibidos' ? 'on' : ''}" data-modo="recibidos">💵 Recibidos · por cuenta</button>`;
     UI.$$('#cobrosTabs .chip-tab').forEach(b => b.addEventListener('click', () => {
       modo = b.dataset.modo;
       render();
     }));
     if (modo === 'recibidos') return renderRecibidos();
+    if (modo === 'easypay') return renderEasyPay();
 
     const cont = $('#listaCobros');
     const lista = await pendientes();
@@ -184,6 +186,239 @@ const Cobros = (() => {
 
     cont.querySelectorAll('.cobro').forEach(el =>
       el.addEventListener('click', () => detalle(el.dataset.id)));
+  }
+
+  /* ── EasyPay: SOLO los planes, tipo tablero de pastillas ──
+     Cada plan es una fila estilo Monday (mismo componente tb-* de
+     Mi Día) agrupada por urgencia; tocarla abre el desglose completo
+     cuota por cuota con su status, lo pagado y lo que falta. */
+  const PLAN_NOMBRE = p =>
+    (p.plan && UI.EASYPAY_PLANES[p.plan] && UI.EASYPAY_PLANES[p.plan].nombre) || 'Plan personalizado';
+
+  /* Radiografía del plan: cuotas con estado + cuánto FALTA de cada una
+     (una cuota pagada a medias muestra solo el resto), cuál toca y el
+     atraso en días de la que toca. */
+  function radiografiaPlan(f) {
+    const p = f.planPago;
+    const cuotas = p.cuotas && p.cuotas.length ? Facturas.cuotasConEstado(f) : [];
+    const pagado = Math.round(((f.total || 0) - (f.saldo || 0)) * 100) / 100;
+    let antes = Number(p.inicial) || 0;
+    for (const c of cuotas) {
+      const despues = Math.round((antes + c.monto) * 100) / 100;
+      c.falta = Math.max(0, Math.round((despues - Math.max(pagado, antes)) * 100) / 100);
+      antes = despues;
+    }
+    const prox = cuotas.find(c => !c.cubierta) || null;
+    const dias = prox
+      ? Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(prox.fecha + 'T00:00:00')) / 864e5)
+      : null;
+    return {
+      cuotas, prox, dias, pagado,
+      cubiertas: cuotas.filter(c => c.cubierta).length,
+      vencidas: cuotas.filter(c => c.vencida).length,
+    };
+  }
+
+  /* Pastilla de estado del plan (colores del tablero) */
+  function pastillaPlan(r) {
+    if (!r.cuotas.length) return { t: '🗓 Cuotas por programar', c: 'var(--tb-gris)' };
+    if (!r.prox) return { t: '✅ Cuotas al día', c: 'var(--tb-verde)' };
+    if (r.dias > 0) return { t: `🔴 Atrasado ${r.dias} d${r.vencidas > 1 ? ' · ' + r.vencidas + ' cuotas' : ''}`, c: 'var(--tb-rojo)' };
+    if (r.dias === 0) return { t: '📅 Cuota HOY', c: 'var(--tb-naranja)' };
+    if (r.dias >= -7) return { t: `🟠 Cuota en ${-r.dias} d`, c: 'var(--tb-ambar)' };
+    return { t: '🟢 Al día', c: 'var(--tb-verde)' };
+  }
+
+  async function renderEasyPay() {
+    const cont = $('#listaCobros');
+    const todas = (await DB.facturas.list()).filter(f => f.planPago && f.estado !== 'anulada');
+    const activos = todas.filter(f => f.estado === 'pendiente' && f.saldo > 0);
+    const saldados = todas.filter(f => !(f.estado === 'pendiente' && f.saldo > 0))
+      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 15);
+
+    const info = new Map();
+    for (const f of [...activos, ...saldados]) info.set(f.id, radiografiaPlan(f));
+
+    const porCobrar = activos.reduce((s, f) => s + f.saldo, 0);
+    const totalPlanes = activos.reduce((s, f) => s + (f.total || 0), 0);
+    const cobrado = totalPlanes - porCobrar;
+    const cuotasVencidas = activos.reduce((s, f) => s + info.get(f.id).vencidas, 0);
+
+    $('#cobrosResumen').innerHTML =
+      UI.statTile(activos.length, 'Planes activos') +
+      UI.statTile(cuotasVencidas, 'Cuotas vencidas', cuotasVencidas > 0 ? 'rojo' : 'verde') +
+      UI.statTile(UI.fmtDinero(porCobrar), 'Por cobrar EasyPay') +
+      UI.statTile(totalPlanes > 0 ? Math.round(cobrado / totalPlanes * 100) + '%' : '—', 'Cobrado de los planes activos');
+
+    /* Calendario de cuotas: cuándo DEBE entrar el dinero */
+    const hoy = hoyISO();
+    const en7 = UI.fechaISO(new Date(Date.now() + 7 * 864e5));
+    const en30 = UI.fechaISO(new Date(Date.now() + 30 * 864e5));
+    const cal = { atras: 0, semana: 0, mes: 0, luego: 0 };
+    for (const f of activos) {
+      const r = info.get(f.id);
+      if (!r.cuotas.length) { cal.luego += f.saldo; continue; }
+      for (const c of r.cuotas) {
+        if (!c.falta) continue;
+        if (c.fecha < hoy) cal.atras += c.falta;
+        else if (c.fecha <= en7) cal.semana += c.falta;
+        else if (c.fecha <= en30) cal.mes += c.falta;
+        else cal.luego += c.falta;
+      }
+    }
+    $('#cobrosAgingTitulo').textContent = '📆 Cuándo debe entrar el dinero';
+    $('#cobrosAging').innerHTML =
+      UI.statTile(UI.fmtDinero(cal.atras), 'Atrasado', cal.atras > 0 ? 'rojo' : '') +
+      UI.statTile(UI.fmtDinero(cal.semana), 'Próximos 7 días') +
+      UI.statTile(UI.fmtDinero(cal.mes), 'Resto del mes') +
+      UI.statTile(UI.fmtDinero(cal.luego), 'Más adelante');
+
+    if (!todas.length) {
+      cont.innerHTML = '<div class="empty"><span>📅</span>No hay facturas con plan EasyPay todavía — se crean al facturar con forma de pago EasyPay.</div>';
+      return;
+    }
+
+    /* Fila estilo tablero: info · pastilla · monto · próxima cuota · acción */
+    const filaEp = (f, saldado) => {
+      const r = info.get(f.id);
+      const pill = saldado ? { t: '✅ Saldado', c: 'var(--tb-verde)' } : pastillaPlan(r);
+      const t = f.moneda || 'DOP';
+      const prog = r.cuotas.length
+        ? `Cuota ${Math.min(r.cubiertas + 1, r.cuotas.length)}/${r.cuotas.length}`
+        : 'sin cuotas programadas';
+      const cuando = saldado
+        ? `completado · ${r.cubiertas}/${r.cuotas.length || '—'} cuotas`
+        : r.prox
+          ? `${prog} · cobrar <b>${fmtFecha(r.prox.fecha)}</b> (${fmtMoneda(r.prox.falta || r.prox.monto, t)})`
+          : prog;
+      return `
+      <div class="tb-fila ep-fila" data-id="${f.id}">
+        <div class="tb-info"><b>👤 ${esc(f.clienteNombre)}</b><span>${esc(PLAN_NOMBRE(f.planPago))} · ${esc(f.numero || 's/n')}${f.orden ? ' · #' + esc(String(f.orden)) : ''}</span></div>
+        <div class="tb-pillc"><span class="tb-pill" style="background:${pill.c}">${pill.t}</span></div>
+        <div class="tb-monto"><b class="${!saldado && r.dias > 0 ? 'rojo' : ''}">${saldado ? fmtMoneda(f.total, t) : fmtMoneda(f.saldo, t)}</b></div>
+        <div class="tb-fecha ${!saldado && r.dias > 0 ? 'rojo' : ''}"><span>${cuando}</span></div>
+        <div class="tb-acc">${saldado ? '<span class="verde" style="font-size:1.1rem">✓</span>'
+          : `<button type="button" class="btn-gold btn-sm ep-wa" data-wa="${f.id}" title="Recordatorio por WhatsApp">💬</button>`}</div>
+      </div>`;
+    };
+
+    const grupoEp = (titulo, color, arr, saldado = false, plegado = false) => !arr.length ? '' : `
+      <section class="tb-grupo ${plegado ? 'plegado' : ''}" style="--tbc:${color}">
+        <div class="tb-cab" tabindex="0"><span class="tb-caret">▼</span><b style="color:${color}">${titulo}</b><span class="tb-n">${arr.length}${
+          saldado ? '' : ` · ${UI.fmtDinero(arr.reduce((s, f) => s + f.saldo, 0))}`}</span></div>
+        <div class="tb-cuerpo">
+          <div class="tb-encab"><div>Cliente / plan</div><div>Estado</div><div>Debe</div><div>Próxima cuota</div><div style="text-align:right">Acción</div></div>
+          ${arr.map(f => filaEp(f, saldado)).join('')}
+          <div class="tb-pie">
+            <div>${arr.length} ${arr.length === 1 ? 'plan' : 'planes'}</div>
+            <div><span class="tb-bat">${arr.map(f => { const r = info.get(f.id); const pc = saldado ? 100 : (f.total > 0 ? (f.total - f.saldo) / f.total * 100 : 0); return `<i style="background:${pc >= 99.9 ? 'var(--tb-verde)' : r.dias > 0 ? 'var(--tb-rojo)' : 'var(--tb-azul)'};width:${(100 / arr.length).toFixed(2)}%"></i>`; }).join('')}</span></div>
+            <div class="tb-monto">${saldado ? '' : UI.fmtDinero(arr.reduce((s, f) => s + f.saldo, 0))}</div>
+            <div></div><div></div>
+          </div>
+        </div>
+      </section>`;
+
+    const porDias = (a, b) => (info.get(b.id).dias ?? -999) - (info.get(a.id).dias ?? -999);
+    const con = filtro => activos.filter(filtro).sort(porDias);
+    const vencidos = con(f => { const r = info.get(f.id); return r.prox && r.dias > 0; });
+    const semana = con(f => { const r = info.get(f.id); return r.prox && r.dias <= 0 && r.dias >= -7; });
+    const alDia = con(f => { const r = info.get(f.id); return r.cuotas.length && (!r.prox || r.dias < -7); });
+    const sinCuotas = con(f => !info.get(f.id).cuotas.length);
+
+    cont.innerHTML =
+      grupoEp('🔴 Cuota vencida — cobrar YA', 'var(--tb-rojo)', vencidos) +
+      grupoEp('🟠 Cuota hoy o esta semana', 'var(--tb-naranja)', semana) +
+      grupoEp('🗓 Cuotas por programar', 'var(--tb-ambar)', sinCuotas) +
+      grupoEp('🟢 Al día — cuota más adelante', 'var(--tb-verde)', alDia) +
+      grupoEp('✅ Planes saldados (últimos 15)', 'var(--tb-gris)', saldados, true, true);
+
+    cont.querySelectorAll('.tb-cab').forEach(c =>
+      c.addEventListener('click', () => c.closest('.tb-grupo').classList.toggle('plegado')));
+    cont.querySelectorAll('.ep-fila').forEach(el =>
+      el.addEventListener('click', () => desgloseEasy(el.dataset.id)));
+    cont.querySelectorAll('.ep-wa').forEach(b =>
+      b.addEventListener('click', e => { e.stopPropagation(); recordatorioRapido(b.dataset.wa); }));
+  }
+
+  /* ── Desglose completo de un plan EasyPay ── */
+  async function desgloseEasy(id) {
+    const f = await DB.facturas.get(id);
+    if (!f || !f.planPago) return detalle(id);
+    const cliente = f.clienteId ? await DB.clientes.get(f.clienteId) : null;
+    const t = f.moneda || 'DOP';
+    const p = f.planPago;
+    const r = radiografiaPlan(f);
+    const saldado = !(f.estado === 'pendiente' && f.saldo > 0);
+    const pct = f.total > 0 ? Math.min(100, Math.round(r.pagado / f.total * 100)) : 0;
+    const pill = saldado ? { t: '✅ Saldado', c: 'var(--tb-verde)' } : pastillaPlan(r);
+    const hoy = hoyISO();
+
+    const nav = [
+      cliente && { t: '👤 Cliente', on: () => Clientes.ficha(cliente.id) },
+      { t: `🧾 Factura ${f.orden ? '#' + f.orden : f.numero || ''}`, on: () => Facturas.detalle(f.id) },
+      { t: '💰 Gestión del cobro', on: () => detalle(f.id) },
+    ].filter(Boolean);
+
+    const cuotaFila = c => {
+      const icono = c.cubierta ? '✅' : c.vencida ? '🔴' : (c.fecha === hoy ? '📅' : '⏳');
+      const atraso = c.vencida
+        ? Math.round((new Date(hoy + 'T00:00:00') - new Date(c.fecha + 'T00:00:00')) / 864e5) : 0;
+      const marca = (!c.cubierta && r.prox && c.num === r.prox.num) ? ' <b class="dorado">← le toca</b>' : '';
+      const parcial = (!c.cubierta && c.falta < c.monto - 0.005)
+        ? ` <span class="muted">(abonada — faltan ${fmtMoneda(c.falta, t)})</span>` : '';
+      return `<div class="abono-row">
+        <span>${icono} Cuota ${c.num} · ${fmtFecha(c.fecha)}${marca}${atraso > 0 ? ` · <span class="rojo">${atraso} d de atraso</span>` : ''}</span>
+        <b class="${c.cubierta ? 'verde' : c.vencida ? 'rojo' : ''}">${fmtMoneda(c.monto, t)}${parcial}</b>
+      </div>`;
+    };
+
+    const abonos = (f.abonos || []).map(a => `<div class="abono-row">
+        <span>${fmtFecha(a.fecha)} · ${esc(a.metodo || 'Pago')}${a.cuentaNombre ? ' · 🏦 ' + esc(a.cuentaNombre) : ''}</span>
+        <b class="verde">+${fmtMoneda(a.monto, t)}</b>
+      </div>`).join('') || '<p class="muted">Sin pagos registrados todavía.</p>';
+
+    abrirModal(`📅 EasyPay — ${f.clienteNombre}`, `
+      ${UI.navChips(nav)}
+      ${saldado
+        ? `<div class="deuda-banner" style="background:#E8F3E9;color:var(--green)">✅ Plan saldado — pagó <b>${fmtMoneda(f.total, t)}</b> completo</div>`
+        : `<div class="deuda-banner">Debe <b>${fmtMoneda(f.saldo, t)}</b> de ${fmtMoneda(f.total, t)}</div>`}
+      <div style="margin:10px 0 4px"><span class="tb-bat" style="max-width:none;width:100%;height:16px">
+        <i style="background:var(--tb-verde);width:${pct}%"></i><i style="background:var(--border);width:${100 - pct}%"></i>
+      </span></div>
+      <p class="muted" style="margin-bottom:12px">Cobrado <b>${fmtMoneda(r.pagado, t)}</b> de ${fmtMoneda(f.total, t)} (<b>${pct}%</b>) ·
+        <span class="tb-pill" style="background:${pill.c};display:inline-flex;width:auto;padding:2px 10px;height:auto">${pill.t}</span></p>
+
+      <p class="muted" style="margin-bottom:12px">
+        <b>${esc(PLAN_NOMBRE(p))}</b> · frecuencia ${esc(p.frecuencia || 'mensual')} · factura ${esc(f.numero || 's/n')} del ${fmtFecha(f.fecha)}<br>
+        Reserva inicial: <b>${fmtMoneda(Number(p.inicial) || 0, t)}</b>${p.fee ? ` · tarifa RD$${p.fee}/cuota (incluida en las cuotas)` : ''}${
+        r.prox && !saldado ? `<br>Próximo pago: <b>${fmtFecha(r.prox.fecha)}</b> por <b>${fmtMoneda(r.prox.falta || r.prox.monto, t)}</b>${
+          r.dias > 0 ? ` — <span class="rojo"><b>${r.dias} días de atraso</b></span>` : r.dias === 0 ? ' — <b>HOY</b>' : ` (en ${-r.dias} días)`}` : ''}</p>
+
+      <h3 class="sub-h">🗓 Cuotas del plan ${r.cuotas.length ? `(${r.cubiertas}/${r.cuotas.length} pagadas)` : ''}</h3>
+      ${r.cuotas.length ? r.cuotas.map(cuotaFila).join('')
+        : '<p class="muted">Este plan no tiene cuotas programadas — prográmalas desde 💰 Gestión del cobro.</p>'}
+
+      <h3 class="sub-h" style="margin-top:14px">💵 Pagos recibidos</h3>
+      ${abonos}
+
+      ${saldado ? '' : `
+      <button class="btn-gold btn-block" id="epAbonar" style="margin-top:14px">💵 Registrar pago de cuota</button>
+      <div class="row" style="margin-top:10px">
+        ${UI.tieneWhatsApp(cliente) ? '<button class="btn-ghost btn-block" id="epWhatsApp">💬 Recordar por WhatsApp</button>' : ''}
+        <button class="btn-ghost btn-block" id="epGestion">📋 Gestión del cobro</button>
+      </div>`}
+    `);
+
+    UI.navWire(nav);
+    const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+    on('#epAbonar', () => Facturas.formAbono(f));
+    on('#epGestion', () => detalle(f.id));
+    on('#epWhatsApp', async () => {
+      const emp = await UI.getEmpresa();
+      UI.abrirWhatsApp(cliente, mensajeRecordatorio(f, emp));
+      f.ultimoRecordatorio = hoyISO();          // botón del detalle: sí registra
+      await DB.facturas.upsert(f);
+    });
   }
 
   /* ── Recibidos: todos los cobros con su cuenta bancaria ──
@@ -327,5 +562,5 @@ const Cobros = (() => {
     });
   }
 
-  return { render, detalle, clasificar, pendientes, recordatorioRapido };
+  return { render, detalle, desgloseEasy, clasificar, pendientes, recordatorioRapido };
 })();
