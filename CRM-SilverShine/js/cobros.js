@@ -229,6 +229,19 @@ const Cobros = (() => {
     return { t: '🟢 Al día', c: 'var(--tb-verde)' };
   }
 
+  /* Recordatorio de producción: la pieza se entrega al SALDAR el plan,
+     así que debe empezar a producirse al menos UN MES antes de la
+     última cuota. dias = los que faltan para ese arranque (negativo =
+     ya se pasó); enProd = la factura ya tiene confección iniciada. */
+  const PROD_LABEL = { pendiente: '📋 por enviar al taller', taller: '🧵 en el taller', recibida: '📥 recibida por el taller', camino: '✈️ en camino', lista: '📦 en almacén — lista', entregada: '✅ entregada' };
+  function produccionDe(f, r) {
+    if (!r.cuotas.length) return null;
+    const fin = r.cuotas[r.cuotas.length - 1].fecha;
+    const inicio = UI.fechaISO(new Date(new Date(fin + 'T00:00:00').getTime() - 30 * 864e5));
+    const dias = Math.round((new Date(inicio + 'T00:00:00') - new Date(hoyISO() + 'T00:00:00')) / 864e5);
+    return { fin, inicio, dias, enProd: !!f.confeccion, estado: f.confeccion ? f.confeccion.estado : null };
+  }
+
   async function renderEasyPay() {
     const cont = $('#listaCobros');
     const todas = (await DB.facturas.list()).filter(f => f.planPago && f.estado !== 'anulada');
@@ -291,9 +304,13 @@ const Cobros = (() => {
         : r.prox
           ? `${prog} · cobrar <b>${fmtFecha(r.prox.fecha)}</b> (${fmtMoneda(r.prox.falta || r.prox.monto, t)})`
           : prog;
+      const prod = produccionDe(f, r);
+      const avisoProd = saldado || !prod || prod.enProd ? ''
+        : prod.dias <= 0 ? ' · <b class="rojo">🧵 producir YA</b>'
+        : prod.dias <= 7 ? ` · <b style="color:#9C6F1E">🧵 producir en ${prod.dias} d</b>` : '';
       return `
       <div class="tb-fila ep-fila" data-id="${f.id}">
-        <div class="tb-info"><b>👤 ${esc(f.clienteNombre)}</b><span>${esc(PLAN_NOMBRE(f.planPago))} · ${esc(f.numero || 's/n')}${f.orden ? ' · #' + esc(String(f.orden)) : ''}</span></div>
+        <div class="tb-info"><b>👤 ${esc(f.clienteNombre)}</b><span>${esc(PLAN_NOMBRE(f.planPago))} · ${esc(f.numero || 's/n')}${f.orden ? ' · #' + esc(String(f.orden)) : ''}${avisoProd}</span></div>
         <div class="tb-pillc"><span class="tb-pill" style="background:${pill.c}">${pill.t}</span></div>
         <div class="tb-monto"><b class="${!saldado && r.dias > 0 ? 'rojo' : ''}">${saldado ? fmtMoneda(f.total, t) : fmtMoneda(f.saldo, t)}</b></div>
         <div class="tb-fecha ${!saldado && r.dias > 0 ? 'rojo' : ''}"><span>${cuando}</span></div>
@@ -340,7 +357,10 @@ const Cobros = (() => {
       b.addEventListener('click', e => { e.stopPropagation(); recordatorioRapido(b.dataset.wa); }));
   }
 
-  /* ── Desglose completo de un plan EasyPay ── */
+  /* ── Desglose completo de un plan EasyPay ──
+     Organizado en tarjetas: resumen (3 números + barra) → próximo
+     pago → producción de la pieza → cuotas (línea de tiempo) →
+     pagos recibidos → ficha del plan al pie. */
   async function desgloseEasy(id) {
     const f = await DB.facturas.get(id);
     if (!f || !f.planPago) return detalle(id);
@@ -350,59 +370,107 @@ const Cobros = (() => {
     const r = radiografiaPlan(f);
     const saldado = !(f.estado === 'pendiente' && f.saldo > 0);
     const pct = f.total > 0 ? Math.min(100, Math.round(r.pagado / f.total * 100)) : 0;
-    const pill = saldado ? { t: '✅ Saldado', c: 'var(--tb-verde)' } : pastillaPlan(r);
     const hoy = hoyISO();
+    const prod = produccionDe(f, r);
 
     const nav = [
       cliente && { t: '👤 Cliente', on: () => Clientes.ficha(cliente.id) },
       { t: `🧾 Factura ${f.orden ? '#' + f.orden : f.numero || ''}`, on: () => Facturas.detalle(f.id) },
+      f.confeccion && { t: '🧵 Confección', on: () => Confecciones.detalle(f.id) },
       { t: '💰 Gestión del cobro', on: () => detalle(f.id) },
     ].filter(Boolean);
 
+    /* Tarjeta: próximo pago (lo más importante primero) */
+    const tarjetaProx = saldado || !r.prox ? '' : (() => {
+      const col = r.dias > 0 ? 'var(--tb-rojo)' : r.dias === 0 ? 'var(--tb-naranja)' : r.dias >= -7 ? 'var(--tb-ambar)' : 'var(--tb-azul)';
+      const cuando = r.dias > 0 ? `<b class="rojo">${r.dias} día${r.dias === 1 ? '' : 's'} de atraso</b>`
+        : r.dias === 0 ? '<b>vence HOY</b>' : `en ${-r.dias} día${r.dias === -1 ? '' : 's'}`;
+      return `
+      <div class="ep-card" style="--tbc:${col}">
+        <h4>💵 Próximo pago</h4>
+        <div class="ep-grande"><b>${fmtMoneda(r.prox.falta || r.prox.monto, t)}</b> · ${fmtFecha(r.prox.fecha)} — ${cuando}</div>
+      </div>`;
+    })();
+
+    /* Tarjeta: producción de la pieza (un mes antes de terminar) */
+    const tarjetaProd = !prod || (saldado && !prod.enProd) ? '' : (() => {
+      if (prod.enProd) return `
+        <div class="ep-card" style="--tbc:var(--tb-verde)">
+          <h4>🧵 Producción de la pieza</h4>
+          <div>✅ Ya está en producción — <b>${PROD_LABEL[prod.estado] || prod.estado}</b>. El plan termina el <b>${fmtFecha(prod.fin)}</b>.</div>
+        </div>`;
+      const col = prod.dias <= 0 ? 'var(--tb-rojo)' : prod.dias <= 7 ? 'var(--tb-ambar)' : 'var(--tb-azul)';
+      const linea = prod.dias < 0
+        ? `<b class="rojo">⚠️ Debió empezar hace ${-prod.dias} día${prod.dias === -1 ? '' : 's'}</b> (el ${fmtFecha(prod.inicio)})`
+        : prod.dias === 0 ? '<b class="rojo">⚠️ Debe empezar HOY</b>'
+        : prod.dias <= 7 ? `<b style="color:#9C6F1E">Debe empezar en ${prod.dias} día${prod.dias === 1 ? '' : 's'}</b> — el ${fmtFecha(prod.inicio)}`
+        : `Empezar a producir el <b>${fmtFecha(prod.inicio)}</b>`;
+      return `
+      <div class="ep-card" style="--tbc:${col}">
+        <h4>🧵 Producción de la pieza</h4>
+        <div>${linea}</div>
+        <div class="muted" style="font-size:.8rem;margin-top:3px">El plan termina el ${fmtFecha(prod.fin)} y la pieza necesita al menos un mes de confección.</div>
+        <button class="btn-ghost btn-sm" id="epProducir" style="margin-top:9px">🧵 Iniciar la confección ahora</button>
+      </div>`;
+    })();
+
+    /* Cuotas como línea de tiempo con círculo numerado */
     const cuotaFila = c => {
-      const icono = c.cubierta ? '✅' : c.vencida ? '🔴' : (c.fecha === hoy ? '📅' : '⏳');
+      const esLaQueToca = !c.cubierta && r.prox && c.num === r.prox.num;
+      const cls = c.cubierta ? 'pagada' : c.vencida ? 'vencida' : esLaQueToca ? 'toca' : '';
       const atraso = c.vencida
         ? Math.round((new Date(hoy + 'T00:00:00') - new Date(c.fecha + 'T00:00:00')) / 864e5) : 0;
-      const marca = (!c.cubierta && r.prox && c.num === r.prox.num) ? ' <b class="dorado">← le toca</b>' : '';
+      const estadoTxt = c.cubierta ? '✅ Pagada'
+        : c.vencida ? `🔴 Vencida — ${atraso} d de atraso${esLaQueToca ? ' · le toca' : ''}`
+        : esLaQueToca ? (c.fecha === hoy ? '📅 Le toca HOY' : '⭐ La que le toca')
+        : '⏳ Pendiente';
       const parcial = (!c.cubierta && c.falta < c.monto - 0.005)
-        ? ` <span class="muted">(abonada — faltan ${fmtMoneda(c.falta, t)})</span>` : '';
-      return `<div class="abono-row">
-        <span>${icono} Cuota ${c.num} · ${fmtFecha(c.fecha)}${marca}${atraso > 0 ? ` · <span class="rojo">${atraso} d de atraso</span>` : ''}</span>
-        <b class="${c.cubierta ? 'verde' : c.vencida ? 'rojo' : ''}">${fmtMoneda(c.monto, t)}${parcial}</b>
+        ? `<small>abonada — faltan ${fmtMoneda(c.falta, t)}</small>` : '';
+      return `<div class="ep-cuota ${cls}">
+        <div class="ep-num">${c.cubierta ? '✓' : c.num}</div>
+        <div class="ep-cuota-info"><b>Cuota ${c.num} · ${fmtFecha(c.fecha)}</b><span>${estadoTxt}</span></div>
+        <div class="ep-cuota-monto"><b class="${c.cubierta ? 'verde' : c.vencida ? 'rojo' : ''}">${fmtMoneda(c.monto, t)}</b>${parcial}</div>
       </div>`;
     };
 
     const abonos = (f.abonos || []).map(a => `<div class="abono-row">
         <span>${fmtFecha(a.fecha)} · ${esc(a.metodo || 'Pago')}${a.cuentaNombre ? ' · 🏦 ' + esc(a.cuentaNombre) : ''}</span>
         <b class="verde">+${fmtMoneda(a.monto, t)}</b>
-      </div>`).join('') || '<p class="muted">Sin pagos registrados todavía.</p>';
+      </div>`).join('') || '<p class="muted" style="margin:0">Sin pagos registrados todavía.</p>';
 
     abrirModal(`📅 EasyPay — ${f.clienteNombre}`, `
       ${UI.navChips(nav)}
-      ${saldado
-        ? `<div class="deuda-banner" style="background:#E8F3E9;color:var(--green)">✅ Plan saldado — pagó <b>${fmtMoneda(f.total, t)}</b> completo</div>`
-        : `<div class="deuda-banner">Debe <b>${fmtMoneda(f.saldo, t)}</b> de ${fmtMoneda(f.total, t)}</div>`}
-      <div style="margin:10px 0 4px"><span class="tb-bat" style="max-width:none;width:100%;height:16px">
+
+      <div class="ep-stats" style="margin-top:10px">
+        <div class="ep-stat"><b class="${saldado ? 'verde' : 'rojo'}">${saldado ? '✓ 0' : fmtMoneda(f.saldo, t)}</b><span>Debe</span></div>
+        <div class="ep-stat"><b class="verde">${fmtMoneda(r.pagado, t)}</b><span>Pagado</span></div>
+        <div class="ep-stat"><b>${r.cuotas.length ? `${r.cubiertas}/${r.cuotas.length}` : '—'}</b><span>Cuotas</span></div>
+      </div>
+      <span class="tb-bat" style="max-width:none;width:100%;height:14px">
         <i style="background:var(--tb-verde);width:${pct}%"></i><i style="background:var(--border);width:${100 - pct}%"></i>
-      </span></div>
-      <p class="muted" style="margin-bottom:12px">Cobrado <b>${fmtMoneda(r.pagado, t)}</b> de ${fmtMoneda(f.total, t)} (<b>${pct}%</b>) ·
-        <span class="tb-pill" style="background:${pill.c};display:inline-flex;width:auto;padding:2px 10px;height:auto">${pill.t}</span></p>
+      </span>
+      <p class="muted" style="margin:5px 0 0;font-size:.8rem">${saldado ? '✅ Plan saldado' : `Cobrado el <b>${pct}%</b> del plan de ${fmtMoneda(f.total, t)}`}</p>
 
-      <p class="muted" style="margin-bottom:12px">
-        <b>${esc(PLAN_NOMBRE(p))}</b> · frecuencia ${esc(p.frecuencia || 'mensual')} · factura ${esc(f.numero || 's/n')} del ${fmtFecha(f.fecha)}<br>
-        Reserva inicial: <b>${fmtMoneda(Number(p.inicial) || 0, t)}</b>${p.fee ? ` · tarifa RD$${p.fee}/cuota (incluida en las cuotas)` : ''}${
-        r.prox && !saldado ? `<br>Próximo pago: <b>${fmtFecha(r.prox.fecha)}</b> por <b>${fmtMoneda(r.prox.falta || r.prox.monto, t)}</b>${
-          r.dias > 0 ? ` — <span class="rojo"><b>${r.dias} días de atraso</b></span>` : r.dias === 0 ? ' — <b>HOY</b>' : ` (en ${-r.dias} días)`}` : ''}</p>
+      ${tarjetaProx}
+      ${tarjetaProd}
 
-      <h3 class="sub-h">🗓 Cuotas del plan ${r.cuotas.length ? `(${r.cubiertas}/${r.cuotas.length} pagadas)` : ''}</h3>
-      ${r.cuotas.length ? r.cuotas.map(cuotaFila).join('')
-        : '<p class="muted">Este plan no tiene cuotas programadas — prográmalas desde 💰 Gestión del cobro.</p>'}
+      <div class="ep-card">
+        <h4>🗓 Cuotas del plan ${r.cuotas.length ? `· ${r.cubiertas} de ${r.cuotas.length} pagadas` : ''}</h4>
+        ${r.cuotas.length ? r.cuotas.map(cuotaFila).join('')
+          : '<p class="muted" style="margin:0">Sin cuotas programadas — prográmalas desde 💰 Gestión del cobro.</p>'}
+      </div>
 
-      <h3 class="sub-h" style="margin-top:14px">💵 Pagos recibidos</h3>
-      ${abonos}
+      <div class="ep-card">
+        <h4>💵 Pagos recibidos · ${(f.abonos || []).length}</h4>
+        ${abonos}
+      </div>
+
+      <p class="muted" style="font-size:.78rem;margin:10px 0 0">
+        ${esc(PLAN_NOMBRE(p))} · frecuencia ${esc(p.frecuencia || 'mensual')} · reserva inicial ${fmtMoneda(Number(p.inicial) || 0, t)}${
+        p.fee ? ` · tarifa RD$${p.fee}/cuota` : ''} · factura ${esc(f.numero || 's/n')} del ${fmtFecha(f.fecha)}</p>
 
       ${saldado ? '' : `
-      <button class="btn-gold btn-block" id="epAbonar" style="margin-top:14px">💵 Registrar pago de cuota</button>
+      <button class="btn-gold btn-block" id="epAbonar" style="margin-top:12px">💵 Registrar pago de cuota</button>
       <div class="row" style="margin-top:10px">
         ${UI.tieneWhatsApp(cliente) ? '<button class="btn-ghost btn-block" id="epWhatsApp">💬 Recordar por WhatsApp</button>' : ''}
         <button class="btn-ghost btn-block" id="epGestion">📋 Gestión del cobro</button>
@@ -413,6 +481,7 @@ const Cobros = (() => {
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
     on('#epAbonar', () => Facturas.formAbono(f));
     on('#epGestion', () => detalle(f.id));
+    on('#epProducir', () => Confecciones.pactar(f, () => desgloseEasy(f.id)));
     on('#epWhatsApp', async () => {
       const emp = await UI.getEmpresa();
       UI.abrirWhatsApp(cliente, mensajeRecordatorio(f, emp));

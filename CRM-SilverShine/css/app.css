@@ -627,3 +627,26 @@ button:hover{filter:brightness(1.12)}
 }
 .tb-leyenda span{display:inline-flex;align-items:center;gap:5px}
 .tb-leyenda i{width:11px;height:11px;border-radius:4px;display:inline-block}
+
+/* ── Desglose EasyPay (modal): tarjetas con riel de color ── */
+.ep-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.ep-stat{background:#FAF7F2;border:1px solid var(--border);border-radius:10px;padding:10px 6px;text-align:center}
+.ep-stat b{display:block;font-size:1rem;font-variant-numeric:tabular-nums}
+.ep-stat span{font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.ep-card{border:1px solid var(--border);border-left:5px solid var(--tbc,var(--border));
+  border-radius:10px;padding:12px 14px;margin:12px 0;background:var(--panel)}
+.ep-card h4{margin:0 0 8px;font-size:.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.ep-grande{font-size:1.05rem}
+.ep-cuota{display:flex;align-items:center;gap:11px;padding:9px 2px;border-bottom:1px dashed var(--border)}
+.ep-cuota:last-child{border-bottom:0}
+.ep-num{flex:0 0 30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:.82rem;background:#EFEAE2;color:var(--muted)}
+.ep-cuota.pagada .ep-num{background:#E8F3E9;color:var(--green)}
+.ep-cuota.vencida .ep-num{background:#F9E4E2;color:var(--red)}
+.ep-cuota.toca .ep-num{background:#F6ECDC;color:#9C6F1E;box-shadow:0 0 0 2px var(--tb-ambar)}
+.ep-cuota-info{flex:1;min-width:0}
+.ep-cuota-info b{display:block;font-size:.88rem}
+.ep-cuota-info span{font-size:.75rem;color:var(--muted)}
+.ep-cuota.vencida .ep-cuota-info span{color:var(--red);font-weight:600}
+.ep-cuota-monto{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ep-cuota-monto small{display:block;font-size:.7rem;color:var(--muted);white-space:normal}
