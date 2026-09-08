@@ -16,8 +16,31 @@ registrar salvo que primero se elimine esa cuenta.
 |---|---|---|
 | **Número nuevo solo para la API** | Compras una línea o eSIM. El 829-956-6588 sigue en tu celular como siempre. Los anuncios apuntan al número nuevo. | Empezar sin riesgo (**recomendado**) |
 | **Migrar el 829-956-6588** | Debes borrar la cuenta en la app (Ajustes → Cuenta → Eliminar mi cuenta) tras exportar los chats. El número solo responde por la API; para atender a mano necesitas una bandeja de entrada conectada a la API (Voiceflow no trae una para humanos). | Después de tener el agente probado |
+| **Coexistencia (app + API en el 829-956-6588)** | Función de Meta (mayo 2025): la app del celular y la API comparten el número; los chats se sincronizan (hasta 6 meses de historial) y tú sigues respondiendo a mano desde el celular o WhatsApp Web. **Solo se activa a través del "registro incrustado" (Embedded Signup) de un proveedor autorizado por Meta** (Solution Partner / Tech Provider): no se puede hacer solo desde el panel de desarrolladores. Ver detalle abajo. | Lo ideal si Voiceflow o un proveedor lo ofrece |
 
-Los pasos siguientes sirven para cualquiera de los dos.
+Los pasos siguientes sirven para los dos primeros caminos; la coexistencia reemplaza los pasos
+3, 4 y 8 por el registro incrustado del proveedor.
+
+### Coexistencia: condiciones y letra pequeña
+
+- La app **WhatsApp Business** del celular debe ser versión 2.24.17 o superior y el número
+  debe llevar **al menos 7 días** en uso en esa app (el 829 lleva años: cumple).
+- Hay que **abrir la app al menos una vez cada 13 días** o la coexistencia se desconecta.
+- Se activa desde el proveedor: en su flujo de conexión aparece la opción *"vincular mi
+  cuenta actual de WhatsApp Business"*, escribes el número y escaneas un **QR** con el celular
+  (como vincular WhatsApp Web). No borras nada.
+- Los mensajes que TÚ mandas desde la app llegan a la API como `smb_message_echoes`, así el
+  agente sabe que ya respondiste.
+- No funciona: grupos, llamadas por API, mensajes temporales / ver una vez, ubicación en vivo,
+  catálogo, listas de difusión (quedan de solo lectura), la app de **WhatsApp para Windows**
+  como dispositivo vinculado (WhatsApp Web en el navegador sí sirve).
+- Meta **no documenta** si el `referral.ctwa_clid` del clic al anuncio llega por webhook en
+  coexistencia. Es un mensaje entrante normal, así que debería, pero se confirma en el paso 9.
+- **Quién puede ofrecerla:** hay que revisar si el conector de WhatsApp de Voiceflow trae el
+  registro incrustado con esa opción. Si no, se usa un proveedor que sí (360dialog, YCloud,
+  WANotifier, etc.; cobran por número, ~US$50/mes) y los mensajes se reenvían a Voiceflow con
+  la Edge Function `wa-webhook` del plan B de `SETUP-META-CAPI.md`, que además captura el
+  `ctwa_clid` por teléfono.
 
 ## 1. Cuenta de desarrollador de Meta
 
