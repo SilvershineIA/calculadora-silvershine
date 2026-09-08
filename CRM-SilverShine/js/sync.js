@@ -242,9 +242,26 @@ const Sync = (() => {
     cfg = null;
   }
 
+  /* ── Edge Functions del proyecto (meta-capi…): POST con el JWT del usuario ── */
+  async function funcion(nombre, body) {
+    const t = await token();
+    const resp = await fetch(`${cfg.url}/functions/v1/${nombre}`, {
+      method: 'POST',
+      headers: { apikey: cfg.anonKey, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const txt = await resp.text();
+    let d = null; try { d = txt ? JSON.parse(txt) : null; } catch { d = { error: txt.slice(0, 200) }; }
+    if (!resp.ok) throw new Error((d && (d.error || d.accion)) || `Función ${nombre}: ${resp.status}`);
+    return d;
+  }
+
   return {
     login, conectado, subirTodo, bajarTodo, nubeTieneDatos, repararNube,
     notificar, vaciarCola, alAbrir, desconectar,
+    /* Acceso REST directo a tablas que NO son colecciones locales (leads,
+       capi_eventos): viven solo en la nube y se leen bajo demanda. */
+    api: rest, funcion,
     pendientes: () => cola.leer().length,
     info: () => cfg ? { url: cfg.url, email: cfg.email } : null,
     cfgPublica: () => cfg ? { url: cfg.url, anonKey: cfg.anonKey, email: cfg.email } : null,

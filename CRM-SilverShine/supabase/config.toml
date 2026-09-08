@@ -1,0 +1,7 @@
+# Configuración del CLI de Supabase para el CRM SilverShine.
+# Solo se usa para desplegar las Edge Functions (supabase functions deploy).
+
+[functions.meta-capi]
+# Los triggers de la base de datos NO mandan un JWT de Supabase, sino el
+# secreto propio del webhook; la función verifica el Bearer ella misma.
+verify_jwt = false

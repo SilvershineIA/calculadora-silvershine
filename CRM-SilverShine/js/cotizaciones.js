@@ -354,6 +354,7 @@ const Cotizaciones = (() => {
         moneda: t, lineas: lineasF,
         impuesto: 0, total: totalF, saldo: totalF,
         estado: 'pendiente', notas: `Según cotización COT-${c.numero}`, abonos: [],
+        leadId: c.leadId || null,   // el lead de WhatsApp viaja a la factura (evento Purchase a Meta)
         ...(planPago ? { planPago, proxCobro } : {}),
       });
       c.estado = 'aceptada'; c.facturaId = fact.id;
@@ -385,6 +386,11 @@ const Cotizaciones = (() => {
         c.facturaId = el.dataset.fid;
         c.estado = 'aceptada';
         await DB.cotizaciones.upsert(c);
+        // La factura hereda el lead de la cotización si aún no tiene uno
+        if (c.leadId) {
+          const fv = await DB.facturas.get(c.facturaId);
+          if (fv && !fv.leadId) await DB.facturas.upsert({ id: fv.id, leadId: c.leadId });
+        }
         toast(`🔗 COT-${c.numero} vinculada — ya cuenta como cerrada`);
         render();
         detalle(c.id);
@@ -604,6 +610,7 @@ const Cotizaciones = (() => {
         lineas: lineasOk,
         total: Math.round(total * 100) / 100,
         estado: c.estado && c.estado !== 'pendiente' ? c.estado : 'enviada',
+        leadId: c.leadId || null,   // origen en un lead de WhatsApp (se conserva al editar)
       });
       cerrarModal();
       toast(esNueva ? `Cotización COT-${fd.get('numero')} creada` : 'Cotización actualizada');

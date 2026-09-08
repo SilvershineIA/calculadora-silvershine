@@ -150,6 +150,24 @@ const UI = (() => {
   const usuarioWAValido = u => /^[a-z0-9._]{3,35}$/.test(u) && /[a-z]/.test(u) && !u.startsWith('www.');
   const tieneWhatsApp = c => !!(c && ((c.telefono || '').trim() || c.usuarioWA));
 
+  /* ── Teléfono en E.164: LA regla única para leads, clientes y el
+     matching lead↔cliente (misma lógica que normalizar_telefono() en
+     Supabase). RD: 809/829/849 + 7 dígitos → +1XXXXXXXXXX; quita
+     espacios, guiones, paréntesis y el prefijo internacional 00. ── */
+  const normalizarTelefono = t => {
+    let d = String(t || '').replace(/\D/g, '');
+    if (!d) return '';
+    d = d.replace(/^00/, '');
+    if (d.length === 10) d = '1' + d;          // RD y resto de Norteamérica
+    return '+' + d;
+  };
+  /* Para mostrar: +18095550000 → 809-555-0000 (otros países se dejan tal cual) */
+  const telefonoBonito = t => {
+    const e = normalizarTelefono(t);
+    const d = e.replace(/\D/g, '');
+    return d.length === 11 && d[0] === '1' ? `${d.slice(1, 4)}-${d.slice(4, 7)}-${d.slice(7)}` : e;
+  };
+
   const copiarTexto = async txt => {
     try { await navigator.clipboard.writeText(txt); return true; } catch { return false; }
   };
@@ -323,5 +341,5 @@ const UI = (() => {
     window.print();
   }
 
-  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, fechaISO, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, navChips, navWire, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp };
+  return { $, $$, abrirModal, cerrarModal, toast, fmtMoneda, fmtDinero, statTile, fmtFecha, fechaISO, iniciales, esc, comprimirFoto, getEmpresa, EMPRESA_DEFECTO, quienSaluda, enRango, chipsRango, navChips, navWire, imprimirArea, buscadorCliente, buscadorCatalogo, EASYPAY_PLANES, EASYPAY_MIN, calcularEasyPay, normUsuarioWA, usuarioWAValido, tieneWhatsApp, abrirWhatsApp, normalizarTelefono, telefonoBonito };
 })();

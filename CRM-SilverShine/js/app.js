@@ -18,7 +18,7 @@
     inventario:   () => Inventario.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
-    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); },
+    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); Leads.pintarAjustes(); },
   };
 
   let vistaActual = 'panel';
@@ -233,6 +233,10 @@
       UI.statTile(items.filter(x => !x.hecho && x.grupo === 0).length, '🔥 En caliente') +
       UI.statTile(items.filter(x => !x.hecho && x.grupo === 2).length, '🌤 Tibias') +
       UI.statTile(UI.fmtDinero(enJuego), 'Valor en juego');
+
+    /* Leads de WhatsApp (nube): tarjeta propia arriba del tablero, sin
+       frenar el resto del panel si la red tarda */
+    Leads.pintarDia($('#leadsDia'));
 
     /* ── Tablero estilo Monday: grupos de colores, pastilla de etapa,
        pie con totales. Las acciones son las mismas de siempre:
@@ -1146,6 +1150,7 @@
     if (ok) pintarEstadoNube();
     renderPanel();
   });
+  Leads.init();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

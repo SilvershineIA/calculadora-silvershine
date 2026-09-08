@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=134">
+<link rel="stylesheet" href="css/app.css?v=135">
 </head>
 <body>
 
@@ -43,6 +43,7 @@
     <section class="view active" data-view="panel">
       <h1 class="view-title">Mi Día <span class="muted" style="font-size:.8rem;font-weight:400">· toca 💬 y el mensaje sale listo · ⋯ registra qué respondió</span></h1>
       <div class="stat-grid" id="diaStats"></div>
+      <div id="leadsDia"></div>
       <div id="colaDia"></div>
     </section>
 
@@ -52,6 +53,7 @@
         <h1 class="view-title">Clientes</h1>
         <button class="btn-gold btn-sm" id="btnNuevoCliente">+ Nuevo cliente</button>
       </div>
+      <div id="leadsClientes"></div>
       <input type="search" id="buscarCliente" class="search" placeholder="Buscar por nombre o teléfono…">
       <div id="listaClientes" class="list"></div>
     </section>
@@ -408,6 +410,17 @@
         <p class="muted" style="margin-top:10px">Guía completa en <b>SETUP-SUPABASE.md</b> (en la carpeta de la app).</p>
       </div>
       <div class="card">
+        <h2>📣 Meta · anuncios de WhatsApp</h2>
+        <p class="muted" style="margin-bottom:12px">Los leads que capta el agente de WhatsApp llegan a la nube y se muestran en Mi Día y Clientes. Al <b>calificar</b> un lead se reporta a Meta como <b>Lead</b>; al <b>pagarse</b> una factura nacida de un lead se reporta como <b>Purchase</b> con su monto — así los anuncios optimizan por compradores, no por curiosos. Todo corre en Supabase, sin depender de que la app esté abierta; <b>ningún token de Meta vive en este dispositivo</b>.</p>
+        <div id="metaEstado" class="muted" style="margin-bottom:12px"></div>
+        <div class="row">
+          <button type="button" class="btn-gold btn-sm" id="btnMetaPing">🔌 Probar conexión con Meta</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnMetaEventos">📜 Últimos eventos enviados</button>
+        </div>
+        <div id="metaEventos" style="margin-top:12px"></div>
+        <p class="muted" style="margin-top:10px">Guía de instalación en <b>SETUP-META-CAPI.md</b> (carpeta de la app).</p>
+      </div>
+      <div class="card">
         <h2>Datos</h2>
         <p class="muted" style="margin-bottom:12px">Por ahora los datos se guardan en este dispositivo. En la fase de nube se sincronizarán entre PC y celular.</p>
         <div class="row">
@@ -452,22 +465,23 @@
 <div id="printArea"></div>
 
 <script src="js/jspdf.min.js"></script>
-<script src="js/pdf.js?v=134"></script>
-<script src="js/reportes.js?v=134"></script>
-<script src="js/db.js?v=134"></script>
-<script src="js/sync.js?v=134"></script>
-<script src="js/ui.js?v=134"></script>
-<script src="js/clientes.js?v=134"></script>
-<script src="js/catalogo.js?v=134"></script>
-<script src="js/calculadora.js?v=134"></script>
-<script src="js/facturas.js?v=134"></script>
-<script src="js/cotizaciones.js?v=134"></script>
-<script src="js/confecciones.js?v=134"></script>
-<script src="js/cobros.js?v=134"></script>
-<script src="js/finanzas.js?v=134"></script>
-<script src="js/caja.js?v=134"></script>
-<script src="js/inventario.js?v=134"></script>
-<script src="js/tareas.js?v=134"></script>
-<script src="js/app.js?v=134"></script>
+<script src="js/pdf.js?v=135"></script>
+<script src="js/reportes.js?v=135"></script>
+<script src="js/db.js?v=135"></script>
+<script src="js/sync.js?v=135"></script>
+<script src="js/ui.js?v=135"></script>
+<script src="js/clientes.js?v=135"></script>
+<script src="js/catalogo.js?v=135"></script>
+<script src="js/calculadora.js?v=135"></script>
+<script src="js/facturas.js?v=135"></script>
+<script src="js/cotizaciones.js?v=135"></script>
+<script src="js/confecciones.js?v=135"></script>
+<script src="js/cobros.js?v=135"></script>
+<script src="js/finanzas.js?v=135"></script>
+<script src="js/caja.js?v=135"></script>
+<script src="js/inventario.js?v=135"></script>
+<script src="js/tareas.js?v=135"></script>
+<script src="js/leads.js?v=135"></script>
+<script src="js/app.js?v=135"></script>
 </body>
 </html>

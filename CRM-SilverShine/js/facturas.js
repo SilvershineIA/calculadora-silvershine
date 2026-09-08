@@ -152,13 +152,15 @@ const Facturas = (() => {
       cotLig && { t: `📋 COT-${cotLig.numero}`, on: () => Cotizaciones.detalle(cotLig.id) },
       f.confeccion && { t: '🧵 Confección', on: () => Confecciones.detalle(f.id) },
       f.estado === 'pendiente' && f.saldo > 0 && { t: '💰 Cobro', on: () => Cobros.detalle(f.id) },
+      f.leadId && typeof Leads !== 'undefined' && { t: '💬 Lead', on: () => Leads.detalle(f.leadId) },
     ].filter(Boolean);
 
     abrirModal(`Factura ${rotulo(f)}`, `
       ${UI.navChips(nav)}
       <div class="fact-head">
         <div><b>${esc(f.clienteNombre)}</b> ${badge(f)}<br>
-        <span class="muted">${fmtFecha(f.fecha)}${f.orden && f.numero ? ' · ' + esc(f.numero) : ''}${f.ncf && !f.orden ? ' · NCF: ' + esc(f.ncf) : ''}</span></div>
+        <span class="muted">${fmtFecha(f.fecha)}${f.orden && f.numero ? ' · ' + esc(f.numero) : ''}${f.ncf && !f.orden ? ' · NCF: ' + esc(f.ncf) : ''}</span>
+        <span id="fMeta"></span></div>
       </div>
       <table class="fact-lineas">
         ${f.lineas.map(l => `<tr>
@@ -207,6 +209,8 @@ const Facturas = (() => {
 
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
     UI.navWire(nav);
+    // Indicador discreto "Reportado a Meta ✓" (lo escribe el webhook, no la UI)
+    if (f.leadId && typeof Leads !== 'undefined') Leads.selloMeta(f, $('#fMeta'));
     UI.$$('[data-abono]').forEach(el =>
       el.addEventListener('click', () => reciboOpciones(f, Number(el.dataset.abono))));
     on('#fAbonar', () => formAbono(f));
@@ -765,6 +769,7 @@ const Facturas = (() => {
         notasInternas: fd.get('notasInternas').trim(),
         costo: Number(fd.get('costo')) || null,
         abonos: f.abonos || [],
+        leadId: f.leadId || null,   // lead de WhatsApp de origen → evento Purchase a Meta al pagarse
       };
 
       /* Plan EasyPay */

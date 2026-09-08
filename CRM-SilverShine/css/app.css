@@ -650,3 +650,19 @@ button:hover{filter:brightness(1.12)}
 .ep-cuota.vencida .ep-cuota-info span{color:var(--red);font-weight:600}
 .ep-cuota-monto{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ep-cuota-monto small{display:block;font-size:.7rem;color:var(--muted);white-space:normal}
+
+/* ── Leads de WhatsApp (Fase 2: Meta CAPI) ── */
+.lead-card h2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lead-card h2 .lead-cnt{flex:1;text-transform:none;letter-spacing:0;font-size:.78rem;font-weight:400;color:var(--muted)}
+.lead-fila{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px dashed var(--border);cursor:pointer}
+.lead-fila:last-of-type{border-bottom:0}
+.lead-fila:hover{background:#FCFAF7}
+.lead-fila .item-sub{white-space:normal}
+.lead-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.lead-acc{display:flex;gap:5px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;max-width:132px}
+.lead-acc .btn-sm{padding:5px 8px;min-width:36px}
+.b-meta{background:#E9EEFB;color:#2F55B7;border:1px solid #C6D3F3}
+@media (max-width:640px){
+  .lead-fila{flex-wrap:wrap}
+  .lead-acc{max-width:none;width:100%;justify-content:flex-start;padding-left:54px}
+}
