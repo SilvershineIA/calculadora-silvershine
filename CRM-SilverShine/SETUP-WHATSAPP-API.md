@@ -122,7 +122,7 @@ Primero el SQL (`supabase/meta-capi-schema.sql`, ver `SETUP-META-CAPI.md` paso 1
 tablas del puente). Luego, en esta PC:
 
 ```bash
-cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase secrets set WA_VERIFY_TOKEN=inventa-una-palabra WA_ACCESS_TOKEN=EAAB... WA_APP_SECRET=el-app-secret VF_API_KEY=VF.DM.... VF_VERSION_ID=production META_GRAPH_VERSION=v25.0
+cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase secrets set WA_VERIFY_TOKEN=inventa-una-palabra WA_ACCESS_TOKEN=EAAB... WA_APP_SECRET=el-app-secret VF_API_KEY=VF.DM.... VF_VERSION_ID=production META_GRAPH_VERSION=v25.0 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ```bash
@@ -130,6 +130,11 @@ cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase func
 ```
 
 La URL del webhook queda así: `https://TU-PROYECTO.supabase.co/functions/v1/wa-webhook`.
+
+`ANTHROPIC_API_KEY` es la misma clave de console.anthropic.com que usa "Foto a gasto" en el
+CRM: aquí sirve para que Claude **describa las fotos** que mandan los clientes (tipo de pieza,
+metal, piedra, estilo y a qué diseño del catálogo se parece) y el agente pueda hablar de ellas.
+Cuesta centavos por foto. Sin ella, el agente solo sabe que "llegó una foto".
 
 ## 7. Conectar el webhook
 

@@ -25,12 +25,22 @@
      VF_VERSION_ID       opcional: production (defecto) | development
      VF_DM_URL           opcional: https://general-runtime.voiceflow.com
      WA_PAUSA_HORAS      opcional: horas de pausa cuando José toma el chat (24)
+     ANTHROPIC_API_KEY   para DESCRIBIR LAS FOTOS que mandan los clientes: el
+                         agente de Voiceflow no ve imágenes, así que Claude
+                         (visión) las convierte en texto — tipo de pieza, metal,
+                         piedra, estilo y a qué diseño del catálogo se parece —
+                         y eso es lo que recibe el agente. Sin la clave, el
+                         agente solo sabe que "llegó una foto".
 
    Desplegar: supabase functions deploy wa-webhook --no-verify-jwt
    (Meta no manda JWT; la verificación es el verify token + la firma HMAC)
    ═══════════════════════════════════════════════════════════════════ */
 
+import Anthropic from "npm:@anthropic-ai/sdk";
+import { encodeBase64 } from "jsr:@std/encoding/base64";
+
 const env = (k: string) => Deno.env.get(k) ?? "";
+const ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY");
 const SUPABASE_URL = env("SUPABASE_URL");
 const SERVICE_KEY = env("SUPABASE_SERVICE_ROLE_KEY");
 const WA_VERIFY_TOKEN = env("WA_VERIFY_TOKEN") || "silvershine";
@@ -163,6 +173,73 @@ function extraerTexto(m: Dict): string {
   return `[Mensaje de tipo ${t}]`;
 }
 
+/* ── Fotos: WhatsApp → Claude (visión) → descripción en texto para el agente ──
+   El agente de Voiceflow no ve imágenes. Aquí se descarga la foto de la Cloud
+   API y Claude la describe como lo haría un vendedor: tipo de pieza, metal y
+   color aparente, piedra (forma, tamaño), banda, estilo, y si se parece a un
+   diseño del catálogo (se le pasa la lista de nombres de la tienda). */
+const TIPOS_IMAGEN = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+let catalogoCache: { nombres: string[]; ts: number } | null = null;
+
+async function nombresCatalogo(): Promise<string[]> {
+  if (catalogoCache && Date.now() - catalogoCache.ts < 3600_000) return catalogoCache.nombres;
+  try {
+    const r = await fetch("https://silvershine.com.do/products.json?limit=250");
+    const d = await r.json();
+    const set = new Set<string>();
+    for (const p of (d.products ?? []) as { title?: string }[]) {
+      // "Alma Unida - Set de 3 - Oro Sólido" → "Alma Unida"
+      const base = String(p.title ?? "").split(" - ")[0].trim();
+      if (base) set.add(base);
+    }
+    catalogoCache = { nombres: [...set].sort(), ts: Date.now() };
+  } catch (e) {
+    console.warn("catálogo:", (e as Error).message);
+    if (!catalogoCache) catalogoCache = { nombres: [], ts: Date.now() };
+  }
+  return catalogoCache.nombres;
+}
+
+async function descargarMedia(mediaId: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  const meta = await fetch(`https://graph.facebook.com/${GRAPH}/${mediaId}`, { headers: { Authorization: `Bearer ${WA_ACCESS_TOKEN}` } });
+  const info = await meta.json().catch(() => ({}));
+  if (!meta.ok || !info.url) { console.warn("media:", info.error?.message ?? meta.status); return null; }
+  const bin = await fetch(info.url, { headers: { Authorization: `Bearer ${WA_ACCESS_TOKEN}` } });
+  if (!bin.ok) return null;
+  return { bytes: new Uint8Array(await bin.arrayBuffer()), mime: String(info.mime_type ?? "image/jpeg").split(";")[0] };
+}
+
+async function describirFoto(mediaId: string, caption: string): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY || !WA_ACCESS_TOKEN) return null;
+  const media = await descargarMedia(mediaId);
+  if (!media || !TIPOS_IMAGEN.has(media.mime)) return null;
+  const nombres = await nombresCatalogo();
+  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const resp = await client.beta.messages.create({
+    model: "claude-opus-5",
+    max_tokens: 600,
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    system:
+      "Eres el ojo de un vendedor de SilverShine, joyería fina de Santo Domingo (anillos de compromiso, tríos y aros de boda en plata 925, vermeil y oro sólido 10K/14K/18K, con circonia, moissanita o diamante de laboratorio). " +
+      "Describe la foto en español, en máximo 3 líneas y sin saludos, para que un asistente de ventas que NO ve la imagen pueda hablar de ella: " +
+      "tipo de pieza (solitario, trío, dúo, aro, arete, otra), metal y color aparente (amarillo, blanco, rosa; si parece plata dilo), piedra central (forma: oval, redonda, pera, princesa, esmeralda, marquesa, corazón; tamaño relativo: pequeña, mediana, grande), piedras secundarias (pavé, halo, tres piedras, lisa), y estilo (clásico, vintage, moderno, minimalista). " +
+      "Si la pieza se parece claramente a un diseño de la lista del catálogo, termina con: 'Se parece a <nombre>'. Si no, no inventes parecidos. " +
+      "Si la imagen no es una joya (captura de pantalla, persona, recibo, otra cosa), di en una línea qué es. Nunca des precios ni kilataje: eso no se ve en una foto.",
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: media.mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: encodeBase64(media.bytes) } },
+        { type: "text", text: `Diseños del catálogo: ${nombres.join(", ") || "(no disponible)"}.${caption ? ` El cliente escribió junto a la foto: "${caption}".` : ""}` },
+      ],
+    }],
+  });
+  if (resp.stop_reason === "refusal") return null;
+  const texto = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ").trim();
+  return texto || null;
+}
+
 /* ── Voiceflow Dialog Manager API ── */
 async function vf(metodo: string, ruta: string, body?: unknown) {
   const r = await fetch(`${VF_DM_URL}${ruta}`, {
@@ -223,9 +300,25 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
   if (!wamid || await yaVisto(wamid)) return;               // Meta reintenta: no procesar dos veces
   const tel = "+" + String(m.from ?? "").replace(/\D/g, "");
   const nombre = (((contactos?.[0] ?? {}) as Dict).profile as Dict | undefined)?.name as string | undefined ?? null;
-  const contenido = extraerTexto(m);
+  let contenido = extraerTexto(m);
   const ref = m.referral as Referral;
-  await registrar({ wamid, telefono: tel, tipo: "in", contenido, detalle: ref ? { referral: ref } : null });
+  let detalle: Dict | null = ref ? { referral: ref } : null;
+  // Fotos: Claude las describe para que el agente sepa de qué anillo le hablan
+  if (m.type === "image") {
+    const img = (m.image ?? {}) as Dict;
+    const caption = String(img.caption ?? "").trim();
+    try {
+      const desc = await describirFoto(String(img.id ?? ""), caption);
+      if (desc) {
+        contenido = `[Foto del cliente: ${desc}]${caption ? `\n${caption}` : ""}`;
+        detalle = { ...(detalle ?? {}), foto: { media_id: img.id, descripcion: desc } };
+      }
+    } catch (e) {
+      console.warn("descripción de foto:", (e as Error).message);
+      detalle = { ...(detalle ?? {}), foto: { media_id: img.id, error: (e as Error).message } };
+    }
+  }
+  await registrar({ wamid, telefono: tel, tipo: "in", contenido, detalle });
   if (!contenido) return;
 
   const chat = await chatDe(tel);
