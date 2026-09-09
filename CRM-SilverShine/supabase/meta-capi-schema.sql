@@ -62,8 +62,12 @@ create table if not exists leads (
   factura_id text,                  -- id de la factura del CRM cuando se factura
   evento_lead_enviado_at timestamptz,
   evento_compra_enviado_at timestamptz,
-  capi_ultimo_error text
+  capi_ultimo_error text,
+  escalado boolean not null default false,   -- el agente pidió pasar con José
+  escalado_at timestamptz
 );
+alter table leads add column if not exists escalado boolean not null default false;
+alter table leads add column if not exists escalado_at timestamptz;
 create index if not exists leads_telefono_idx on leads (telefono);
 create index if not exists leads_ctwa_idx on leads (ctwa_clid);
 create index if not exists leads_created_idx on leads (created_at desc);
@@ -95,6 +99,39 @@ create table if not exists capi_eventos (
   error text
 );
 create index if not exists capi_eventos_lead_idx on capi_eventos (lead_id);
+
+-- ── 3b. Puente WhatsApp (Edge Function wa-webhook) ──
+--      wa_chats: estado por teléfono — referral del anuncio, lead vinculado,
+--      si el agente está en pausa porque José tomó el chat (coexistencia).
+--      wa_eventos: bitácora de mensajes (in/out/echo/error) con dedupe por wamid.
+create table if not exists wa_chats (
+  telefono text primary key,          -- E.164
+  nombre text,
+  lead_id uuid references leads(id) on delete set null,
+  ctwa_clid text,
+  ad_id text,
+  ad_headline text,
+  ad_url text,
+  referral_at timestamptz,
+  agente_pausado boolean not null default false,
+  pausado_hasta timestamptz,
+  motivo_pausa text,
+  vf_iniciado boolean not null default false,
+  ultimo_mensaje_at timestamptz,
+  ultimo_echo_at timestamptz,
+  creado_at timestamptz not null default now(),
+  actualizado_at timestamptz not null default now()
+);
+create table if not exists wa_eventos (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  wamid text unique,                  -- id del mensaje de WhatsApp (dedupe de reintentos)
+  telefono text,
+  tipo text not null,                 -- in | out | echo | error | pausa
+  contenido text,
+  detalle jsonb
+);
+create index if not exists wa_eventos_tel_idx on wa_eventos (telefono, created_at desc);
 
 -- ── 4. Facturas: columna lead_id derivada del documento JSON ──
 --      El CRM guarda `leadId` dentro de data; esta columna generada
@@ -132,7 +169,20 @@ create policy crm_leads on leads for all to authenticated
 drop policy if exists crm_capi_eventos on capi_eventos;
 create policy crm_capi_eventos on capi_eventos for select to authenticated
   using (coalesce(auth.jwt()->>'email', '') <> 'taller@silvershine.com.do');
--- (la Edge Function escribe con la service role, que salta RLS)
+
+-- Puente WhatsApp: el CRM lee la bitácora y puede pausar/reactivar el agente
+alter table wa_chats enable row level security;
+alter table wa_eventos enable row level security;
+revoke all on wa_chats from anon;
+revoke all on wa_eventos from anon;
+drop policy if exists crm_wa_chats on wa_chats;
+create policy crm_wa_chats on wa_chats for all to authenticated
+  using (coalesce(auth.jwt()->>'email', '') <> 'taller@silvershine.com.do')
+  with check (coalesce(auth.jwt()->>'email', '') <> 'taller@silvershine.com.do');
+drop policy if exists crm_wa_eventos on wa_eventos;
+create policy crm_wa_eventos on wa_eventos for select to authenticated
+  using (coalesce(auth.jwt()->>'email', '') <> 'taller@silvershine.com.do');
+-- (las Edge Functions escriben con la service role, que salta RLS)
 
 -- ── 6. Webhooks: la base de datos avisa a la Edge Function ──
 --      Payload con la misma forma que los Database Webhooks de Supabase:

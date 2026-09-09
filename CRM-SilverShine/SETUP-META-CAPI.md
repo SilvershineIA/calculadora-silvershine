@@ -143,7 +143,12 @@ Si un evento falló (❌ en la bitácora, o ⚠ en la fila), abre el lead (⋯) 
 
 ## Lado Voiceflow (qué debe mandar el agente)
 
-Paso *API* tras la calificación. Crear el lead:
+> **Actualización 9 sep 2026:** con el puente `wa-webhook` (ver `SETUP-WHATSAPP-API.md`) el
+> lead lo crea el puente al primer mensaje, con el `ctwa_clid` del anuncio, y le pasa al
+> agente la variable `lead_id`. El agente entonces **solo hace el PATCH** de abajo cuando
+> califica. El POST de crear lead queda documentado por si algún día el agente corre sin puente.
+
+Paso *API* tras la calificación. Crear el lead (solo sin puente):
 
 ```
 POST {SUPABASE_URL}/rest/v1/leads?select=id

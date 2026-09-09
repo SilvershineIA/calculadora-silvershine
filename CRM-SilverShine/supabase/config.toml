@@ -5,3 +5,8 @@
 # Los triggers de la base de datos NO mandan un JWT de Supabase, sino el
 # secreto propio del webhook; la función verifica el Bearer ella misma.
 verify_jwt = false
+
+[functions.wa-webhook]
+# Meta llama este webhook sin JWT; se verifica con el verify token (GET) y
+# la firma HMAC X-Hub-Signature-256 (POST, si WA_APP_SECRET está puesto).
+verify_jwt = false

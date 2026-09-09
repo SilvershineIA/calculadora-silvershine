@@ -110,6 +110,7 @@ const Leads = (() => {
   /* ── Pintado ── */
   function badges(l) {
     const b = [];
+    if (l.escalado) b.push(`<span class="badge b-roja" title="El agente pidió pasar con José el ${fmtHora(l.escalado_at)} — el bot está en pausa en ese chat">🔥 Te toca</span>`);
     b.push(l.calificado ? '<span class="badge b-pag">✔ Calificado</span>' : '<span class="badge b-pend">Nuevo</span>');
     if (l.cliente_id) b.push('<span class="badge b-anu">👤 Vinculado</span>');
     if (l.factura_id) b.push('<span class="badge b-anu">🧾 Facturado</span>');
@@ -210,9 +211,12 @@ const Leads = (() => {
     titulo: 'Leads de WhatsApp',
     filtro: lista => {
       const hace7 = Date.now() - 7 * 864e5;
-      return lista.filter(l => !l.cliente_id || new Date(l.created_at).getTime() > hace7).slice(0, 8);
+      // Los escalados ("te toca") primero; luego sin vincular o recientes
+      return lista.filter(l => l.escalado || !l.cliente_id || new Date(l.created_at).getTime() > hace7)
+        .sort((a, b) => (b.escalado ? 1 : 0) - (a.escalado ? 1 : 0)).slice(0, 8);
     },
-    resumen: (sel, lista) => `${lista.filter(l => !l.cliente_id).length} sin vincular · ${lista.filter(l => l.calificado).length} calificados`,
+    resumen: (sel, lista) => `${lista.filter(l => l.escalado).length ? `🔥 ${lista.filter(l => l.escalado).length} te tocan · ` : ''}${
+      lista.filter(l => !l.cliente_id).length} sin vincular · ${lista.filter(l => l.calificado).length} calificados`,
     pie: (sel, lista) => lista.length > sel.length
       ? `<p class="muted" style="margin-top:8px"><button type="button" class="btn-ghost btn-sm" data-ir="clientes">Ver los ${lista.length} leads en Clientes →</button></p>` : '',
   });
