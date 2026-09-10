@@ -147,6 +147,14 @@ arriba, Verify token = el `WA_VERIFY_TOKEN` → *Verify and save* → en *Webhoo
 **`messages`** y **`smb_message_echoes`**. Recuerda el aviso de Meta: los webhooks reales solo
 llegan con la app **publicada** (interruptor *Publish* del panel).
 
+## 7b. Apagar la "IA" de la app de WhatsApp Business
+
+La app del celular trae respuestas automáticas con IA (los mensajes marcados "✦ IA" en los
+chats). En coexistencia responderían **las dos**: la IA de Meta y el agente de Voiceflow.
+Antes de conectar el webhook: WhatsApp Business → Ajustes → Herramientas para la empresa →
+desactivar las respuestas con IA / mensaje de ausencia / saludo automático que estén activos.
+Solo debe quedar respondiendo el agente.
+
 ## 8. Prueba
 
 1. Desde otro celular escribe al 829: el agente responde y el chat aparece también en tu app.
