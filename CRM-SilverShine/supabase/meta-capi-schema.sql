@@ -135,6 +135,14 @@ create table if not exists wa_eventos (
 create index if not exists wa_eventos_tel_idx on wa_eventos (telefono, created_at desc);
 alter table wa_chats add column if not exists ad_descripcion text;
 
+-- Clientes del CRM por teléfono E.164: el puente los reconoce y los pasa directo a José
+-- (los clientes viven como documentos JSON en `clientes`; la vista normaliza el teléfono)
+create or replace view clientes_por_telefono as
+  select id, data->>'nombre' as nombre, normalizar_telefono(data->>'telefono') as telefono
+  from clientes
+  where coalesce(data->>'telefono', '') <> '';
+revoke all on clientes_por_telefono from anon;
+
 -- ── 4. Facturas: columna lead_id derivada del documento JSON ──
 --      El CRM guarda `leadId` dentro de data; esta columna generada
 --      permite filtrar y disparar el trigger sin tocar el sync.

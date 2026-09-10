@@ -24,7 +24,13 @@
      VF_API_KEY          Voiceflow → Settings → API keys (Dialog Manager)
      VF_VERSION_ID       opcional: production (defecto) | development
      VF_DM_URL           opcional: https://general-runtime.voiceflow.com
-     WA_PAUSA_HORAS      opcional: horas de pausa cuando José toma el chat (24)
+     WA_PAUSA_HORAS      opcional: horas de pausa cuando José toma el chat (360 = 15 días;
+                         son ventas que toman tiempo). "#bot" en el chat reactiva antes.
+     DEEPGRAM_API_KEY    para TRANSCRIBIR LAS NOTAS DE VOZ (Deepgram nova-3, español) y que
+                         el agente responda a lo que dijo el cliente. Sin clave: pide texto.
+     WA_AVISO_NUMERO     número personal de José (E.164) para avisarle por WhatsApp cuando el
+                         bot escala; WA_AVISO_PLANTILLA = nombre de la plantilla aprobada
+                         (p. ej. aviso_lead, 3 parámetros: quién, pieza/material, motivo).
      ANTHROPIC_API_KEY   para DESCRIBIR LAS FOTOS que mandan los clientes: el
                          agente de Voiceflow no ve imágenes, así que Claude
                          (visión) las convierte en texto — tipo de pieza, metal,
@@ -50,13 +56,18 @@ const GRAPH = env("META_GRAPH_VERSION") || "v25.0";
 const VF_API_KEY = env("VF_API_KEY");
 const VF_VERSION_ID = env("VF_VERSION_ID") || "production";
 const VF_DM_URL = (env("VF_DM_URL") || "https://general-runtime.voiceflow.com").replace(/\/$/, "");
-const PAUSA_MS = (Number(env("WA_PAUSA_HORAS")) || 24) * 3600 * 1000;
+const PAUSA_MS = (Number(env("WA_PAUSA_HORAS")) || 360) * 3600 * 1000;   // 15 días por defecto
+const DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY");
+const WA_AVISO_NUMERO = env("WA_AVISO_NUMERO").replace(/\D/g, "");
+const WA_AVISO_PLANTILLA = env("WA_AVISO_PLANTILLA");
+const MSG_CLIENTE_EXISTENTE = env("WA_MSG_CLIENTE_EXISTENTE") ||
+  "¡Hola de nuevo! Qué bueno saludarte. José te atiende por aquí en breve.";
 /* La gente escribe en ráfagas ("Un par de anillos" / "Anillos" / "De boda"): se espera
    este tiempo y se juntan los mensajes seguidos antes de llamar al agente. */
 const DEBOUNCE_MS = Number(env("WA_DEBOUNCE_MS")) || 4000;
 
 type Dict = Record<string, unknown>;
-type Lead = { id: string; telefono: string; nombre: string | null; origen: string | null; ctwa_clid: string | null; escalado: boolean; factura_id: string | null; created_at: string };
+type Lead = { id: string; telefono: string; nombre: string | null; origen: string | null; ctwa_clid: string | null; escalado: boolean; factura_id: string | null; created_at: string; ocasion?: string | null; material?: string | null; cliente_id?: string | null };
 type Chat = {
   telefono: string; nombre: string | null; lead_id: string | null; ctwa_clid: string | null;
   agente_pausado: boolean; pausado_hasta: string | null; vf_iniciado: boolean;
@@ -130,11 +141,32 @@ async function asegurarLead(tel: string, nombre: string | null, ref: Referral): 
   return lead;
 }
 
-async function escalar(lead: Lead, tel: string, motivo: string) {
+/* ¿El teléfono ya es un cliente del CRM? (vista clientes_por_telefono, teléfono E.164) */
+async function clienteExistente(tel: string): Promise<{ id: string; nombre: string | null } | null> {
+  try {
+    const f = (await db("GET", `clientes_por_telefono?telefono=eq.${q(tel)}&select=id,nombre&limit=1`)) as { id: string; nombre: string | null }[];
+    return f[0] ?? null;
+  } catch (e) { console.warn("clientes_por_telefono:", (e as Error).message); return null; }
+}
+
+async function escalar(lead: Lead, tel: string, motivo: string, pnid?: string) {
   await db("PATCH", `leads?id=eq.${q(lead.id)}`, { escalado: true, escalado_at: new Date().toISOString() }, "return=minimal");
   await guardarChat(tel, { agente_pausado: true, pausado_hasta: new Date(Date.now() + PAUSA_MS).toISOString(), motivo_pausa: motivo });
   await registrar({ telefono: tel, tipo: "pausa", contenido: motivo });
   console.log("escalado", tel, motivo);
+  // Aviso a José en su WhatsApp personal (plantilla aprobada; fuera de las 24 h no se puede texto libre)
+  if (pnid && WA_AVISO_NUMERO && WA_AVISO_PLANTILLA) {
+    const quien = lead.nombre ? `${lead.nombre} (${tel})` : tel;
+    const pieza = [lead.ocasion, lead.material].filter(Boolean).join(" · ") || "sin definir";
+    try {
+      await enviarWA(pnid, {
+        to: WA_AVISO_NUMERO, type: "template",
+        template: { name: WA_AVISO_PLANTILLA, language: { code: "es" }, components: [{ type: "body", parameters: [
+          { type: "text", text: quien.slice(0, 60) }, { type: "text", text: pieza.slice(0, 60) }, { type: "text", text: motivo.slice(0, 120) },
+        ] }] },
+      });
+    } catch (e) { console.warn("aviso a José:", (e as Error).message); }
+  }
 }
 
 /* ── WhatsApp Cloud API ── */
@@ -246,6 +278,22 @@ async function describirImagen(bytes: Uint8Array, mime: string, contexto: string
   return texto || null;
 }
 
+/* Nota de voz → texto (Deepgram). WhatsApp manda audio/ogg (opus). */
+async function transcribirAudio(mediaId: string): Promise<string | null> {
+  if (!DEEPGRAM_API_KEY || !WA_ACCESS_TOKEN || !mediaId) return null;
+  const media = await descargarMedia(mediaId);
+  if (!media) return null;
+  const r = await fetch("https://api.deepgram.com/v1/listen?model=nova-3&language=es&smart_format=true&punctuate=true", {
+    method: "POST",
+    headers: { Authorization: `Token ${DEEPGRAM_API_KEY}`, "Content-Type": media.mime || "audio/ogg" },
+    body: media.bytes,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { console.warn("deepgram:", r.status, JSON.stringify(d).slice(0, 200)); return null; }
+  const texto = d?.results?.channels?.[0]?.alternatives?.[0]?.transcript;
+  return typeof texto === "string" && texto.trim() ? texto.trim() : null;
+}
+
 /* Foto que manda el cliente por WhatsApp (media privada: se descarga con el token) */
 async function describirFoto(mediaId: string, caption: string): Promise<string | null> {
   if (!WA_ACCESS_TOKEN || !mediaId) return null;
@@ -355,12 +403,35 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
       detalle = { ...(detalle ?? {}), foto: { media_id: img.id, error: (e as Error).message } };
     }
   }
+  // Notas de voz: se transcriben para que el bot responda a lo que dijo el cliente
+  if (m.type === "audio") {
+    const aud = (m.audio ?? {}) as Dict;
+    try {
+      const txt = await transcribirAudio(String(aud.id ?? ""));
+      if (txt) { contenido = `[Nota de voz del cliente: ${txt}]`; detalle = { ...(detalle ?? {}), audio: { media_id: aud.id, transcripcion: txt } }; }
+    } catch (e) { console.warn("transcripción:", (e as Error).message); }
+  }
   const recibidoAt = new Date().toISOString();
   await registrar({ wamid, telefono: tel, tipo: "in", contenido, detalle, created_at: recibidoAt });
   if (!contenido) return;
 
   const chat = await chatDe(tel);
   const lead = await asegurarLead(tel, nombre, ref);
+
+  /* Cliente existente del CRM en su primer contacto: no arranca el bot; saludo corto y a José */
+  if (!chat) {
+    const cli = await clienteExistente(tel);
+    if (cli) {
+      if (!lead.cliente_id) await db("PATCH", `leads?id=eq.${q(lead.id)}`, { cliente_id: cli.id, nombre: lead.nombre ?? cli.nombre }, "return=minimal");
+      await guardarChat(tel, { nombre: cli.nombre ?? nombre ?? null, lead_id: lead.id, ultimo_mensaje_at: new Date().toISOString() });
+      try {
+        const r = await enviarWA(pnid, texto(tel.replace(/\D/g, ""), MSG_CLIENTE_EXISTENTE));
+        await registrar({ wamid: (r.messages?.[0]?.id as string) ?? undefined, telefono: tel, tipo: "out", contenido: MSG_CLIENTE_EXISTENTE });
+      } catch (e) { await registrar({ telefono: tel, tipo: "error", contenido: (e as Error).message }); }
+      await escalar({ ...lead, nombre: lead.nombre ?? cli.nombre }, tel, `cliente existente del CRM: ${cli.nombre ?? tel}`, pnid);
+      return;
+    }
+  }
   const cambiosChat: Dict = { nombre: nombre ?? chat?.nombre ?? null, lead_id: lead.id, ultimo_mensaje_at: new Date().toISOString() };
   if (ref?.ctwa_clid || ref?.source_id) {
     Object.assign(cambiosChat, { ctwa_clid: ref.ctwa_clid ?? null, ad_id: ref.source_id ?? null, ad_headline: ref.headline ?? null, ad_url: ref.source_url ?? null, referral_at: new Date().toISOString() });
@@ -428,7 +499,7 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
       if (v.escalado === true || v.escalado === "true" || v.escalado === 1) motivo = String(v.motivo_escalado ?? "el agente pidió pasar con José");
     } catch { /* sin estado: nada */ }
   }
-  if (motivo && !lead.escalado) await escalar(lead, tel, motivo);
+  if (motivo && !lead.escalado) await escalar(lead, tel, motivo, pnid);
 }
 
 /* ── Eco: José escribió desde su celular (coexistencia) ── */

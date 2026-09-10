@@ -107,10 +107,10 @@ teléfono a nombre de la empresa. Tarda de horas a días. Puede correr en parale
    Guárdala como el token.
 2. El puente le pasa al agente estas **variables** antes de cada turno (créalas en el agente
    con esos nombres exactos): `telefono`, `nombre_wa`, `lead_id`, `origen` (`ad`/`organico`),
-   `desde_anuncio` (`si`/`no`), `ad_headline`, `canal`, `escalado`, `motivo_escalado`.
+   `desde_anuncio` (`si`/`no`), `ad_headline`, `ad_descripcion`, `canal`, `escalado`, `motivo_escalado`.
 3. Para **escalar a José**, el agente pone `escalado = true` (y opcionalmente
-   `motivo_escalado`). El puente marca el lead como "🔥 Te toca" en Mi Día y deja de responder
-   ese chat 24 h.
+   `motivo_escalado`). El puente marca el lead como "🔥 Te toca" en Mi Día, te avisa por WhatsApp (plantilla `aviso_lead`) y deja de
+   responder ese chat 15 días (José: son ventas que toman tiempo).
 4. Para **calificar**, el agente hace un paso API: `PATCH {SUPABASE_URL}/rest/v1/leads?id=eq.{lead_id}`
    con `{ "calificado": true, "nombre": …, "ocasion": …, "material": …, "resumen": … }`
    (detalle en `SETUP-META-CAPI.md`). Ya **no** hace falta que el agente cree el lead: lo crea
@@ -122,7 +122,7 @@ Primero el SQL (`supabase/meta-capi-schema.sql`, ver `SETUP-META-CAPI.md` paso 1
 tablas del puente). Luego, en esta PC:
 
 ```bash
-cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase secrets set WA_VERIFY_TOKEN=inventa-una-palabra WA_ACCESS_TOKEN=EAAB... WA_APP_SECRET=el-app-secret VF_API_KEY=VF.DM.... VF_VERSION_ID=production META_GRAPH_VERSION=v25.0 ANTHROPIC_API_KEY=sk-ant-...
+cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase secrets set WA_VERIFY_TOKEN=inventa-una-palabra WA_ACCESS_TOKEN=EAAB... WA_APP_SECRET=el-app-secret VF_API_KEY=VF.DM.... VF_VERSION_ID=production META_GRAPH_VERSION=v25.0 ANTHROPIC_API_KEY=sk-ant-... DEEPGRAM_API_KEY=... WA_AVISO_NUMERO=+1829XXXXXXX WA_AVISO_PLANTILLA=aviso_lead
 ```
 
 ```bash
@@ -135,6 +135,12 @@ La URL del webhook queda así: `https://TU-PROYECTO.supabase.co/functions/v1/wa-
 CRM: aquí sirve para que Claude **describa las fotos** que mandan los clientes (tipo de pieza,
 metal, piedra, estilo y a qué diseño del catálogo se parece) y el agente pueda hablar de ellas.
 Cuesta centavos por foto. Sin ella, el agente solo sabe que "llegó una foto".
+
+`DEEPGRAM_API_KEY`: transcribe las **notas de voz** (deepgram.com, cuenta gratuita con crédito
+inicial). `WA_AVISO_NUMERO` + `WA_AVISO_PLANTILLA`: tu número personal y el nombre de la plantilla
+aprobada en WhatsApp Manager para avisarte cuando el bot escala (texto propuesto en el brief del
+agente, sección "Aviso a José"). Los clientes que ya están en el CRM no pasan por el bot: reciben
+un saludo corto y van directo a ti.
 
 ## 7. Conectar el webhook
 
@@ -158,7 +164,7 @@ Solo debe quedar respondiendo el agente.
 ## 8. Prueba
 
 1. Desde otro celular escribe al 829: el agente responde y el chat aparece también en tu app.
-2. Responde tú algo desde tu celular en ese chat: el agente se calla (24 h). Escribe `#bot` en
+2. Responde tú algo desde tu celular en ese chat: el agente se calla 15 días. Escribe `#bot` en
    ese chat para reactivarlo; `#yo` para pausarlo a mano.
 3. En el CRM → Mi Día → *Leads de WhatsApp* aparece el lead (orgánico).
 4. Haz clic en un anuncio real de clic-a-WhatsApp y escribe: el lead debe salir con
