@@ -281,7 +281,8 @@ function tracesAMensajes(to: string, traces: Dict[]): { mensajes: Dict[]; escala
       const txt = [c.title, c.description && (c.description as Dict).text].filter(Boolean).join("\n");
       if (img) out.push(imagen(to, img, txt)); else if (txt) out.push(texto(to, txt));
     } else if (tipo === "carousel") {
-      for (const c of ((p(t).cards ?? []) as Dict[]).slice(0, 3)) {
+      // Hasta 5 fotos por carrusel: cuando piden "fotos de los anillos" se mandan de verdad
+      for (const c of ((p(t).cards ?? []) as Dict[]).slice(0, 5)) {
         const img = (c.imageUrl as string) || "";
         const txt = [c.title, c.description && (c.description as Dict).text].filter(Boolean).join("\n");
         if (img) out.push(imagen(to, img, txt)); else if (txt) out.push(texto(to, txt));
