@@ -51,6 +51,9 @@ const VF_API_KEY = env("VF_API_KEY");
 const VF_VERSION_ID = env("VF_VERSION_ID") || "production";
 const VF_DM_URL = (env("VF_DM_URL") || "https://general-runtime.voiceflow.com").replace(/\/$/, "");
 const PAUSA_MS = (Number(env("WA_PAUSA_HORAS")) || 24) * 3600 * 1000;
+/* La gente escribe en ráfagas ("Un par de anillos" / "Anillos" / "De boda"): se espera
+   este tiempo y se juntan los mensajes seguidos antes de llamar al agente. */
+const DEBOUNCE_MS = Number(env("WA_DEBOUNCE_MS")) || 4000;
 
 type Dict = Record<string, unknown>;
 type Lead = { id: string; telefono: string; nombre: string | null; origen: string | null; ctwa_clid: string | null; escalado: boolean; factura_id: string | null; created_at: string };
@@ -73,7 +76,7 @@ async function db(metodo: string, ruta: string, body?: unknown, prefer?: string)
 }
 const q = encodeURIComponent;
 
-async function registrar(ev: { wamid?: string; telefono?: string; tipo: string; contenido?: string; detalle?: unknown }) {
+async function registrar(ev: { wamid?: string; telefono?: string; tipo: string; contenido?: string; detalle?: unknown; created_at?: string }) {
   try {
     await db("POST", "wa_eventos?on_conflict=wamid", [{ ...ev, wamid: ev.wamid ?? null, detalle: ev.detalle ?? null }], "resolution=ignore-duplicates,return=minimal");
   } catch (e) { console.warn("wa_eventos:", (e as Error).message); }
@@ -352,7 +355,8 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
       detalle = { ...(detalle ?? {}), foto: { media_id: img.id, error: (e as Error).message } };
     }
   }
-  await registrar({ wamid, telefono: tel, tipo: "in", contenido, detalle });
+  const recibidoAt = new Date().toISOString();
+  await registrar({ wamid, telefono: tel, tipo: "in", contenido, detalle, created_at: recibidoAt });
   if (!contenido) return;
 
   const chat = await chatDe(tel);
@@ -373,6 +377,16 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
   // Visto ✓✓ (no bloquea si falla)
   enviarWA(pnid, { status: "read", message_id: wamid }).catch(() => {});
 
+  /* Ráfagas: esperar un momento; si llegó otro mensaje más nuevo de este mismo
+     teléfono, este turno se retira y el último junta todo lo pendiente. */
+  await new Promise((r) => setTimeout(r, DEBOUNCE_MS));
+  const masNuevos = (await db("GET", `wa_eventos?telefono=eq.${q(tel)}&tipo=eq.in&created_at=gt.${q(recibidoAt)}&select=id&limit=1`)) as unknown[];
+  if (masNuevos.length) { console.log("ráfaga: lo responde el último mensaje", tel); return; }
+  const ultimaSalida = (await db("GET", `wa_eventos?telefono=eq.${q(tel)}&tipo=in.(out,pausa)&select=created_at&order=created_at.desc&limit=1`)) as { created_at: string }[];
+  const desde = ultimaSalida[0]?.created_at ?? new Date(Date.now() - 10 * 60_000).toISOString();
+  const pendientes = (await db("GET", `wa_eventos?telefono=eq.${q(tel)}&tipo=eq.in&created_at=gt.${q(desde)}&select=contenido&order=created_at.asc&limit=20`)) as { contenido: string | null }[];
+  const textoAgente = pendientes.map((p) => (p.contenido ?? "").trim()).filter(Boolean).join("\n") || contenido;
+
   const uid = tel.replace(/\D/g, "");
   // Contexto para el agente: quién es, de qué anuncio viene y su lead_id (para el PATCH de calificado)
   await vf("PATCH", `/state/user/${q(uid)}/variables`, {
@@ -388,7 +402,7 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
       traces = traces.concat(await interact(uid, { type: "launch" }));
       await guardarChat(tel, { vf_iniciado: true });
     }
-    traces = traces.concat(await interact(uid, { type: "text", payload: contenido }));
+    traces = traces.concat(await interact(uid, { type: "text", payload: textoAgente }));
   } catch (e) {
     await registrar({ telefono: tel, tipo: "error", contenido: (e as Error).message });
     throw e;
