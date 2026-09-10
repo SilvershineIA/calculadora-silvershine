@@ -225,7 +225,12 @@ const Sync = (() => {
     if (!conectado()) return;
     try {
       await vaciarCola();
-      if (!cola.leer().length) await bajarTodo();   // solo si no quedó nada pendiente
+      /* Bajar SIEMPRE: desde v111 lo pendiente en cola se superpone
+         dentro de bajarTodo, así que ya no hay que esperar cola vacía.
+         Antes, un dispositivo con cola atascada pasaba horas sin ver
+         la nube — y con máximos viejos repartía números de factura
+         repetidos (parejas #1847…#1922). */
+      await bajarTodo();
       estadoUI();
       return true;
     } catch (e) {

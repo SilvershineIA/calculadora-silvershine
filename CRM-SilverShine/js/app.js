@@ -219,6 +219,22 @@
       });
     }
 
+    // 6) Vigilante de números duplicados: si el sync trae un choque de
+    //    orden #/NCF (dos dispositivos facturando a la vez), aparece
+    //    aquí el mismo día para resolverlo en un toque.
+    const dupsNum = Facturas.gruposDuplicados(facturas);
+    if (dupsNum.length) {
+      items.push({
+        grupo: 4, monto: 0, hecho: false,
+        icono: '🔢', titulo: 'Números de factura duplicados',
+        ref: dupsNum.map(g => g[0].orden ? '#' + g[0].orden : g[0].numero).slice(0, 4).join(' · ')
+          + (dupsNum.length > 4 ? ' …' : '') + ' — toca 🔢 para revisar',
+        pill: { t: `⚠ ${dupsNum.length} ${dupsNum.length === 1 ? 'pareja' : 'parejas'}`, c: 'var(--tb-rojo)' },
+        fechaTxt: '',
+        accion: 'dupnum', id: 'dupnum', btn: '🔢', rojo: true,
+      });
+    }
+
     // Pendientes arriba (leads → cobros → cotizaciones → taller, mayor monto
     // primero); las despachadas de hoy quedan al final con su ✓
     /* Los despachados NO se mueven de su lugar: mismo bloque, misma
@@ -343,6 +359,7 @@
       else if (x.accion === 'cobro') await Cobros.recordatorioRapido(x.id);
       else if (x.accion === 'tarea') await Tareas.marcarPaso(x.id, x.paso);
       else if (x.accion === 'respaldo') await descargarRespaldo();
+      else if (x.accion === 'dupnum') { await Facturas.repararNumeros(); return; }
       renderPanel();
     }));
     cont.querySelectorAll('.dia-mas').forEach(b => b.addEventListener('click', e => {
@@ -354,6 +371,7 @@
       if (x.accion === 'lead' || x.accion === 'cot') Cotizaciones.detalle(x.id);
       else if (x.accion === 'cobro') Cobros.detalle(x.id);
       else if (x.accion === 'tarea') DB.tareas.get(x.id).then(t => t && Tareas.formulario(t));
+      else if (x.accion === 'dupnum') Facturas.repararNumeros();
     }));
   }
 
@@ -519,6 +537,7 @@
     toast('🗄 Respaldo descargado — guárdalo en un lugar seguro (correo, Drive…)');
   }
   $('#btnExportar').addEventListener('click', descargarRespaldo);
+  $('#btnDupNums').addEventListener('click', () => Facturas.repararNumeros());
 
   $('#btnImportar').addEventListener('click', () => $('#fileImportar').click());
   $('#fileImportar').addEventListener('change', async e => {

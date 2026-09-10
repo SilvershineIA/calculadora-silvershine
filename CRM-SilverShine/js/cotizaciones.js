@@ -321,8 +321,20 @@ const Cotizaciones = (() => {
     UI.navWire(nav);
 
     on('#cConvertir', async () => {
+      /* Candado + re-verificación EN el clic: el otro dispositivo pudo
+         convertirla ya sin que este lo haya sincronizado — así nacían
+         facturas dobles de la misma cotización */
+      const btnConv = $('#cConvertir');
+      if (btnConv.disabled) return;
+      btnConv.disabled = true;
+      const fresca = await DB.cotizaciones.get(c.id);
+      if (fresca && fresca.facturaId) {
+        toast('⚠ Esta cotización YA fue convertida (quizás en otro dispositivo) — abriendo la factura');
+        detalle(c.id);
+        return;
+      }
       const epConv = c.easypay && t === 'DOP' ? UI.calcularEasyPay(c.total, c.easypay.plan, c.easypay.meses) : null;
-      if (!confirm(`¿Convertir la cotización COT-${c.numero} en factura?${epConv ? ` Incluirá el plan ${epConv.nombre}.` : ''} Se creará con el próximo NCF.`)) return;
+      if (!confirm(`¿Convertir la cotización COT-${c.numero} en factura?${epConv ? ` Incluirá el plan ${epConv.nombre}.` : ''} Se creará con el próximo NCF.`)) { btnConv.disabled = false; return; }
       const numero = await Facturas.siguienteNumero();
       const orden = await Facturas.siguienteOrden();
       const hoyIso = UI.fechaISO();

@@ -772,6 +772,32 @@ const Facturas = (() => {
         leadId: f.leadId || null,   // lead de WhatsApp de origen → evento Purchase a Meta al pagarse
       };
 
+      /* Candado anti doble-toque: el guardado es async — un doble tap
+         creaba dos facturas idénticas antes de que cerrara el modal */
+      if (e.target.dataset.guardando) return;
+      e.target.dataset.guardando = '1';
+      const soltar = () => { delete e.target.dataset.guardando; };
+
+      /* Anti-choque de números: el NCF y el orden # se apartaban al
+         ABRIR el formulario (dos dispositivos a la vez = mismo número).
+         Ahora se re-verifican al GUARDAR: una factura nueva salta sola
+         al siguiente libre; en una edición se avisa y no se guarda. */
+      const todasF = await DB.facturas.list();
+      const chocaNum = todasF.find(x => x.id !== f.id && x.estado !== 'anulada' && (x.numero || '') === nueva.numero);
+      const chocaOrd = nueva.orden ? todasF.find(x => x.id !== f.id && x.estado !== 'anulada' && Number(x.orden) === nueva.orden) : null;
+      if (esNueva) {
+        if (chocaNum) {
+          nueva.numero = await siguienteNumero();
+          nueva.ncf = nueva.numero.startsWith('B') ? nueva.numero : '';
+        }
+        if (chocaOrd) nueva.orden = await siguienteOrden();
+        if (chocaNum || chocaOrd) toast(`Número ocupado por otra factura — se asignó ${nueva.numero} · #${nueva.orden}`);
+      } else if (chocaNum || chocaOrd) {
+        toast(`⚠ Ese ${chocaNum ? 'NCF' : 'orden #'} ya lo tiene la factura de ${esc((chocaNum || chocaOrd).clienteNombre)} — elige otro`);
+        soltar();
+        return;
+      }
+
       /* Plan EasyPay */
       if (fd.get('formaPago') === 'easypay') {
         const planId = fd.get('epPlan');
@@ -782,7 +808,7 @@ const Facturas = (() => {
           const { imp: impB, total: totB } = totalDe(baseLineas, fd.get('itbis') === 'si');
           const precioBase = Math.round(totB * 100) / 100;
           const cep = UI.calcularEasyPay(precioBase, planId, Number(fd.get('epCuotas')));
-          if (!cep) { toast('Agrega líneas con precio para el plan EasyPay'); return; }
+          if (!cep) { toast('Agrega líneas con precio para el plan EasyPay'); soltar(); return; }
           nueva.lineas = cep.fee
             ? [...baseLineas, { descripcion: `${FEE_DESC} (${cep.meses} cuotas × RD$${cep.fee})`, cantidad: cep.meses, precio: cep.fee }]
             : baseLineas;
@@ -831,7 +857,7 @@ const Facturas = (() => {
           fecha: nueva.fecha, monto: nueva.abonos[0].monto, metodo: nueva.abonos[0].metodo, facturaId: guardada.id });
       }
       cerrarModal();
-      toast(esNueva ? `Factura ${numeroF} creada` : 'Factura actualizada');
+      toast(esNueva ? `Factura ${nueva.numero} creada` : 'Factura actualizada');
       render();
       // Si la factura lleva una línea de confección, la confección se pacta sola
       if (esNueva && !guardada.confeccion && Confecciones.esDeConfeccion(guardada)) {
@@ -887,5 +913,113 @@ const Facturas = (() => {
     });
   }
 
-  return { init, render, detalle, siguienteNumero, siguienteOrden, formAbono, formulario, cuotasConEstado, generarCuotas, FEE_DESC };
+  /* ── Números duplicados: detección y corrección ──
+     Parejas de facturas DISTINTAS con el mismo orden # o NCF — nacían
+     al apartar el número al abrir el formulario en dos dispositivos a
+     la vez. Los pares 100% históricos de QuickBooks se dejan quietos
+     (constancia del export, sin cobros ni confecciones vivas). */
+  function gruposDuplicados(lista) {
+    const activas = lista.filter(f => f.estado !== 'anulada');
+    const por = clave => {
+      const m = new Map();
+      for (const f of activas) {
+        const k = clave(f);
+        if (!k) continue;
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(f);
+      }
+      return [...m.values()].filter(g => g.length > 1);
+    };
+    const vistos = new Set();
+    const grupos = [];
+    for (const g of [...por(f => f.orden ? 'o' + f.orden : ''), ...por(f => f.numero ? 'n' + f.numero : '')]) {
+      const firma = g.map(f => f.id).sort().join('|');
+      if (vistos.has(firma)) continue;             // la pareja comparte orden Y NCF: una sola vez
+      vistos.add(firma);
+      if (g.every(f => String(f.id).startsWith('fac-qb-'))) continue;
+      grupos.push(g);
+    }
+    return grupos;
+  }
+
+  /* ¿Quién conserva su número por defecto? La que tiene confección
+     (su tarea de taller la nombra por «#orden»); si no, la primera
+     que se creó. Siempre se puede voltear a mano antes de aplicar. */
+  function conservaDefecto(g) {
+    const conConf = g.filter(f => f.confeccion);
+    if (conConf.length === 1) return conConf[0].id;
+    const conCreado = g.filter(f => f.creado);
+    if (conCreado.length) return [...conCreado].sort((a, b) => a.creado.localeCompare(b.creado))[0].id;
+    return g[0].id;
+  }
+
+  async function repararNumeros() {
+    const grupos = gruposDuplicados(await DB.facturas.list());
+    if (!grupos.length) {
+      abrirModal('🔢 Números duplicados', '<p class="muted">✅ No hay números de factura duplicados — todo en orden.</p>');
+      return;
+    }
+    const filaG = (g, gi) => `
+      <div class="card" style="margin-bottom:10px">
+        <h2 style="font-size:.95rem;margin-bottom:2px">${g[0].orden ? '#' + esc(String(g[0].orden)) + ' · ' : ''}${esc(g[0].numero || '')}</h2>
+        ${g.map(f => `
+          <label class="abono-row" style="cursor:pointer">
+            <span style="display:flex;gap:8px;align-items:baseline">
+              <input type="radio" name="dup${gi}" value="${f.id}" ${conservaDefecto(g) === f.id ? 'checked' : ''}>
+              <span><b>${esc(f.clienteNombre)}</b> · ${fmtFecha(f.fecha)} · ${esc(f.estado)}${f.confeccion ? ' · 🧵 confección' : ''}${f.planPago ? ' · 📅 EasyPay' : ''}${f.saldo > 0 ? ' · debe ' + fmtMoneda(f.saldo, f.moneda) : ''}</span>
+            </span>
+          </label>`).join('')}
+      </div>`;
+    abrirModal('🔢 Números de factura duplicados', `
+      <p class="muted" style="margin-bottom:12px">${grupos.length} ${grupos.length === 1 ? 'pareja' : 'parejas'}.
+        En cada una, la marcada <b>conserva</b> su número; la otra pasa al siguiente orden # y NCF libres,
+        con nota interna. Confecciones, abonos y planes EasyPay no se tocan (van por documento, no por número).</p>
+      ${grupos.map(filaG).join('')}
+      <button class="btn-gold btn-block" id="dupAplicar">Renumerar las no marcadas</button>`);
+
+    $('#dupAplicar').addEventListener('click', async () => {
+      const porRenumerar = grupos.reduce((s, g) => s + g.length - 1, 0);
+      if (!confirm(`Se renumerarán ${porRenumerar} factura(s) al siguiente orden # y NCF libres. ¿Continuar?`)) return;
+      const todas = await DB.facturas.list();
+      let proxO = 1824, proxN = 0;
+      for (const f of todas) {
+        proxO = Math.max(proxO, Number(f.orden) || 0);
+        const m = /^B02(\d+)$/.exec(f.numero || '');
+        if (m) proxN = Math.max(proxN, parseInt(m[1], 10));
+      }
+      const tareas = await DB.tareas.list();
+      let n = 0;
+      for (let gi = 0; gi < grupos.length; gi++) {
+        const sel = document.querySelector(`input[name="dup${gi}"]:checked`);
+        const keeperId = sel ? sel.value : conservaDefecto(grupos[gi]);
+        const keeper = grupos[gi].find(x => x.id === keeperId);
+        for (const f0 of grupos[gi]) {
+          if (f0.id === keeperId) continue;
+          const f = await DB.facturas.get(f0.id);          // copia fresca
+          if (!f) continue;
+          const viejoOrden = f.orden, viejoNum = f.numero;
+          f.notasInternas = (f.notasInternas ? f.notasInternas + '\n' : '') +
+            `Renumerada el ${UI.fechaISO()}: antes ${viejoNum || 's/n'}${viejoOrden ? ' #' + viejoOrden : ''} — chocaba por sincronización`;
+          if (viejoOrden) f.orden = ++proxO;
+          if (/^B02\d+$/.test(viejoNum || '')) { f.numero = 'B02' + String(++proxN).padStart(8, '0'); f.ncf = f.numero; }
+          await DB.facturas.upsert(f);
+          /* Si la renumerada tiene confección (y la que conserva no),
+             su tarea de taller se re-titula al número nuevo para que
+             el reparador automático no la pierda */
+          if (f.confeccion && !(keeper && keeper.confeccion) && viejoOrden && f.orden !== viejoOrden) {
+            for (const t of tareas.filter(x => (x.titulo || '').endsWith(`— Factura #${viejoOrden}`))) {
+              t.titulo = t.titulo.replace(`— Factura #${viejoOrden}`, `— Factura #${f.orden}`);
+              await DB.tareas.upsert(t);
+            }
+          }
+          n++;
+        }
+      }
+      cerrarModal();
+      toast(`✅ ${n} factura(s) renumeradas — todo sincroniza solo`);
+      render();
+    });
+  }
+
+  return { init, render, detalle, siguienteNumero, siguienteOrden, formAbono, formulario, cuotasConEstado, generarCuotas, gruposDuplicados, repararNumeros, FEE_DESC };
 })();
