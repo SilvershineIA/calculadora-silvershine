@@ -94,7 +94,10 @@ async function guardarChat(tel: string, cambios: Dict): Promise<Chat> {
 const pausado = (c: Chat | null) => !!(c && c.agente_pausado && c.pausado_hasta && new Date(c.pausado_hasta).getTime() > Date.now());
 
 /* ── Leads ── */
-type Referral = { source_url?: string; source_id?: string; source_type?: string; headline?: string; body?: string; ctwa_clid?: string } | undefined;
+type Referral = {
+  source_url?: string; source_id?: string; source_type?: string; headline?: string; body?: string;
+  media_type?: string; image_url?: string; video_url?: string; thumbnail_url?: string; ctwa_clid?: string;
+} | undefined;
 
 async function asegurarLead(tel: string, nombre: string | null, ref: Referral): Promise<Lead> {
   // El lead "abierto" más reciente de este teléfono (últimos 30 días, sin factura)
@@ -209,10 +212,15 @@ async function descargarMedia(mediaId: string): Promise<{ bytes: Uint8Array; mim
   return { bytes: new Uint8Array(await bin.arrayBuffer()), mime: String(info.mime_type ?? "image/jpeg").split(";")[0] };
 }
 
-async function describirFoto(mediaId: string, caption: string): Promise<string | null> {
-  if (!ANTHROPIC_API_KEY || !WA_ACCESS_TOKEN) return null;
-  const media = await descargarMedia(mediaId);
-  if (!media || !TIPOS_IMAGEN.has(media.mime)) return null;
+const SISTEMA_VISION =
+  "Eres el ojo de un vendedor de SilverShine, joyería fina de Santo Domingo (anillos de compromiso, tríos y aros de boda en plata 925, vermeil y oro sólido 10K/14K/18K, con circonia, moissanita o diamante de laboratorio). " +
+  "Describe la imagen en español, en máximo 3 líneas y sin saludos, para que un asistente de ventas que NO ve la imagen pueda hablar de ella: " +
+  "tipo de pieza (solitario, trío, dúo, aro, arete, otra), metal y color aparente (amarillo, blanco, rosa; si parece plata dilo), piedra central (forma: oval, redonda, pera, princesa, esmeralda, marquesa, corazón; tamaño relativo: pequeña, mediana, grande), piedras secundarias (pavé, halo, tres piedras, lisa), y estilo (clásico, vintage, moderno, minimalista). " +
+  "Si la pieza se parece claramente a un diseño de la lista del catálogo, termina con: 'Se parece a <nombre>'. Si no, no inventes parecidos. " +
+  "Si la imagen no es una joya (captura de pantalla, persona, recibo, otra cosa), di en una línea qué es. Nunca des precios ni kilataje: eso no se ve en una foto.";
+
+async function describirImagen(bytes: Uint8Array, mime: string, contexto: string): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY || !TIPOS_IMAGEN.has(mime)) return null;
   const nombres = await nombresCatalogo();
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   const resp = await client.beta.messages.create({
@@ -221,23 +229,48 @@ async function describirFoto(mediaId: string, caption: string): Promise<string |
     output_config: { effort: "low" },
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system:
-      "Eres el ojo de un vendedor de SilverShine, joyería fina de Santo Domingo (anillos de compromiso, tríos y aros de boda en plata 925, vermeil y oro sólido 10K/14K/18K, con circonia, moissanita o diamante de laboratorio). " +
-      "Describe la foto en español, en máximo 3 líneas y sin saludos, para que un asistente de ventas que NO ve la imagen pueda hablar de ella: " +
-      "tipo de pieza (solitario, trío, dúo, aro, arete, otra), metal y color aparente (amarillo, blanco, rosa; si parece plata dilo), piedra central (forma: oval, redonda, pera, princesa, esmeralda, marquesa, corazón; tamaño relativo: pequeña, mediana, grande), piedras secundarias (pavé, halo, tres piedras, lisa), y estilo (clásico, vintage, moderno, minimalista). " +
-      "Si la pieza se parece claramente a un diseño de la lista del catálogo, termina con: 'Se parece a <nombre>'. Si no, no inventes parecidos. " +
-      "Si la imagen no es una joya (captura de pantalla, persona, recibo, otra cosa), di en una línea qué es. Nunca des precios ni kilataje: eso no se ve en una foto.",
+    system: SISTEMA_VISION,
     messages: [{
       role: "user",
       content: [
-        { type: "image", source: { type: "base64", media_type: media.mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: encodeBase64(media.bytes) } },
-        { type: "text", text: `Diseños del catálogo: ${nombres.join(", ") || "(no disponible)"}.${caption ? ` El cliente escribió junto a la foto: "${caption}".` : ""}` },
+        { type: "image", source: { type: "base64", media_type: mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: encodeBase64(bytes) } },
+        { type: "text", text: `Diseños del catálogo: ${nombres.join(", ") || "(no disponible)"}.${contexto ? ` ${contexto}` : ""}` },
       ],
     }],
   });
   if (resp.stop_reason === "refusal") return null;
   const texto = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ").trim();
   return texto || null;
+}
+
+/* Foto que manda el cliente por WhatsApp (media privada: se descarga con el token) */
+async function describirFoto(mediaId: string, caption: string): Promise<string | null> {
+  if (!WA_ACCESS_TOKEN || !mediaId) return null;
+  const media = await descargarMedia(mediaId);
+  if (!media) return null;
+  return describirImagen(media.bytes, media.mime, caption ? `El cliente escribió junto a la foto: "${caption}".` : "");
+}
+
+/* Imagen del ANUNCIO que tocó el cliente (referral.image_url / thumbnail_url, URL pública).
+   Sirve cuando el titular es genérico ("Anillos de compromiso") pero la foto dice qué pieza vio. */
+const anuncioCache = new Map<string, string>();
+async function describirAnuncio(ref: Referral): Promise<string | null> {
+  const url = ref?.image_url || ref?.thumbnail_url;
+  if (!url) return null;
+  const clave = ref?.source_id || url;
+  if (anuncioCache.has(clave)) return anuncioCache.get(clave)!;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const mime = (r.headers.get("content-type") || "image/jpeg").split(";")[0];
+    const desc = await describirImagen(new Uint8Array(await r.arrayBuffer()), mime,
+      `Es la imagen de un anuncio de SilverShine${ref?.headline ? ` titulado «${ref.headline}»` : ""}${ref?.body ? ` (texto: "${ref.body}")` : ""}.`);
+    if (desc) anuncioCache.set(clave, desc);
+    return desc;
+  } catch (e) {
+    console.warn("imagen del anuncio:", (e as Error).message);
+    return null;
+  }
 }
 
 /* ── Voiceflow Dialog Manager API ── */
@@ -325,8 +358,14 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
   const chat = await chatDe(tel);
   const lead = await asegurarLead(tel, nombre, ref);
   const cambiosChat: Dict = { nombre: nombre ?? chat?.nombre ?? null, lead_id: lead.id, ultimo_mensaje_at: new Date().toISOString() };
-  if (ref?.ctwa_clid) Object.assign(cambiosChat, { ctwa_clid: ref.ctwa_clid, ad_id: ref.source_id ?? null, ad_headline: ref.headline ?? null, ad_url: ref.source_url ?? null, referral_at: new Date().toISOString() });
+  if (ref?.ctwa_clid || ref?.source_id) {
+    Object.assign(cambiosChat, { ctwa_clid: ref.ctwa_clid ?? null, ad_id: ref.source_id ?? null, ad_headline: ref.headline ?? null, ad_url: ref.source_url ?? null, referral_at: new Date().toISOString() });
+    // La imagen del anuncio dice qué pieza vio el cliente aunque el titular sea genérico
+    const descAnuncio = await describirAnuncio(ref);
+    if (descAnuncio) cambiosChat.ad_descripcion = descAnuncio;
+  }
   const chatAct = await guardarChat(tel, cambiosChat);
+  const adDescripcion = String((chatAct as unknown as Dict).ad_descripcion ?? "");
 
   if (pausado(chatAct)) { console.log("agente en pausa para", tel); return; }   // José está atendiendo
   if (!VF_API_KEY) { console.warn("Sin VF_API_KEY: el mensaje quedó registrado, sin respuesta"); return; }
@@ -339,6 +378,7 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
   await vf("PATCH", `/state/user/${q(uid)}/variables`, {
     telefono: tel, nombre_wa: nombre ?? "", lead_id: lead.id,
     origen: lead.origen ?? "organico", ad_headline: (chatAct as unknown as Dict).ad_headline ?? "",
+    ad_descripcion: adDescripcion,
     desde_anuncio: lead.origen === "ad" ? "si" : "no", canal: "whatsapp", escalado: false,
   }).catch((e) => console.warn("variables:", e.message));
 

@@ -112,6 +112,7 @@ create table if not exists wa_chats (
   ad_id text,
   ad_headline text,
   ad_url text,
+  ad_descripcion text,                -- lo que Claude vio en la imagen del anuncio
   referral_at timestamptz,
   agente_pausado boolean not null default false,
   pausado_hasta timestamptz,
@@ -132,6 +133,7 @@ create table if not exists wa_eventos (
   detalle jsonb
 );
 create index if not exists wa_eventos_tel_idx on wa_eventos (telefono, created_at desc);
+alter table wa_chats add column if not exists ad_descripcion text;
 
 -- ── 4. Facturas: columna lead_id derivada del documento JSON ──
 --      El CRM guarda `leadId` dentro de data; esta columna generada
