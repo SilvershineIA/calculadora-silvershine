@@ -182,6 +182,14 @@ async function enviarWA(pnid: string, payload: Dict) {
 }
 const texto = (to: string, body: string) => ({ to, type: "text", text: { body: body.slice(0, 4096), preview_url: true } });
 const imagen = (to: string, link: string, caption?: string) => ({ to, type: "image", image: { link, ...(caption ? { caption: caption.slice(0, 1024) } : {}) } });
+const video = (to: string, link: string, caption?: string) => ({ to, type: "video", video: { link, ...(caption ? { caption: caption.slice(0, 1024) } : {}) } });
+const esVideo = (u: string) => /\.(mp4|3gp)(\?|$)/i.test(u);
+/* Un mensaje de texto que es SOLO una URL de video (opcional: texto en la línea siguiente)
+   se manda como video de WhatsApp — así el agente puede enviar la guía de tamaños de piedra. */
+const soloUrlVideo = (msg: string): { link: string; caption?: string } | null => {
+  const m = msg.match(/^(https?:\/\/\S+\.(?:mp4|3gp)(?:\?\S*)?)\s*\n?([\s\S]*)$/i);
+  return m ? { link: m[1], caption: m[2].trim() || undefined } : null;
+};
 const botones = (to: string, body: string, opciones: string[]) => ({
   to, type: "interactive",
   interactive: {
@@ -347,10 +355,12 @@ function tracesAMensajes(to: string, traces: Dict[]): { mensajes: Dict[]; escala
     const tipo = t.type as string;
     if (tipo === "text" || tipo === "speak") {
       const msg = String(p(t).message ?? "").replace(/<[^>]+>/g, "").trim();
-      if (msg) out.push(texto(to, msg));
+      const v = msg ? soloUrlVideo(msg) : null;
+      if (v) out.push(video(to, v.link, v.caption));
+      else if (msg) out.push(texto(to, msg));
     } else if (tipo === "visual") {
       const img = p(t).image as string | undefined;
-      if (img) out.push(imagen(to, img));
+      if (img) out.push(esVideo(img) ? video(to, img) : imagen(to, img));
     } else if (tipo === "choice") {
       const nombres = ((p(t).buttons ?? []) as Dict[]).map((b) => String(b.name ?? "")).filter(Boolean);
       if (!nombres.length) continue;
