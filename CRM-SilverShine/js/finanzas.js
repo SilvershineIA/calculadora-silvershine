@@ -42,53 +42,55 @@ const Finanzas = (() => {
   };
 
   /* ═══════ Estimador de costos de plata ═══════════════════════
-     Tabla de costos del taller en US$ (solitarios, duos y trios).
-     Plata = factura de RD$15,000 o menos sin costo puesto.       */
+     Costos REALES fijos en RD$ (José, 12 sept 2026): la tabla del
+     taller en US$ quedaba muy por debajo de la realidad —
+     trío de boda RD$5,300 · solitario RD$2,300. Duos y bandas
+     siguen con la tabla US$ × tasa. Plata = factura de RD$15,000
+     o menos sin costo puesto.                                    */
   const PLATA_MAX_DOP = 15000;
+  const COSTO_TRIO_RD = 5300;    // tríos de boda (se venden desde RD$8,500)
+  const COSTO_SOL_RD = 2300;     // solitarios (se venden hasta RD$6,000)
   const COSTOS_PLATA = {
-    sol: {
-      'trinidad de amor': 24.20, 'herencia de amor': 26.32, 'lazo eterno': 23.58,
-      'sendero de luz': 20.38, 'alma unida': 15.71, 'claridad infinita': 19.63,
-      'esencia radiante': 29.66, 'llama serena': 23.90, 'luz del corazon': 23.59,
-      'princesa': 17.97, 'cumbre de amor': 34.20, 'brillo del destino': 23.76,
-      'eco de ternura': 19.63, 'jardin de luz': 13.11,
-    },
     duo: {
       'claridad infinita': 19.63, 'eco de ternura': 17.70,
       'llama serena': 20.90, 'brillo del destino': 23.76,
     },
-    trio: {
-      'trinidad de amor': 47.74, 'herencia de amor': 49.86, 'lazo eterno': 47.12,
-      'sendero de luz': 43.94, 'alma unida': 39.25, 'claridad infinita': 34.39,
-      'esencia radiante': 53.20, 'llama serena': 38.66, 'luz del corazon': 47.13,
-      'princesa': 41.51, 'cumbre de amor': 57.74, 'brillo del destino': 38.52,
-      'eco de ternura': 32.46, 'jardin de luz': 36.65,
-    },
     banda: { '2mm con piedra': 8.80, '2mm liso': 8.78, '4mm liso': 14.76 },
   };
-  const NOMBRES_PLATA = Object.keys(COSTOS_PLATA.sol).sort((a, b) => b.length - a.length);
+  const NOMBRES_PLATA = [
+    'trinidad de amor', 'herencia de amor', 'lazo eterno', 'sendero de luz',
+    'alma unida', 'claridad infinita', 'esencia radiante', 'llama serena',
+    'luz del corazon', 'princesa', 'cumbre de amor', 'brillo del destino',
+    'eco de ternura', 'jardin de luz',
+  ].sort((a, b) => b.length - a.length);
   const PCT_DEFECTO = 0.38;      // % costo/venta si no hay ninguna línea identificada
 
   const normTxt = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  /* Costo US$ de una línea según su descripción, o null si no se identifica.
-     "Trio X" → trio; "Duo X" → duo; el nombre solo → solitario.
-     "2mm … y 4mm …" (duo de boda) → banda 2mm + banda 4mm.                  */
-  function costoLineaUSD(descripcion) {
+  /* Costo RD$ de UNA unidad según la descripción, o null si no se
+     identifica. "Trio …" → RD$5,300 · modelo solo o "solitario" →
+     RD$2,300 · "Duo X" y bandas 2mm/4mm → tabla US$ × tasa.
+     Si el nombre no dice nada, decide el PRECIO unitario (regla de
+     José): ≥ RD$8,500 se vende un trío · ≤ RD$6,000 un solitario. */
+  function costoLineaRD(descripcion, precioRD, tasa) {
     const d = normTxt(descripcion);
     if (!d) return null;
+    if (/\btrio\b/.test(d)) return COSTO_TRIO_RD;
     for (const base of NOMBRES_PLATA) {
       if (!d.includes(base)) continue;
-      if (/\btrio\b/.test(d)) return COSTOS_PLATA.trio[base] ?? null;
-      if (/\bduo\b/.test(d))  return COSTOS_PLATA.duo[base] ?? COSTOS_PLATA.sol[base] ?? null;
-      return COSTOS_PLATA.sol[base] ?? null;
+      if (/\bduo\b/.test(d)) return COSTOS_PLATA.duo[base] !== undefined ? COSTOS_PLATA.duo[base] * tasa : null;
+      return COSTO_SOL_RD;
     }
+    if (d.includes('solitario')) return COSTO_SOL_RD;
     const b = COSTOS_PLATA.banda;
     const p2 = d.includes('2mm'), p4 = /4m?m/.test(d);   // "4m size 8" aparece así en QuickBooks
-    if (p2 && p4) return b['2mm liso'] + b['4mm liso'];
-    if (p4) return b['4mm liso'];
-    if (p2) return d.includes('piedra') ? b['2mm con piedra'] : b['2mm liso'];
-    return null;
+    if (p2 && p4) return (b['2mm liso'] + b['4mm liso']) * tasa;
+    if (p4) return b['4mm liso'] * tasa;
+    if (p2) return (d.includes('piedra') ? b['2mm con piedra'] : b['2mm liso']) * tasa;
+    if (/\bduo\b/.test(d)) return null;                  // duo sin modelo conocido: al %
+    if (precioRD >= 8500) return COSTO_TRIO_RD;
+    if (precioRD > 0 && precioRD <= 6000) return COSTO_SOL_RD;
+    return null;                                          // entre 6,000 y 8,500: al %
   }
 
   /* Recorre todas las facturas de plata sin costo y propone un costo:
@@ -110,17 +112,17 @@ const Finanzas = (() => {
       const lineas = f.lineas || [];
       if (lineas.some(l => /\boro\b/.test(normTxt(l.descripcion)))) continue;  // oro barato: manual
 
-      let costoUSD = 0, subId = 0, subNoId = 0;
+      let costoRD = 0, subId = 0, subNoId = 0;
       for (const l of lineas) {
         const cant = Number(l.cantidad) || 1;
         const sub = cant * (Number(l.precio) || 0);
-        const c = costoLineaUSD(l.descripcion);
-        if (c !== null) { costoUSD += c * cant; subId += sub; }
+        const c = costoLineaRD(l.descripcion, (Number(l.precio) || 0) * aDOP, tasa);
+        if (c !== null) { costoRD += c * cant; subId += sub; }
         else subNoId += sub;
       }
-      sumCostoIdDOP += costoUSD * tasa;
+      sumCostoIdDOP += costoRD;
       sumSubIdDOP += subId * aDOP;
-      cand.push({ f, mon, costoUSD, subId, subNoId });
+      cand.push({ f, mon, costoRD, subId, subNoId });
     }
     if (!cand.length) {
       UI.toast('No hay facturas de plata sin costo — todo está al día 🎉');
@@ -133,9 +135,9 @@ const Finanzas = (() => {
     /* Costo propuesto en la moneda de cada factura */
     const props = cand.map(c => {
       const enUSD = c.mon === 'USD';
-      const costo = (enUSD ? c.costoUSD : c.costoUSD * tasa) + pct * c.subNoId;
+      const costo = (enUSD ? c.costoRD / tasa : c.costoRD) + pct * c.subNoId;
       const v = enUSD ? Math.round(costo * 100) / 100 : Math.round(costo);
-      const metodo = c.subNoId <= 0 ? 'nombre' : (c.costoUSD > 0 ? 'mixto' : 'pct');
+      const metodo = c.subNoId <= 0 ? 'nombre' : (c.costoRD > 0 ? 'mixto' : 'pct');
       return { ...c, costo: v, metodo, sospechosa: v >= c.f.total * 0.8 };
     }).sort((a, b) => (b.f.fecha || '').localeCompare(a.f.fecha || ''));
 
@@ -147,8 +149,10 @@ const Finanzas = (() => {
     const body = UI.abrirModal('🪄 Estimar costos de plata', `
       <p class="muted" style="margin-bottom:10px">
         Plata = facturas de <b>RD$${PLATA_MAX_DOP.toLocaleString('es-DO')} o menos</b> sin costo puesto.
-        Tabla del taller en US$ convertida con la tasa <b>${tasa}</b>.<br>
-        📗 ${nNombre} por nombre exacto · 📙 ${nMixto} mixtas · 📊 ${nPct} por porcentaje
+        Costos reales: <b>trío de boda RD$${COSTO_TRIO_RD.toLocaleString('es-DO')}</b> ·
+        <b>solitario RD$${COSTO_SOL_RD.toLocaleString('es-DO')}</b>
+        (duos y bandas con la tabla US$ del taller a la tasa ${tasa}).<br>
+        📗 ${nNombre} identificadas completas · 📙 ${nMixto} mixtas · 📊 ${nPct} por porcentaje
         (${Math.round(pct * 100)}% del subtotal${sumSubIdDOP > 0 ? ', deducido de las líneas identificadas' : ' típico'}).
         Las dudosas (costo ≥ 80% de la venta) vienen desmarcadas.
       </p>
