@@ -49,12 +49,9 @@ const Finanzas = (() => {
      o menos sin costo puesto.                                    */
   const PLATA_MAX_DOP = 15000;
   const COSTO_TRIO_RD = 5300;    // tríos de boda (se venden desde RD$8,500)
+  const COSTO_DUO_RD = 3500;     // duos
   const COSTO_SOL_RD = 2300;     // solitarios (se venden hasta RD$6,000)
   const COSTOS_PLATA = {
-    duo: {
-      'claridad infinita': 19.63, 'eco de ternura': 17.70,
-      'llama serena': 20.90, 'brillo del destino': 23.76,
-    },
     banda: { '2mm con piedra': 8.80, '2mm liso': 8.78, '4mm liso': 14.76 },
   };
   const NOMBRES_PLATA = [
@@ -68,26 +65,24 @@ const Finanzas = (() => {
   const normTxt = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   /* Costo RD$ de UNA unidad según la descripción, o null si no se
-     identifica. "Trio …" → RD$5,300 · modelo solo o "solitario" →
-     RD$2,300 · "Duo X" y bandas 2mm/4mm → tabla US$ × tasa.
-     Si el nombre no dice nada, decide el PRECIO unitario (regla de
-     José): ≥ RD$8,500 se vende un trío · ≤ RD$6,000 un solitario. */
+     identifica. "Trio …" → RD$5,300 · "Duo …" → RD$3,500 · modelo
+     solo o "solitario" → RD$2,300 · bandas 2mm/4mm → tabla US$ ×
+     tasa (van ANTES que el duo: un "duo de boda 2mm y 4mm" son
+     bandas, no el duo de compromiso). Si el nombre no dice nada,
+     decide el PRECIO unitario (regla de José): ≥ RD$8,500 se vende
+     un trío · ≤ RD$6,000 un solitario. */
   function costoLineaRD(descripcion, precioRD, tasa) {
     const d = normTxt(descripcion);
     if (!d) return null;
     if (/\btrio\b/.test(d)) return COSTO_TRIO_RD;
-    for (const base of NOMBRES_PLATA) {
-      if (!d.includes(base)) continue;
-      if (/\bduo\b/.test(d)) return COSTOS_PLATA.duo[base] !== undefined ? COSTOS_PLATA.duo[base] * tasa : null;
-      return COSTO_SOL_RD;
-    }
-    if (d.includes('solitario')) return COSTO_SOL_RD;
     const b = COSTOS_PLATA.banda;
     const p2 = d.includes('2mm'), p4 = /4m?m/.test(d);   // "4m size 8" aparece así en QuickBooks
     if (p2 && p4) return (b['2mm liso'] + b['4mm liso']) * tasa;
     if (p4) return b['4mm liso'] * tasa;
     if (p2) return (d.includes('piedra') ? b['2mm con piedra'] : b['2mm liso']) * tasa;
-    if (/\bduo\b/.test(d)) return null;                  // duo sin modelo conocido: al %
+    if (/\bduo\b/.test(d)) return COSTO_DUO_RD;
+    if (d.includes('solitario')) return COSTO_SOL_RD;
+    for (const base of NOMBRES_PLATA) if (d.includes(base)) return COSTO_SOL_RD;
     if (precioRD >= 8500) return COSTO_TRIO_RD;
     if (precioRD > 0 && precioRD <= 6000) return COSTO_SOL_RD;
     return null;                                          // entre 6,000 y 8,500: al %
@@ -150,8 +145,9 @@ const Finanzas = (() => {
       <p class="muted" style="margin-bottom:10px">
         Plata = facturas de <b>RD$${PLATA_MAX_DOP.toLocaleString('es-DO')} o menos</b> sin costo puesto.
         Costos reales: <b>trío de boda RD$${COSTO_TRIO_RD.toLocaleString('es-DO')}</b> ·
+        <b>duo RD$${COSTO_DUO_RD.toLocaleString('es-DO')}</b> ·
         <b>solitario RD$${COSTO_SOL_RD.toLocaleString('es-DO')}</b>
-        (duos y bandas con la tabla US$ del taller a la tasa ${tasa}).<br>
+        (bandas de boda 2mm/4mm con la tabla US$ del taller a la tasa ${tasa}).<br>
         📗 ${nNombre} identificadas completas · 📙 ${nMixto} mixtas · 📊 ${nPct} por porcentaje
         (${Math.round(pct * 100)}% del subtotal${sumSubIdDOP > 0 ? ', deducido de las líneas identificadas' : ' típico'}).
         Las dudosas (costo ≥ 80% de la venta) vienen desmarcadas.
