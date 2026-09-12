@@ -721,6 +721,11 @@ const App = (() => {
           html += l.cot.aplicado
             ? `<div class="card"><div class="sub verde"><b>${T('q_aplicado')}</b> · ${fmtFecha(l.cot.aplicado)}</div></div>`
             : `<button class="btn rosa" id="btnAplicarCostos">${T('q_aplicar')}</button>`;
+          /* y de ahí, TODOS los costos a sus facturas del CRM de un clic
+             (auto-enlaza por # de orden las piezas que falten) */
+          if (l.cot.aplicado || piezas.some(o => o.cot)) {
+            html += `<button class="btn ghost" id="btnCostosFacturas">💳 Poner los costos en las facturas del CRM (todas de una)</button>`;
+          }
         }
       } else if (!karen) {
         html += `<button class="btn rosa" id="btnLeerPI">${T('l_leerIA')}</button>`;
@@ -979,6 +984,8 @@ const App = (() => {
       toast(`🧵 ${nomOrden(o)} ✓`);
       render();
     }));
+
+    on('#btnCostosFacturas', () => costosAFacturas(l, piezas));
 
     on('#btnAplicarCostos', async () => {
       const ps = (l.cot.leida.pieces || []);
@@ -1648,6 +1655,83 @@ Si no es legible responde {"error": "motivo corto"}.`;
   }
 
   const UI_RD = v => 'RD$ ' + Number(v || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  /* ── 💳 Costos → facturas del CRM, TODO el lote de un clic (solo José):
+     una sola tasa para todas; las piezas sin factura enlazada se
+     auto-enlazan buscando su # de orden en las facturas del CRM ── */
+  async function costosAFacturas(l, piezas) {
+    abrirModal('💳 Costos → facturas del CRM', `<p class="sub">${T('cargando')}</p>`);
+    let filas;
+    try { filas = await Nube.listarFacturas(); }
+    catch (e) { $('#modalCuerpo').innerHTML = `<p class="sub rojo">⚠ ${esc(e.message)}</p>`; return; }
+    const porId = new Map(filas.map(x => [x.id, x.data]));
+    const porOrden = new Map(filas.filter(x => x.data && x.data.estado !== 'anulada' && x.data.orden != null)
+      .map(x => [String(x.data.orden), x.data]));
+    const rotuloF = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+
+    /* armar la lista: pieza → factura (enlazada o encontrada por #) → US$ */
+    const rows = [];
+    for (const o of piezas) {
+      const usd = o.cot ? Number(o.cot.subtotalFinal ?? o.cot.subtotal) || 0 : 0;
+      if (!usd) { rows.push({ o, usd: 0, f: null, motivo: 'sin costo aplicado' }); continue; }
+      let f = o.facturaCRM ? porId.get(o.facturaCRM.id) : null;
+      let auto = false;
+      if (!f && o.numero && porOrden.has(String(o.numero))) { f = porOrden.get(String(o.numero)); auto = true; }
+      rows.push(f ? { o, usd, f, auto } : { o, usd, f: null, motivo: 'sin factura del CRM (ni # que coincida)' });
+    }
+    const listos = rows.filter(r => r.f);
+    const tasa0 = Nube.tasaCRM() || '';
+
+    $('#modalCuerpo').innerHTML = `
+      <p class="sub">Una sola tasa para todo el lote — cada pieza va a su factura (las no enlazadas se enlazan solas por su # de orden).</p>
+      <label>Tasa (RD$ por US$)</label>
+      <input id="cfTasa" type="number" step="0.01" value="${tasa0}" placeholder="Ej: 58.19">
+      <div id="cfLista" style="margin-top:10px"></div>
+      <button class="btn rosa" id="cfAplicar" ${listos.length ? '' : 'disabled'}>💳 Aplicar a ${listos.length} factura${listos.length === 1 ? '' : 's'}</button>`;
+
+    const pintar = () => {
+      const t = Number($('#cfTasa').value) || 0;
+      $('#cfLista').innerHTML = rows.map(r => `
+        <div class="card" style="padding:8px 12px;${r.f ? '' : 'opacity:.55'}">
+          <div class="fila"><div class="crece">
+            <div style="font-size:13px"><b>${esc(nomOrden(r.o))}</b></div>
+            <div class="sub">${r.f
+              ? `🧾 ${esc(r.f.clienteNombre || '')} ${esc(rotuloF(r.f))}${r.auto ? ' · <b class="verde">enlace automático por #</b>' : ''}${r.f.costo ? ` · <span class="rojo">reemplaza ${UI_RD(r.f.costo)}</span>` : ''}`
+              : `— ${r.motivo}`}</div>
+          </div>
+          ${r.f ? `<div style="text-align:right"><div class="money">${fmtUSD(r.usd)}</div><div class="sub money">${t ? UI_RD(r.usd * t) : '· pon la tasa'}</div></div>` : ''}</div>
+        </div>`).join('');
+    };
+    $('#cfTasa').addEventListener('input', pintar);
+    pintar();
+
+    $('#cfAplicar').addEventListener('click', async () => {
+      const t = Number($('#cfTasa').value) || 0;
+      if (!(t > 0)) { toast('⚠ Pon la tasa'); return; }
+      $('#cfAplicar').disabled = true;
+      let n = 0;
+      const errores = [];
+      for (const r of listos) {
+        try {
+          const rd = Math.round(r.usd * t * 100) / 100;
+          const f = r.f;
+          f.costo = rd;
+          f.costoDeUSD = true;
+          f.costoTaller = { usd: r.usd, tasa: t, fecha: hoyISO(), ordenTaller: r.o.id, final: r.o.cot.subtotalFinal != null };
+          await Nube.upsertFactura(f);
+          r.o.facturaCRM = {
+            id: f.id, rotulo: rotuloF(f), cliente: f.clienteNombre || '',
+            costoAplicado: { usd: r.usd, tasa: t, rd, fecha: hoyISO(), final: r.o.cot.subtotalFinal != null },
+          };
+          await guardarDoc(r.o);
+          n++;
+        } catch (e) { errores.push(`${r.o.nombre}: ${e.message}`); }
+      }
+      cerrarModal();
+      toast(`💳 ${n} factura${n === 1 ? '' : 's'} con su costo ✓${rows.length - listos.length ? ` · ${rows.length - listos.length} sin factura` : ''}${errores.length ? ' · ⚠ ' + errores.join('; ') : ''}`);
+      render();
+    });
+  }
 
   /* ── Enlazar una pieza con su factura del CRM: se busca en la misma
      base y el costo Tonglin (US$ × tasa de la calculadora) queda puesto
