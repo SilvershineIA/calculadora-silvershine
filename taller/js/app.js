@@ -465,6 +465,11 @@ const App = (() => {
   });
 
   function render() {
+    if (vista === 'login' && typeof APP_RD !== 'undefined' && APP_RD) {
+      /* en la app de Rubén no hay login de José: su clave cambió → link nuevo */
+      document.body.innerHTML = `<div class="login"><h1>🔨 Taller SilverShine</h1><p class="sub">La sesión se cerró — abre de nuevo TU link secreto (o pídele uno nuevo a José).</p></div>`;
+      return;
+    }
     if (vista !== 'login' && Nube.rol() === 'rd') { renderRD(); return; }
     const karen = I18N.esKaren();
     document.body.className = karen ? 'rol-taller' : 'rol-jose';
@@ -2668,7 +2673,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       </div>
       <div class="h-sec">🔗 Link para Rubén (Taller RD)</div>
       <div class="card">
-        <p class="sub">El lado de Rubén: en español y en azul, con SOLO sus trabajos y sus cuentas — nunca ve nombres de clientes. Pega un link que YA FUNCIONA (el de Julia) y se clona con las mismas credenciales, o escribe email y clave del usuario del taller.</p>
+        <p class="sub">El link abre <b>SU PROPIA app</b> (taller-rd): en español y en azul, sin NADA de Tonglin — solo sus trabajos y sus cuentas, sin nombres de clientes. Puedes probarlo tú mismo en tu navegador normal: no toca tu sesión. Pega un link que YA FUNCIONA (el de Julia) y se clona con las mismas credenciales, o escribe email y clave del usuario del taller.</p>
         <label>⭐ Link que ya funciona (recomendado)</label>
         <input id="ajRdBase" autocomplete="off" placeholder="https://…/taller/#k=…">
         <div class="dos">
@@ -3479,17 +3484,45 @@ Si no es legible responde {"error": "motivo corto"}.`;
   }
 
   /* ═══ arranque ═══ */
+  /* /taller-rd/ es la APP DE RUBÉN — separada de la de Tonglin, con su
+     propia sesión (abrirla no toca la sesión de José ni la de Julia) */
+  const APP_RD = /taller-rd/.test(location.pathname);
   async function init() {
-    /* ¿Viene con el link secreto de Karen? */
+    /* ¿Viene con un link secreto? */
     const linkKaren = Nube.leerLink(location.hash);
     let avisoLink = '';
-    if (linkKaren) {
+
+    if (APP_RD) {
+      /* ── App de Rubén ── */
+      if (linkKaren && linkKaren.r !== 'rd') {
+        document.body.innerHTML = `<div class="login"><h1>Taller SilverShine</h1><p class="sub">Ese link es de la OTRA app (la del proveedor) — este es el taller de Rubén. Ábrelo en su propia página.</p></div>`;
+        return;
+      }
+      if (linkKaren) {
+        history.replaceState(null, '', location.pathname);
+        try {
+          await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p, linkKaren.n, 'rd');
+        } catch (e) {
+          document.body.innerHTML = `<div class="login"><h1>Taller SilverShine</h1><p class="sub">Este link ya no sirve — pídele uno nuevo a José.<br><span style="opacity:.6">${esc(e.message)}</span></p></div>`;
+          return;
+        }
+      }
+      if (!Nube.conectado()) {
+        document.body.innerHTML = `<div class="login"><h1>🔨 Taller SilverShine</h1><p class="sub">La app del taller de Rubén.<br>Se entra abriendo TU link secreto — pídeselo a José.<br>El link no vence: guárdalo en favoritos o agrégalo a la pantalla de inicio.</p></div>`;
+        return;
+      }
+    } else if (linkKaren) {
+      if (linkKaren.r === 'rd') {
+        /* el link de Rubén abierto en la app de Tonglin: mandarlo a SU app */
+        location.replace(location.pathname.replace(/index\.html?$/, '').replace(/taller\/?$/, 'taller-rd/') + location.hash);
+        return;
+      }
       history.replaceState(null, '', location.pathname);
       const yo = Nube.info();
       if (yo && yo.rol === 'jose') {
-        /* José abrió el link de Karen (o de Rubén) en SU dispositivo: no
-           dejar que le secuestre la sesión — para probarlo, incógnito */
-        avisoLink = `🔗 Ese link es el de ${linkKaren.r === 'rd' ? esc(linkKaren.n || 'Rubén') : 'Julia'} — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.`;
+        /* José abrió el link de Karen en SU dispositivo: no dejar que le
+           secuestre la sesión — para probar el lado de ella, incógnito */
+        avisoLink = '🔗 Ese link es el de Julia — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.';
       } else {
         try {
           await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p, linkKaren.n, linkKaren.r);

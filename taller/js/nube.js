@@ -8,7 +8,11 @@
      es automática para siempre (hasta que se le cambie la clave).
    ═══════════════════════════════════════════════════════════ */
 const Nube = (() => {
-  const K_CFG = 'sstaller_cfg';
+  /* /taller-rd/ es la APP DE RUBÉN (separada de la de Tonglin): tiene su
+     propia sesión guardada — abrir el link de Rubén ahí no toca la
+     sesión de José ni la de Julia */
+  const APP_RD = /taller-rd/.test(location.pathname);
+  const K_CFG = APP_RD ? 'sstaller_rd_cfg' : 'sstaller_cfg';
 
   let cfg = null;
   try { cfg = JSON.parse(localStorage.getItem(K_CFG)); } catch { cfg = null; }
@@ -220,6 +224,14 @@ const Nube = (() => {
     cfg = null;
   }
 
+  /* Cada rol tiene SU app: el link de Rubén apunta a /taller-rd/ (su
+     propia app, sin nada de Tonglin) y el de Julia/Karen a /taller/ */
+  const urlApp = rolLink => {
+    let p = location.pathname.replace(/index\.html?$/, '');
+    p = p.replace(/taller(-rd)?\/?$/, rolLink === 'rd' ? 'taller-rd/' : 'taller/');
+    return location.origin + p;
+  };
+
   /* Link secreto del taller: #k=<base64url(JSON)> con todo lo necesario,
      incluido el nombre de quien lo usará (Julia, Karen…) y el rol —
      `r:'rd'` = link de Rubén (Taller RD) */
@@ -228,7 +240,7 @@ const Nube = (() => {
     if (rolLink === 'rd') payload.r = 'rd';
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    return `${location.origin}${location.pathname}#k=${b64}`;
+    return `${urlApp(rolLink)}#k=${b64}`;
   };
   const leerLink = hash => {
     const m = (hash || '').match(/#k=([A-Za-z0-9_-]+)/);
@@ -250,7 +262,7 @@ const Nube = (() => {
     if (r === 'rd') payload.r = 'rd';
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    return `${location.origin}${location.pathname}#k=${b64}`;
+    return `${urlApp(r)}#k=${b64}`;
   };
 
   return {
