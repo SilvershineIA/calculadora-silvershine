@@ -253,7 +253,7 @@ const App = (() => {
   /* numeración #[factura CRM]-[secuencial del taller] — sin factura, solo el secuencial */
   const numTrd = t => '#' + (t.facturaOrden ? t.facturaOrden + '-' : '') + t.sec;
   const secSiguienteRD = () => Math.max(383, ...trabajosRD().map(t => Number(t.sec) || 0)) + 1;
-  const TIPOS_RD = { grabado: 'Grabado', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
+  const TIPOS_RD = { confeccion: 'Confeccionar', grabado: 'Grabado', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
   /* estado derivado del trabajo (auto-reparable, como los lotes) */
   function estadoTrd(t) {
     if (t.pagado) return 'pagado';
@@ -2930,7 +2930,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
   let borradorRD = null;   // el formulario sobrevive cambios de pestaña y refrescos
   let fotosRDNueva = [];   // blobs de fotos de referencia pendientes de subir
   const RD_BORRADOR0 = () => ({
-    factura: null, tipo: 'grabado',
+    factura: null, tipo: 'confeccion',
+    oroK: '14K', oroColor: 'amarillo', aros: [{ mm: '2mm', talla: '' }],
     grabados: [{ pieza: '', txt: '', estilo: 'normal' }],
     mPiedra: '', mEngaste: '4 uñas', cPiedras: '', rQue: '', wQue: '',
     desc: '', tocada: false, rush: false, entrega: '',
@@ -2938,7 +2939,13 @@ Si no es legible responde {"error": "motivo corto"}.`;
 
   function componerRD(b) {
     if (b.tocada) return;   // José la retocó a mano: no se la pisamos
-    if (b.tipo === 'grabado') {
+    if (b.tipo === 'confeccion') {
+      const oro = 'oro ' + b.oroK + ' ' + b.oroColor;
+      const aro = a => 'aro ' + a.mm + (a.talla.trim() ? ' talla ' + a.talla.trim() : '');
+      b.desc = b.aros.length === 1
+        ? 'Confeccionar ' + aro(b.aros[0]) + ' — ' + oro
+        : 'Confeccionar en ' + oro + ':\n' + b.aros.map(a => '— ' + aro(a)).join('\n');
+    } else if (b.tipo === 'grabado') {
       const gs = b.grabados;
       if (gs.length === 1) {
         const g = gs[0];
@@ -2999,7 +3006,28 @@ Si no es legible responde {"error": "motivo corto"}.`;
 
     const pintarPlantilla = () => {
       const p = $('#rdPlantilla');
-      if (b.tipo === 'grabado') {
+      if (b.tipo === 'confeccion') {
+        p.innerHTML = `<label>Oro</label>
+          <div class="chips chips-mini" id="rdCOro">
+            ${['10K', '14K', '18K'].map(k => `<button type="button" data-v="${k}" class="${b.oroK === k ? 'on' : ''}">${k}</button>`).join('')}
+          </div>
+          <label>Color</label>
+          <div class="chips chips-mini" id="rdCColor">
+            ${[['amarillo', '🟡 amarillo'], ['blanco', '⚪ blanco'], ['rosa', '🌹 rosa']].map(([v, lbl]) => `<button type="button" data-v="${v}" class="${b.oroColor === v ? 'on' : ''}">${lbl}</button>`).join('')}
+          </div>
+          <label>Aros (uno por línea — el duo lleva dos, el trio los que sean)</label>
+          <div id="rdCAros">${b.aros.map((a, i) => `
+            <div class="glinea">
+              <div class="fila" style="gap:8px;align-items:center">
+                <div class="chips chips-mini" style="flex:0 0 auto">
+                  ${['2mm', '4mm'].map(m => `<button type="button" class="rdCMm ${a.mm === m ? 'on' : ''}" data-i="${i}" data-v="${m}">${m}</button>`).join('')}
+                </div>
+                <input type="text" class="rdCTalla" data-i="${i}" placeholder="Talla (ej: 7)" value="${esc(a.talla)}" style="flex:1">
+                ${b.aros.length > 1 ? `<button type="button" class="rdCQuitar" data-i="${i}" title="quitar" style="border:0;background:none;color:var(--red);font-size:17px;cursor:pointer;padding:2px 6px">✕</button>` : ''}
+              </div>
+            </div>`).join('')}</div>
+          <button type="button" class="btn-sm" id="rdCMas" style="margin-top:8px">＋ otro aro (duo/trio)</button>`;
+      } else if (b.tipo === 'grabado') {
         p.innerHTML = `<div id="rdGLineas">${b.grabados.map((g, i) => `
           <div class="glinea">
             <div class="fila" style="gap:8px">
@@ -3036,6 +3064,40 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const alCambiar = () => { b.tocada = false; componerRD(b); $('#rdDesc').value = b.desc; };
       const inp = (sel, campo) => { const el = $(sel); if (el) el.addEventListener('input', () => { b[campo] = el.value; alCambiar(); }); };
       inp('#rdMPiedra', 'mPiedra'); inp('#rdCPiedras', 'cPiedras'); inp('#rdRQue', 'rQue'); inp('#rdWQue', 'wQue');
+      /* confección: oro + color + aros (una línea por aro con su talla) */
+      const chips = (sel, campo) => $$(sel + ' button').forEach(x => x.addEventListener('click', () => {
+        b[campo] = x.dataset.v;
+        $$(sel + ' button').forEach(y => y.classList.toggle('on', y === x));
+        alCambiar();
+      }));
+      chips('#rdCOro', 'oroK');
+      chips('#rdCColor', 'oroColor');
+      const ca = $('#rdCAros');
+      if (ca) {
+        ca.addEventListener('input', e => {
+          if (!e.target.classList.contains('rdCTalla')) return;
+          b.aros[+e.target.dataset.i].talla = e.target.value;
+          alCambiar();
+        });
+        ca.addEventListener('click', e => {
+          const x = e.target.closest('button');
+          if (!x) return;
+          const i = +x.dataset.i;
+          if (x.classList.contains('rdCMm')) b.aros[i].mm = x.dataset.v;
+          else if (x.classList.contains('rdCQuitar')) b.aros.splice(i, 1);
+          else return;
+          pintarPlantilla();
+          alCambiar();
+        });
+        $('#rdCMas').addEventListener('click', () => {
+          /* el duo típico: si el primero es 2mm, el nuevo arranca en 4mm */
+          b.aros.push({ mm: b.aros.some(a => a.mm === '4mm') ? '2mm' : '4mm', talla: '' });
+          pintarPlantilla();
+          alCambiar();
+          const u = $$('#rdCAros .rdCTalla');
+          if (u.length) u[u.length - 1].focus();
+        });
+      }
       $$('#rdMEngaste button').forEach(x => x.addEventListener('click', () => {
         b.mEngaste = x.dataset.v;
         $$('#rdMEngaste button').forEach(y => y.classList.toggle('on', y === x));
@@ -3126,7 +3188,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
           facturaOrden: (b.factura && b.factura.orden) || '',
           facturaCRM: b.factura ? { id: b.factura.id, rotulo: b.factura.rotulo, cliente: b.factura.cliente } : null,
           tipoTrabajo: b.tipo, desc,
-          plantilla: { grabados: b.grabados, mPiedra: b.mPiedra, mEngaste: b.mEngaste, cPiedras: b.cPiedras, rQue: b.rQue, wQue: b.wQue },
+          plantilla: { oroK: b.oroK, oroColor: b.oroColor, aros: b.aros, grabados: b.grabados, mPiedra: b.mPiedra, mEngaste: b.mEngaste, cPiedras: b.cPiedras, rQue: b.rQue, wQue: b.wQue },
           rush: !!b.rush, entrega: b.entrega || '',
           fotos: [],
         };
