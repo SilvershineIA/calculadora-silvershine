@@ -3,7 +3,7 @@
    no hay internet) para que las versiones nuevas entren a la primera; los
    archivos versionados (?v=) van caché-primero; y las APIs (Supabase, IA)
    NO se tocan — siempre van directo a la red, jamás se cachean. */
-const CACHE = 'sscrm-v139';
+const CACHE = 'sscrm-v140';
 const ARCHIVOS = [
   './',
   './index.html',

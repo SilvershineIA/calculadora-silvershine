@@ -3534,8 +3534,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
     }
     if (Nube.conectado()) {
       I18N.setRol(Nube.rol());
-      vista = 'novedades';
-      history.replaceState({ v: 'novedades', l: null, o: null }, '');
+      /* #rd: acceso directo desde el CRM a la pestaña del Taller RD */
+      vista = (location.hash === '#rd' && Nube.rol() === 'jose') ? 'rd' : 'novedades';
+      if (location.hash === '#rd') history.replaceState(null, '', location.pathname);
+      history.replaceState({ v: vista, l: null, o: null, t: null }, '');
       $('#app').innerHTML = `<div class="vacio" style="padding-top:30vh"><span>🧵</span>${T('cargando')}</div>`;
       await cargar();
       if (avisoLink) toast(avisoLink);
