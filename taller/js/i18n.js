@@ -213,7 +213,7 @@ const I18N = (() => {
     env_recibido:   ['📦 Recibido', '📦 Received'],
     env_recibir:    ['📦 Me llegó este envío', '—'],
     env_directo:    ['✈️ Directo al cliente de Etsy', '✈️ Direct to the Etsy customer'],
-    env_balanceHint:['—', 'Ship the remaining pieces first — when everything is on its way, upload the balance invoice here.'],
+    env_balanceHint:['—', 'Tip: the balance invoice usually goes AFTER the last shipment (so it includes all shipping costs) — but you can upload it anytime if agreed with José.'],
     ev_noDisp:      ['Tonglin devolvió una pieza (no disponible)', 'Piece marked not available'],
     ev_ordenEditada:['Orden editada', '⚠ José EDITED an order — please check the changes'],
     ev_cadOmitido:  ['⏭ Tonglin seguirá SIN CAD nuevo (ya lo tienen u otra razón)', 'CAD skipped'],

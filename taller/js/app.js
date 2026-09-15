@@ -848,11 +848,11 @@ const App = (() => {
           html += `<button class="btn rosa" id="btnComprobanteFinal">${T('l_comprobFinal')}</button>`;
         }
       } else if (karen) {
-        /* el balance invoice llega DESPUÉS del último envío (slip shipments):
-           hasta entonces, el botón espera con su pista */
-        html += todoEnviado(l)
-          ? `<button class="btn jade" id="btnSubirFinal">${T('l_subirFinal')}</button>`
-          : `<div class="card"><div class="sub">${T('env_balanceHint')}</div></div>`;
+        /* lo NORMAL es que el balance invoice llegue tras el último envío
+           (slip shipments), pero NUNCA se bloquea — José puede pagar por
+           adelantado o darse cualquier otro arreglo */
+        html += `${!todoEnviado(l) ? `<div class="card"><div class="sub">${T('env_balanceHint')}</div></div>` : ''}
+          <button class="btn jade" id="btnSubirFinal">${T('l_subirFinal')}</button>`;
       } else {
         html += `<div class="card"><div class="sub">🧵 ${T('e_' + (est === 'produccion' ? 'produccion' : est))} · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b></div></div>`;
       }
