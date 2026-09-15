@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-09-15', en: 'Split shipments! Mark SOME pieces as shipment #1 with its tracking, ship the rest later with another tracking — and when everything is on its way, upload the balance invoice (the app asks for it right there). Each shipment shows which pieces it carries.' },
     { f: '2026-08-27', en: 'Design files section on each piece: when the design is finished, attach the 3 files — .3DM, .STL and CAD — each in its own slot (drag & drop works). The app reminds you until all 3 are in, and José gets notified when the set is complete.' },
     { f: '2026-08-27', en: 'Quote corrections: you can upload a CORRECTED PI even after approval (until the deposit) — the old PI is archived and José simply re-approves. José can also withdraw his approval.' },
     { f: '2026-08-27', en: 'Merge batches even when approved (until the deposit): quotes and deposits ADD UP — then just upload your new UNIFIED PI (it replaces the old PDFs) and send ONE payment link for the total.' },
@@ -268,7 +269,9 @@ const App = (() => {
       porPagar: `Hi Julia! About the deposit for batch "${l.nombre}" — please check the app 🧵`,
       produccion: `Hi Julia! Deposit receipt uploaded for batch "${l.nombre}" 💵 The production clock started — please check the app.`,
       final: `Hi Julia! About the final quote for batch "${l.nombre}" — please check the app 🧵`,
-      pagoFinal: `Hi Julia! Final payment receipt uploaded for batch "${l.nombre}" ✅ Please ship and add the tracking number in the app.`,
+      envioParcial: `Hi Julia! About the shipments of batch "${l.nombre}" — please check the app 🧵`,
+      enviadoTodo: `Hi Julia! All pieces of batch "${l.nombre}" are shipped ✈️ Please upload the balance invoice in the app.`,
+      pagoFinal: `Hi Julia! Final payment receipt uploaded for batch "${l.nombre}" ✅`,
       despachado: `Hi Julia! About batch "${l.nombre}" — please check the app 🧵`,
     };
     return M[est] || `Hi Julia! There's news for you in the app 🧵`;
@@ -297,6 +300,8 @@ const App = (() => {
       porPagar: `Hi José! Payment link for batch "${l.nombre}" is attached — waiting for the deposit receipt 💳`,
       final: `Hi José! Final quote and payment link for batch "${l.nombre}" are in the app — waiting for the balance ⚖️`,
       despachado: `Hi José! Batch "${l.nombre}" is shipped ✈️ The tracking number is in the app.`,
+      envioParcial: `Hi José! A shipment of batch "${l.nombre}" is on its way ✈️ Tracking is in the app.`,
+      enviadoTodo: `Hi José! ALL pieces of batch "${l.nombre}" are shipped ✈️ I will upload the balance invoice next.`,
     };
     return M[est] || `Hi José! Please check batch "${l.nombre}" in the app 🧵`;
   }
@@ -343,26 +348,54 @@ const App = (() => {
     }
   }
 
+  /* ═══ ✈️ Envíos parciales (slip shipments de Tonglin): un lote puede
+     despacharse en varios envíos, cada uno con SUS piezas y SU tracking.
+     El balance invoice llega DESPUÉS del último envío (así trabaja
+     Tonglin de verdad). Un lote viejo con l.tracking único se ve como
+     un envío legado de todas las piezas — nada se rompe. ═══ */
+  function enviosDe(l) {
+    if (l.envios && l.envios.length) return l.envios;
+    if (l.tracking) {
+      return [{ n: 1, fecha: l.tracking.fecha, tracking: l.tracking.num,
+        piezas: piezasDe(l.id).map(o => o.id), recibido: l.recibido || null, legacy: true }];
+    }
+    return [];
+  }
+  const idsEnviados = l => new Set(enviosDe(l).flatMap(e => e.piezas || []));
+  function todoEnviado(l) {
+    const ps = piezasDe(l.id);
+    if (!ps.length || !enviosDe(l).length) return false;
+    const env = idsEnviados(l);
+    return ps.every(o => env.has(o.id));
+  }
+  const todoRecibido = l => enviosDe(l).length > 0 && enviosDe(l).every(e => e.recibido || e.directo);
+  const envioDePieza = (l, oid) => enviosDe(l).find(e => (e.piezas || []).includes(oid)) || null;
+
   /* ═══ estado del lote (derivado de lo que existe — auto-reparable) ═══ */
   function estadoLote(l) {
     if (!l.enviado) return 'armando';
     if (!l.cot) return 'enviado';
     if (!l.aprobada) return 'cotizado';
     if (!l.comprobante) return l.linkPago ? 'porPagar' : 'aprobado';
-    if (!l.cotFinal) return 'produccion';
+    /* producción → envíos parciales → todo enviado → balance → saldado → recibido */
+    const envs = enviosDe(l);
+    if (!envs.length && !l.cotFinal) return 'produccion';
+    if (envs.length && !todoEnviado(l)) return 'envioParcial';
+    if (!l.cotFinal) return 'enviadoTodo';
     if (!l.comprobanteFinal) return 'final';
-    if (!l.tracking) return 'pagoFinal';
-    if (!l.recibido) return 'despachado';
+    if (!todoRecibido(l) && !l.recibido) return 'pagoFinal';
     return 'recibido';
   }
-  const ORDEN_ESTADOS = ['armando','enviado','cotizado','aprobado','porPagar','produccion','final','pagoFinal','despachado','recibido'];
+  const ORDEN_ESTADOS = ['armando','enviado','cotizado','aprobado','porPagar','produccion','envioParcial','enviadoTodo','final','pagoFinal','recibido'];
   const BADGE_ESTADO = {
     armando:'b-gris', enviado:'b-rojo', cotizado:'b-rojo', aprobado:'b-rosa', porPagar:'b-rosa',
-    produccion:'b-jade', final:'b-rojo', pagoFinal:'b-rosa', despachado:'b-gris', recibido:'b-verde',
+    produccion:'b-jade', envioParcial:'b-jade', enviadoTodo:'b-rojo', final:'b-rojo', pagoFinal:'b-rosa',
+    despachado:'b-gris', recibido:'b-verde',
   };
   /* a quién le toca el próximo paso */
   const LE_TOCA = { armando:'jose', enviado:'karen', cotizado:'jose', aprobado:'karen', porPagar:'jose',
-    produccion:'karen', final:'jose', pagoFinal:'karen', despachado:'jose', recibido:null };
+    produccion:'karen', envioParcial:'karen', enviadoTodo:'karen', final:'jose', pagoFinal:'jose',
+    despachado:'jose', recibido:null };
 
   const totalCot = l => (l.cot && l.cot.leida && l.cot.leida.total) || 0;
   const totalFinal = l => (l.cotFinal && l.cotFinal.leida && l.cotFinal.leida.total_final) || 0;
@@ -521,7 +554,7 @@ const App = (() => {
         <div class="fila">${meToca ? '<span class="punto-rojo"></span>' : ''}
           <div class="crece">
             <div class="nombre">🗂 ${esc(l.nombre)}${l.refTonglin ? ` <span class="badge b-jade">🏷 ${esc(l.refTonglin)}</span>` : ''}</div>
-            <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${l.comprobante && !l.tracking ? ` · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b>` : ''}</div>
+            <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${l.comprobante && !todoEnviado(l) ? ` · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b>` : ''}</div>
           </div>
           <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span>
         </div>
@@ -614,10 +647,12 @@ const App = (() => {
       ].filter(Boolean).join(' · ');
       const piedra = esc(String(o.stone || '').split('\n')[0].slice(0, 72));
       const costoV = o.cot ? (o.cot.subtotalFinal ?? o.cot.subtotal) : null;
+      const env2 = envioDePieza(l, o.id);
       const linea3 = [
         /* batch propio en jade; sin batch propio hereda el del lote en gris clarito */
         o.batchTonglin ? `<span class="badge b-jade">🏷 ${esc(o.batchTonglin)}</span>`
           : (l.refTonglin ? `<span class="badge b-gris" style="opacity:.6">🏷 ${esc(l.refTonglin)}</span>` : ''),
+        env2 ? `<span class="badge ${env2.recibido || env2.directo ? 'b-verde' : 'b-gris'}">✈️ #${env2.n}</span>` : (l.comprobante ? `<span class="sub">✈️ —</span>` : ''),
         o.target ? '🎯 ' + fmtFecha(o.target) : '',
         costoV != null ? `<span class="money">${fmtUSD(costoV)}</span>` : '',
         cadTxt,
@@ -813,25 +848,40 @@ const App = (() => {
           html += `<button class="btn rosa" id="btnComprobanteFinal">${T('l_comprobFinal')}</button>`;
         }
       } else if (karen) {
-        html += `<button class="btn jade" id="btnSubirFinal">${T('l_subirFinal')}</button>`;
+        /* el balance invoice llega DESPUÉS del último envío (slip shipments):
+           hasta entonces, el botón espera con su pista */
+        html += todoEnviado(l)
+          ? `<button class="btn jade" id="btnSubirFinal">${T('l_subirFinal')}</button>`
+          : `<div class="card"><div class="sub">${T('env_balanceHint')}</div></div>`;
       } else {
-        html += `<div class="card"><div class="sub">🧵 ${T('e_produccion')} · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b></div></div>`;
+        html += `<div class="card"><div class="sub">🧵 ${T('e_' + (est === 'produccion' ? 'produccion' : est))} · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b></div></div>`;
       }
     }
 
-    /* tracking */
-    if (l.comprobanteFinal || l.tracking) {
-      html += `<div class="h-sec">${T('l_tracking')}</div>`;
-      if (l.tracking) {
-        html += `<div class="card"><div class="fila"><div class="crece">
-          <div class="nombre mono">${esc(l.tracking.num)}</div>
-          <div class="sub">${fmtFecha(l.tracking.fecha)}</div></div>
-          <button class="btn-sm" data-copiar="${esc(l.tracking.num)}">${T('copiar')}</button>
-        </div></div>`;
-        if (!karen && !l.recibido) html += `<button class="btn rosa" id="btnRecibido">${T('l_recibido')}</button>`;
-        if (l.recibido) html += `<div class="card"><div class="sub verde"><b>📦 ${fmtFecha(l.recibido)}</b></div></div>`;
-      } else if (karen) {
-        html += `<button class="btn jade" id="btnTracking">${T('l_ponerTracking')}</button>`;
+    /* ✈️ Envíos parciales: cada uno con SUS piezas y SU tracking */
+    if (l.comprobante) {
+      const envs = enviosDe(l);
+      const enviadosSet = idsEnviados(l);
+      const pendientes = piezas.filter(o => !enviadosSet.has(o.id));
+      html += `<div class="h-sec">${T('env_titulo')} · ${piezas.length - pendientes.length}/${piezas.length} ${T('piezas')}</div>`;
+      envs.forEach((e2, i) => {
+        const nombres = (e2.piezas || []).map(id => { const o = doc(id); return o ? nomOrden(o) : ''; }).filter(Boolean);
+        html += `<div class="card">
+          <div class="fila"><div class="crece">
+            <div class="nombre">✈️ #${e2.n} <span class="mono" style="font-size:12.5px">${esc(e2.tracking)}</span></div>
+            <div class="sub">${fmtFecha(e2.fecha)} · ${nombres.map(esc).join(' · ')}</div>
+          </div>
+          <button class="btn-sm" data-copiar="${esc(e2.tracking)}">${T('copiar')}</button></div>
+          ${e2.directo ? `<div class="sub verde" style="margin-top:6px"><b>${T('env_directo')} ✓</b></div>`
+            : e2.recibido ? `<div class="sub verde" style="margin-top:6px"><b>${T('env_recibido')}</b> · ${fmtFecha(e2.recibido)}</div>`
+            : (!karen ? `<button class="btn rosa" data-envrec="${i}" style="margin-top:6px">${T('env_recibir')}</button>` : '')}
+        </div>`;
+      });
+      if (pendientes.length && envs.length) {
+        html += `<div class="card"><div class="sub">${T('env_sinEnviar')} ${pendientes.map(o => esc(nomOrden(o))).join(' · ')}</div></div>`;
+      }
+      if (karen && pendientes.length) {
+        html += `<button class="btn jade" id="btnNuevoEnvio">${T('env_nuevo')}</button>`;
       }
     }
 
@@ -1200,27 +1250,52 @@ const App = (() => {
     };
     zonaArrastre($('#btnComprobanteFinal'), archivos => subirComprobanteFinal(archivos[0]), true);
 
-    on('#btnTracking', () => {
-      abrirModal(T('l_ponerTracking'), `
-        <label>${T('l_tracking')}</label><input id="trkNum" class="mono" autocomplete="off" placeholder="SF…">
-        <button class="btn jade" id="trkOk">${T('guardar')}</button>`);
-      $('#trkOk').addEventListener('click', async () => {
-        const num = $('#trkNum').value.trim();
-        if (!num) return;
-        l.tracking = { num, fecha: hoyISO() };
+    /* ✈️ nuevo envío parcial (Karen): elegir piezas + tracking. Un envío
+       100% de piezas Etsy va directo al cliente y se auto-recibe. */
+    on('#btnNuevoEnvio', () => {
+      const enviadosSet = idsEnviados(l);
+      const pendientes = piezas.filter(o => !enviadosSet.has(o.id));
+      abrirModal(T('env_nuevo'), `
+        ${pendientes.map(o => `
+          <label style="display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px;font-weight:400;color:var(--text)">
+            <input type="checkbox" data-envpz="${o.id}" checked style="width:auto">
+            ${esc(nomOrden(o))}${o.destino === 'etsy' ? ' 🛍' : ''}
+          </label>`).join('')}
+        <label>${T('l_tracking')}</label>
+        <input id="envTrk" class="mono" autocomplete="off" placeholder="SF…">
+        <button class="btn jade" id="envOk">${T('guardar')}</button>`);
+      $('#envOk').addEventListener('click', async () => {
+        const num = $('#envTrk').value.trim();
+        const ids = $$('#modalCuerpo [data-envpz]:checked').map(x => x.dataset.envpz);
+        if (!num || !ids.length) { toast('⚠'); return; }
+        l.envios = l.envios || [];
+        const directo = ids.every(id => { const o = doc(id); return o && o.destino === 'etsy'; });
+        l.envios.push({ n: l.envios.length + 1, fecha: hoyISO(), tracking: num, piezas: ids, directo });
         await guardarDoc(l);
-        await avisar('tracking', `${l.nombre} · ${num}`, l.id);
+        const nombres = ids.map(id => { const o = doc(id); return o ? (o.numero ? '#' + o.numero : o.nombre) : ''; }).filter(Boolean).join(', ');
+        const completo = todoEnviado(l);
+        await avisar(completo ? 'envioCompleto' : 'envioParcial',
+          `${l.nombre} · #${l.envios.length} (${ids.length}) ${nombres} · ${num}`, l.id);
         cerrarModal();
+        toast(`✈️ #${l.envios.length} ✓${completo ? ' 🎉' : ''}`);
         render();
       });
     });
 
-    on('#btnRecibido', async () => {
-      l.recibido = hoyISO();
+    /* 📦 José recibe UN envío; los legados marcan el lote completo */
+    $$('#cuerpo [data-envrec]').forEach(b => b.addEventListener('click', async () => {
+      const i = Number(b.dataset.envrec);
+      const envs = enviosDe(l);
+      if (envs[i] && envs[i].legacy) {
+        l.recibido = hoyISO();
+      } else if (l.envios && l.envios[i]) {
+        l.envios[i].recibido = hoyISO();
+      }
       await guardarDoc(l);
+      await avisar('envioRecibido', `${l.nombre} · #${(envs[i] || {}).n || i + 1}`, l.id);
       toast('📦 ✓');
       render();
-    });
+    }));
   }
 
   function modalLinkPago(l, campo, clave) {
@@ -2348,7 +2423,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const dep = Number(le.deposit) || (Number(le.total) || 0) / 2;
       let v = 0, nota = '';
       if (est === 'aprobado' || est === 'porPagar') { v = dep; nota = 'depósito pendiente'; }
-      else if (est === 'produccion') { v = Math.max((Number(le.total) || 0) - dep, 0); nota = 'balance estimado (falta el peso real)'; }
+      else if (est === 'produccion' || est === 'envioParcial' || est === 'enviadoTodo') { v = Math.max((Number(le.total) || 0) - dep, 0); nota = 'balance estimado (falta el balance invoice)'; }
       else if (est === 'final') {
         const lf = (l.cotFinal && l.cotFinal.leida) || {};
         v = Number(lf.balance_due) || Math.max((Number(lf.total_final) || 0) + (Number(lf.shipping) || 0) - dep, 0);
