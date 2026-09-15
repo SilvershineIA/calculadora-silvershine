@@ -2931,7 +2931,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
   let fotosRDNueva = [];   // blobs de fotos de referencia pendientes de subir
   const RD_BORRADOR0 = () => ({
     factura: null, tipo: 'confeccion',
-    oroK: '14K', oroColor: 'amarillo', aros: [{ mm: '2mm', talla: '' }],
+    oroK: '14K', oroColor: 'amarillo', aros: [{ mm: '2mm', talla: '', grab: '' }],
     grabados: [{ pieza: '', txt: '', estilo: 'normal' }],
     mPiedra: '', mEngaste: '4 uñas', cPiedras: '', rQue: '', wQue: '',
     desc: '', tocada: false, rush: false, entrega: '',
@@ -2941,10 +2941,11 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (b.tocada) return;   // José la retocó a mano: no se la pisamos
     if (b.tipo === 'confeccion') {
       const oro = 'oro ' + b.oroK + ' ' + b.oroColor;
-      const aro = a => 'aro ' + a.mm + (a.talla.trim() ? ' talla ' + a.talla.trim() : '');
+      const base = a => (a.mm === 'solitario' ? 'solitario' : 'aro ' + a.mm) + (a.talla.trim() ? ' talla ' + a.talla.trim() : '');
+      const grab = a => (a.grab || '').trim() ? ' — grabar «' + a.grab.trim() + '»' : '';
       b.desc = b.aros.length === 1
-        ? 'Confeccionar ' + aro(b.aros[0]) + ' — ' + oro
-        : 'Confeccionar en ' + oro + ':\n' + b.aros.map(a => '— ' + aro(a)).join('\n');
+        ? 'Confeccionar ' + base(b.aros[0]) + ' — ' + oro + grab(b.aros[0])
+        : 'Confeccionar en ' + oro + ':\n' + b.aros.map(a => '— ' + base(a) + grab(a)).join('\n');
     } else if (b.tipo === 'grabado') {
       const gs = b.grabados;
       if (gs.length === 1) {
@@ -3015,18 +3016,22 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <div class="chips chips-mini" id="rdCColor">
             ${[['amarillo', '🟡 amarillo'], ['blanco', '⚪ blanco'], ['rosa', '🌹 rosa']].map(([v, lbl]) => `<button type="button" data-v="${v}" class="${b.oroColor === v ? 'on' : ''}">${lbl}</button>`).join('')}
           </div>
-          <label>Aros (uno por línea — el duo lleva dos, el trio los que sean)</label>
+          <label>Piezas (una por línea — cada una con su talla y su grabado si lleva)</label>
           <div id="rdCAros">${b.aros.map((a, i) => `
             <div class="glinea">
               <div class="fila" style="gap:8px;align-items:center">
                 <div class="chips chips-mini" style="flex:0 0 auto">
-                  ${['2mm', '4mm'].map(m => `<button type="button" class="rdCMm ${a.mm === m ? 'on' : ''}" data-i="${i}" data-v="${m}">${m}</button>`).join('')}
+                  ${['2mm', '4mm', 'solitario'].map(m => `<button type="button" class="rdCMm ${a.mm === m ? 'on' : ''}" data-i="${i}" data-v="${m}">${m === 'solitario' ? '💍 solitario' : m}</button>`).join('')}
                 </div>
-                <input type="text" class="rdCTalla" data-i="${i}" placeholder="Talla (ej: 7)" value="${esc(a.talla)}" style="flex:1">
+                <input type="text" class="rdCTalla" data-i="${i}" placeholder="Talla (ej: 7)" value="${esc(a.talla)}" style="flex:1;min-width:90px">
                 ${b.aros.length > 1 ? `<button type="button" class="rdCQuitar" data-i="${i}" title="quitar" style="border:0;background:none;color:var(--red);font-size:17px;cursor:pointer;padding:2px 6px">✕</button>` : ''}
               </div>
+              <input type="text" class="rdCGrab" data-i="${i}" placeholder="✍️ Grabado de esta pieza (opcional)" value="${esc(a.grab || '')}" style="margin-top:6px;font-size:12.5px">
             </div>`).join('')}</div>
-          <button type="button" class="btn-sm" id="rdCMas" style="margin-top:8px">＋ otro aro (duo/trio)</button>`;
+          <div class="fila" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+            <button type="button" class="btn-sm" id="rdCMas">＋ otra pieza</button>
+            <button type="button" class="btn-sm" id="rdCTrio">💍 armar el trio (solitario + 2mm + 4mm)</button>
+          </div>`;
       } else if (b.tipo === 'grabado') {
         p.innerHTML = `<div id="rdGLineas">${b.grabados.map((g, i) => `
           <div class="glinea">
@@ -3075,8 +3080,10 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const ca = $('#rdCAros');
       if (ca) {
         ca.addEventListener('input', e => {
-          if (!e.target.classList.contains('rdCTalla')) return;
-          b.aros[+e.target.dataset.i].talla = e.target.value;
+          const i = +e.target.dataset.i;
+          if (e.target.classList.contains('rdCTalla')) b.aros[i].talla = e.target.value;
+          else if (e.target.classList.contains('rdCGrab')) b.aros[i].grab = e.target.value;
+          else return;
           alCambiar();
         });
         ca.addEventListener('click', e => {
@@ -3091,11 +3098,23 @@ Si no es legible responde {"error": "motivo corto"}.`;
         });
         $('#rdCMas').addEventListener('click', () => {
           /* el duo típico: si el primero es 2mm, el nuevo arranca en 4mm */
-          b.aros.push({ mm: b.aros.some(a => a.mm === '4mm') ? '2mm' : '4mm', talla: '' });
+          b.aros.push({ mm: b.aros.some(a => a.mm === '4mm') ? '2mm' : '4mm', talla: '', grab: '' });
           pintarPlantilla();
           alCambiar();
           const u = $$('#rdCAros .rdCTalla');
           if (u.length) u[u.length - 1].focus();
+        });
+        /* 💍 el trio de un toque: solitario + 2mm + 4mm (tallas por poner) */
+        $('#rdCTrio').addEventListener('click', () => {
+          b.aros = [
+            { mm: 'solitario', talla: '', grab: '' },
+            { mm: '2mm', talla: '', grab: '' },
+            { mm: '4mm', talla: '', grab: '' },
+          ];
+          pintarPlantilla();
+          alCambiar();
+          const u = $$('#rdCAros .rdCTalla');
+          if (u.length) u[0].focus();
         });
       }
       $$('#rdMEngaste button').forEach(x => x.addEventListener('click', () => {
