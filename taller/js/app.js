@@ -245,6 +245,35 @@ const App = (() => {
   const sueltas = () => ordenes().filter(o => !o.loteId)
     .sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
 
+  /* ═══ 🔨 Taller RD (Rubén): trabajos locales en RD$ ═══ */
+  const trabajosRD = () => docs.filter(d => d.tipo === 'trd');
+  const pagosRD = () => docs.filter(d => d.tipo === 'pagoRD')
+    .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  const fmtRD = v => 'RD$ ' + Number(v || 0).toLocaleString('es-DO', { maximumFractionDigits: 2 });
+  /* numeración #[factura CRM]-[secuencial del taller] — sin factura, solo el secuencial */
+  const numTrd = t => '#' + (t.facturaOrden ? t.facturaOrden + '-' : '') + t.sec;
+  const secSiguienteRD = () => Math.max(383, ...trabajosRD().map(t => Number(t.sec) || 0)) + 1;
+  const TIPOS_RD = { grabado: 'Grabado', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
+  /* estado derivado del trabajo (auto-reparable, como los lotes) */
+  function estadoTrd(t) {
+    if (t.pagado) return 'pagado';
+    if (t.enviado) return 'enviadoRD';
+    if (t.recibido) return 'enTaller';
+    return 'porRecibir';
+  }
+  const TRD_BADGE = {
+    porRecibir: ['b-rojo', '📥 Sin recibir'],
+    enTaller: ['b-azul', '🔨 En el taller'],
+    enviadoRD: ['b-rosa', '✅ Enviado — por pagar'],
+    pagado: ['b-verde', '💵 Pagado'],
+  };
+  /* la deuda con Rubén nace al marcar ✅ Enviado y muere al pagar */
+  const deudaRD = () => trabajosRD().filter(t => t.enviado && !t.pagado);
+  /* aviso a José (Rubén no tiene pestaña de novedades — su lista ES la novedad) */
+  async function avisarRD(clave, ctx, trdId) {
+    await guardarDoc({ id: uid('ev'), tipo: 'ev', para: 'jose', clave, ctx: ctx || '', trdId: trdId || null, fecha: new Date().toISOString(), visto: false });
+  }
+
   /* El nombre visible de una orden SIEMPRE arranca por su número (si lo
      tiene) — es el hilo que la une con la factura del CRM y con el PI
      de Tonglin, que también escribe "order 1882" en sus filas */
@@ -328,7 +357,7 @@ const App = (() => {
          datos frescos esperan al próximo movimiento */
       const a = document.activeElement;
       const escribiendo = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-      if (silencioso && (vista === 'nueva' || escribiendo || $('#modalFondo'))) { /* nada */ }
+      if (silencioso && (vista === 'nueva' || vista === 'rdNueva' || escribiendo || $('#modalFondo'))) { /* nada */ }
       else render();
     } catch (e) {
       const msj = String(e.message || e);
@@ -401,17 +430,19 @@ const App = (() => {
   const totalFinal = l => (l.cotFinal && l.cotFinal.leida && l.cotFinal.leida.total_final) || 0;
 
   /* ═══ navegación ═══ */
-  let vista = 'novedades';           // novedades · lotes · nueva · ajustes · login
+  let vista = 'novedades';           // novedades · lotes · nueva · rd · ajustes · login…
   let loteAbierto = null;
   let ordenAbierta = null;
+  let trdAbierto = null;             // trabajo del Taller RD abierto
 
   function nav(v) {
     vista = v;
     if (v !== 'lote') loteAbierto = null;
     if (v !== 'orden') ordenAbierta = null;
+    if (v !== 'rdTrabajo') trdAbierto = null;
     /* historial del navegador: el botón ATRÁS del teléfono retrocede de
        pantalla en pantalla en vez de cerrar la app */
-    history.pushState({ v: vista, l: loteAbierto, o: ordenAbierta }, '');
+    history.pushState({ v: vista, l: loteAbierto, o: ordenAbierta, t: trdAbierto }, '');
     render();
     window.scrollTo(0, 0);
   }
@@ -420,7 +451,7 @@ const App = (() => {
     /* atrás con un modal abierto: primero se cierra el modal */
     if ($('#modalFondo')) {
       cerrarModal();
-      history.pushState({ v: vista, l: loteAbierto, o: ordenAbierta }, '');
+      history.pushState({ v: vista, l: loteAbierto, o: ordenAbierta, t: trdAbierto }, '');
       return;
     }
     const s = e.state;
@@ -428,11 +459,13 @@ const App = (() => {
     vista = s.v;
     loteAbierto = s.l || null;
     ordenAbierta = s.o || null;
+    trdAbierto = s.t || null;
     render();
     window.scrollTo(0, 0);
   });
 
   function render() {
+    if (vista !== 'login' && Nube.rol() === 'rd') { renderRD(); return; }
     const karen = I18N.esKaren();
     document.body.className = karen ? 'rol-taller' : 'rol-jose';
     const app = $('#app');
@@ -442,8 +475,9 @@ const App = (() => {
     const sinVer = eventos().filter(e => e.para === (karen ? 'karen' : 'jose') && !e.visto).length;
     const tabs = karen
       ? [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['ajustes','⚙️',T('ajustes')]]
-      : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['historial','📚','Historial'],['ajustes','⚙️',T('ajustes')]];
-    const tabOn = (vista === 'lote' || vista === 'orden') ? 'lotes' : vista;
+      : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['rd','🔨','Taller RD'],['historial','📚','Hist.'],['ajustes','⚙️',T('ajustes')]];
+    const tabOn = (vista === 'lote' || vista === 'orden') ? 'lotes'
+      : ['rdNueva', 'rdPagar', 'rdTrabajo'].includes(vista) ? 'rd' : vista;
 
     app.innerHTML = `
       <div class="topbar">
@@ -467,6 +501,10 @@ const App = (() => {
     else if (vista === 'lote') vLote(c);
     else if (vista === 'orden') vOrden(c);
     else if (vista === 'nueva') vNueva(c);
+    else if (vista === 'rd') vRD(c);
+    else if (vista === 'rdNueva') vRDNueva(c);
+    else if (vista === 'rdPagar') vRDPagar(c);
+    else if (vista === 'rdTrabajo') vRDTrabajo(c);
     else if (vista === 'historial') vHistorial(c);
     else if (vista === 'ajustes') vAjustes(c);
   }
@@ -539,6 +577,7 @@ const App = (() => {
       const e = doc(el.dataset.ev);
       if (e && !e.visto) { e.visto = true; guardarDoc(e); }
       if (e && e.loteId && doc(e.loteId)) { loteAbierto = e.loteId; ordenAbierta = e.ordenId || null; nav(e.ordenId && doc(e.ordenId) ? 'orden' : 'lote'); }
+      else if (e && e.trdId && doc(e.trdId)) { trdAbierto = e.trdId; nav('rdTrabajo'); }
       else render();
     }));
   }
@@ -2627,6 +2666,22 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <button class="btn ghost" id="ajCopiar">${T('copiar')}</button>
         </div>
       </div>
+      <div class="h-sec">🔗 Link para Rubén (Taller RD)</div>
+      <div class="card">
+        <p class="sub">El lado de Rubén: en español y en azul, con SOLO sus trabajos y sus cuentas — nunca ve nombres de clientes. Pega un link que YA FUNCIONA (el de Julia) y se clona con las mismas credenciales, o escribe email y clave del usuario del taller.</p>
+        <label>⭐ Link que ya funciona (recomendado)</label>
+        <input id="ajRdBase" autocomplete="off" placeholder="https://…/taller/#k=…">
+        <div class="dos">
+          <div><label>Email</label><input id="ajRdEmail" autocomplete="off" placeholder="taller@silvershine.com.do"></div>
+          <div><label>Password</label><input id="ajRdPass" autocomplete="off"></div>
+        </div>
+        <label>Nombre de quien usará este link</label><input id="ajRdNombre" autocomplete="off" value="Rubén">
+        <button class="btn rosa" id="ajRdGenerar">Generar link de Rubén</button>
+        <div id="ajRdLink" style="display:none">
+          <label>Link</label><textarea id="ajRdLinkTxt" readonly style="min-height:90px;font-size:12px"></textarea>
+          <button class="btn ghost" id="ajRdCopiar">${T('copiar')}</button>
+        </div>
+      </div>
       ${(() => {
         const sugs = docs.filter(d => d.tipo === 'sug')
           .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
@@ -2678,7 +2733,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const n = $('#ajKNombre').value.trim() || 'Julia';
       const base = $('#ajLinkBase').value.trim();
       if (base) {
-        const clon = Nube.renombrarLink(base, n);
+        const clon = Nube.renombrarLink(base, n, 'taller');
         if (!clon) { toast('⚠ Ese link no se pudo leer — pega el link COMPLETO (con el #k=…)'); return; }
         $('#ajLinkTxt').value = clon;
         $('#ajLink').style.display = 'block';
@@ -2691,6 +2746,26 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
     $('#ajCopiar').addEventListener('click', () => {
       navigator.clipboard.writeText($('#ajLinkTxt').value);
+      toast(T('copiado'));
+    });
+    /* 🔨 link de Rubén: mismas credenciales del taller + rol 'rd' */
+    $('#ajRdGenerar').addEventListener('click', () => {
+      const n = $('#ajRdNombre').value.trim() || 'Rubén';
+      const base = $('#ajRdBase').value.trim();
+      if (base) {
+        const clon = Nube.renombrarLink(base, n, 'rd');
+        if (!clon) { toast('⚠ Ese link no se pudo leer — pega el link COMPLETO (con el #k=…)'); return; }
+        $('#ajRdLinkTxt').value = clon;
+        $('#ajRdLink').style.display = 'block';
+        return;
+      }
+      const e = $('#ajRdEmail').value.trim(), p = $('#ajRdPass').value.trim();
+      if (!e || !p) return;
+      $('#ajRdLinkTxt').value = Nube.armarLink(e, p, n, 'rd');
+      $('#ajRdLink').style.display = 'block';
+    });
+    $('#ajRdCopiar').addEventListener('click', () => {
+      navigator.clipboard.writeText($('#ajRdLinkTxt').value);
       toast(T('copiado'));
     });
     $('#ajWaOk').addEventListener('click', async () => {
@@ -2712,6 +2787,616 @@ Si no es legible responde {"error": "motivo corto"}.`;
     });
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     🔨 TALLER RD — el módulo de Rubén (taller local, RD$).
+     José crea las órdenes con plantillas que ARMAN la descripción
+     (grabado con varias líneas por pieza, montura, cambiar piedras,
+     reparación, 🛡️ garantía, otro); Rubén ve una lista simple con
+     DOS botones (📥 Lo recibí / ✅ Enviado), pone SU valor al enviar
+     (editable si se equivoca) y la deuda nace ahí; José paga VARIAS
+     de un tirón y el valor se SUMA al costo de la factura del CRM —
+     salvo 🛡️ Garantía, que queda solo en la cuenta con Rubén.
+     Rubén NUNCA ve nombres de clientes. ═══ */
+
+  /* ── José: tablero del Taller RD ── */
+  function vRD(c) {
+    const ts = trabajosRD();
+    const activos = ts.filter(t => !(t.pagado && t.llegoDeVuelta))
+      .sort((a, b) => (b.rush ? 1 : 0) - (a.rush ? 1 : 0) ||
+        String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')) ||
+        (b.creado || '').localeCompare(a.creado || ''));
+    const listos = ts.filter(t => t.pagado && t.llegoDeVuelta)
+      .sort((a, b) => ((b.pagado || {}).fecha || '').localeCompare((a.pagado || {}).fecha || ''));
+    const deuda = deudaRD();
+    const totalDeuda = deuda.reduce((s, t) => s + (Number(t.valor) || 0), 0);
+
+    let html = `<div class="h-sec">🔨 Taller RD — Rubén</div>
+      <div class="card"><div class="fila"><div class="crece">
+        <div class="nombre">💵 Le debes a Rubén</div>
+        <div class="sub">${deuda.length ? `${deuda.length} trabajo${deuda.length === 1 ? '' : 's'} enviado${deuda.length === 1 ? '' : 's'} sin pagar` : 'Nada pendiente ✓'}</div>
+      </div><span class="money ${totalDeuda ? 'rojo' : 'verde'}">${fmtRD(totalDeuda)}</span></div></div>
+      <button class="btn rosa" id="btnRdNueva">＋ Nueva orden para Rubén</button>
+      ${deuda.length ? `<button class="btn ghost" id="btnRdPagar">💵 Pagar a Rubén — marcar órdenes</button>` : ''}
+      <div class="h-sec">En el taller (${activos.length})</div>`;
+    html += activos.map(filaTrd).join('') || `<div class="vacio"><span>🔨</span>Sin trabajos — crea el primero con ＋.</div>`;
+    if (listos.length) {
+      html += `<div class="h-sec">Terminados (${listos.length})</div>` + listos.slice(0, 8).map(filaTrd).join('');
+    }
+    c.innerHTML = html;
+    pintarImagenes(c);
+    $$('#cuerpo [data-trd]').forEach(el => el.addEventListener('click', () => { trdAbierto = el.dataset.trd; nav('rdTrabajo'); }));
+    $('#btnRdNueva').addEventListener('click', () => nav('rdNueva'));
+    const bp = $('#btnRdPagar');
+    if (bp) bp.addEventListener('click', () => nav('rdPagar'));
+  }
+
+  function filaTrd(t) {
+    const est = estadoTrd(t);
+    const [bcl, btx] = TRD_BADGE[est];
+    const foto = (t.fotos || [])[0];
+    return `<div class="card click ${t.rush && est !== 'pagado' ? 'rush' : ''}" data-trd="${t.id}">
+      <div class="fila">
+        ${foto ? `<img data-path="${foto.path}" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:9px;border:1px solid var(--border);flex:0 0 auto">` : ''}
+        <div class="crece">
+          <div class="nombre">${numTrd(t)}${t.rush ? ' <span class="badge b-rush">🔴 RUSH</span>' : ''}</div>
+          <div class="sub"><b>${TIPOS_RD[t.tipoTrabajo] || ''}</b>${t.facturaCRM ? ` · ${esc(t.facturaCRM.cliente || '')}` : ''}</div>
+          <div class="sub">✍️ ${esc(String(t.desc || '').split('\n')[0].slice(0, 70))}</div>
+          <div class="sub">${[t.entrega ? `🎯 ${fmtFecha(t.entrega)}` : '', t.valor != null ? `<span class="money">${fmtRD(t.valor)}</span>` : '', t.llegoDeVuelta ? '📦 de vuelta ✓' : ''].filter(Boolean).join(' · ')}</div>
+        </div>
+        <span class="badge ${bcl}">${btx}</span>
+      </div>
+    </div>`;
+  }
+
+  /* ── José: ficha de un trabajo ── */
+  function vRDTrabajo(c) {
+    const t = doc(trdAbierto);
+    if (!t) { nav('rd'); return; }
+    const est = estadoTrd(t);
+    const [bcl, btx] = TRD_BADGE[est];
+    let html = `
+      <button class="btn-sm" id="btnVolver">‹ Volver</button>
+      <div class="h-sec">${numTrd(t)} · <span class="badge ${bcl}">${btx}</span>${t.rush ? ' <span class="badge b-rush">🔴 RUSH</span>' : ''}</div>
+      <div class="card ${t.rush && est !== 'pagado' ? 'rush' : ''}">
+        <div class="sub"><b>${TIPOS_RD[t.tipoTrabajo] || ''}</b>${t.entrega ? ` · 🎯 Entrega prometida: <b>${fmtFecha(t.entrega)}</b>` : ''}</div>
+        <div style="font-size:14.5px;margin-top:6px;white-space:pre-wrap">${esc(t.desc || '')}</div>
+        ${(t.fotos || []).length ? `<div class="galeria">${t.fotos.map(f => `<img data-path="${f.path}" alt="">`).join('')}</div>` : ''}
+      </div>`;
+    if (t.facturaCRM) {
+      html += `<div class="card"><div class="sub">🧾 Factura del CRM: <b>${esc(t.facturaCRM.cliente || '')}</b> ${esc(t.facturaCRM.rotulo || '')}</div>
+        ${t.tipoTrabajo === 'garantia'
+          ? `<div class="sub" style="margin-top:4px">🛡️ Garantía: lo que cobre Rubén queda SOLO en su cuenta — NO toca el costo de la factura.</div>`
+          : t.costoAplicado
+            ? `<div class="sub verde" style="margin-top:4px">💵 ${fmtRD(t.costoAplicado.rd)} SUMADO al costo de la factura · ${fmtFecha(t.costoAplicado.fecha)}</div>`
+            : `<div class="sub" style="margin-top:4px">Al pagarle a Rubén, su valor se SUMARÁ al costo de esta factura.</div>`}
+      </div>`;
+    }
+    html += `<div class="card"><table class="qt">
+      <tr><td>Creado</td><td class="mono">${fmtFecha(t.creado)}</td></tr>
+      <tr><td>📥 Rubén lo recibió</td><td class="mono">${t.recibido ? fmtFecha(t.recibido) : '—'}</td></tr>
+      <tr><td>✅ Rubén lo envió</td><td class="mono">${t.enviado ? fmtFecha(t.enviado) : '—'}</td></tr>
+      ${t.valor != null ? `<tr class="total"><td>Valor de Rubén</td><td class="money">${fmtRD(t.valor)}</td></tr>` : ''}
+      ${(t.correcciones || []).map(x => `<tr><td>✏️ corrigió</td><td class="mono">${fmtRD(x.antes)} → ${fmtRD(x.ahora)} · ${fmtFecha(x.fecha)}</td></tr>`).join('')}
+      <tr><td>💵 Pagado</td><td class="mono">${t.pagado ? fmtFecha(t.pagado.fecha) : '—'}</td></tr>
+      <tr><td>📦 Me llegó de vuelta</td><td class="mono">${t.llegoDeVuelta ? fmtFecha(t.llegoDeVuelta) : '—'}</td></tr>
+    </table></div>`;
+    if (t.enviado && !t.llegoDeVuelta) html += `<button class="btn rosa" id="btnRdVuelta">📦 Me llegó de vuelta</button>`;
+    if (t.enviado && !t.pagado) html += `<button class="btn ghost" id="btnRdIrPagar">💵 Pagar a Rubén…</button>`;
+    if (!t.enviado) html += `<button class="btn ghost" id="btnRdEditar">✏️ Editar (descripción, RUSH, entrega)</button>`;
+    if (!t.recibido) html += `<button class="btn peligro" id="btnRdBorrar">🗑 ${T('eliminar')}</button>`;
+    html += `<button class="btn ghost" id="btnRdAtras">${T('volverAtras')}</button>`;
+    c.innerHTML = html;
+    pintarImagenes(c);
+    $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verImagen(img.dataset.path)));
+    $('#btnVolver').addEventListener('click', () => nav('rd'));
+    const on = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
+    on('#btnRdAtras', () => history.back());
+    on('#btnRdVuelta', async () => { t.llegoDeVuelta = hoyISO(); await guardarDoc(t); toast('📦 ✓'); render(); });
+    on('#btnRdIrPagar', () => nav('rdPagar'));
+    on('#btnRdBorrar', async () => {
+      if (!confirm(T('confirmar'))) return;
+      docs = docs.filter(d => d.id !== t.id);
+      await Nube.borrarDoc(t.id);
+      nav('rd');
+    });
+    on('#btnRdEditar', () => {
+      abrirModal('✏️ ' + numTrd(t), `
+        <label>✍️ Descripción para Rubén</label><textarea id="reDesc" style="min-height:90px">${esc(t.desc || '')}</textarea>
+        <div class="fila" style="gap:10px;align-items:flex-end">
+          <button type="button" class="btn ghost" id="reRush" style="margin-top:0;flex:1;border-color:var(--red);font-weight:700;color:${t.rush ? '#fff' : 'var(--red)'};background:${t.rush ? 'var(--red)' : 'none'}">🔴 RUSH</button>
+          <div style="flex:1.3"><label style="margin-top:0">🎯 Entrega prometida</label><input id="reEntrega" type="date" value="${esc(t.entrega || '')}"></div>
+        </div>
+        <button class="btn rosa" id="reOk">${T('guardar')}</button>`);
+      let rushOn = !!t.rush;
+      $('#reRush').addEventListener('click', () => {
+        rushOn = !rushOn;
+        $('#reRush').style.background = rushOn ? 'var(--red)' : 'none';
+        $('#reRush').style.color = rushOn ? '#fff' : 'var(--red)';
+      });
+      $('#reOk').addEventListener('click', async () => {
+        t.desc = $('#reDesc').value.trim();
+        t.rush = rushOn;
+        t.entrega = $('#reEntrega').value || '';
+        await guardarDoc(t);
+        cerrarModal();
+        toast('✏️ ✓');
+        render();
+      });
+    });
+  }
+
+  /* ── José: nueva orden para Rubén, con plantillas VIVAS que arman
+     la ✍️ descripción (retocable a mano — no se pisa lo escrito) ── */
+  let borradorRD = null;   // el formulario sobrevive cambios de pestaña y refrescos
+  let fotosRDNueva = [];   // blobs de fotos de referencia pendientes de subir
+  const RD_BORRADOR0 = () => ({
+    factura: null, tipo: 'grabado',
+    grabados: [{ pieza: '', txt: '', estilo: 'normal' }],
+    mPiedra: '', mEngaste: '4 uñas', cPiedras: '', rQue: '', wQue: '',
+    desc: '', tocada: false, rush: false, entrega: '',
+  });
+
+  function componerRD(b) {
+    if (b.tocada) return;   // José la retocó a mano: no se la pisamos
+    if (b.tipo === 'grabado') {
+      const gs = b.grabados;
+      if (gs.length === 1) {
+        const g = gs[0];
+        b.desc = (g.txt.trim() || g.pieza.trim())
+          ? 'Grabar ' + (g.pieza.trim() ? 'en ' + g.pieza.trim() + ' ' : '') + '«' + (g.txt.trim() || '…') + '» — grabado ' + g.estilo
+          : '';
+      } else {
+        /* varios grabados (duo 2mm/4mm, trio): una línea por pieza */
+        b.desc = 'Grabar:\n' + gs.map((g, i) => '— ' + (g.pieza.trim() || 'pieza ' + (i + 1)) + ': «' + (g.txt.trim() || '…') + '» (' + g.estilo + ')').join('\n');
+      }
+    } else if (b.tipo === 'montura') {
+      b.desc = b.mPiedra.trim() ? 'Montar ' + b.mPiedra.trim() + ' — engaste de ' + b.mEngaste : '';
+    } else if (b.tipo === 'cambiar') {
+      b.desc = b.cPiedras.trim() ? 'Cambiar piedras: ' + b.cPiedras.trim() : '';
+    } else if (b.tipo === 'reparacion') {
+      b.desc = b.rQue.trim() ? 'Reparar: ' + b.rQue.trim() : '';
+    } else if (b.tipo === 'garantia') {
+      b.desc = b.wQue.trim() ? '🛡️ GARANTÍA (defecto de fábrica): ' + b.wQue.trim() : '';
+    }
+    /* 'otro': la descripción es libre, no se toca */
+  }
+
+  function vRDNueva(c) {
+    if (!borradorRD) borradorRD = RD_BORRADOR0();
+    const b = borradorRD;
+    const sec = secSiguienteRD();
+    c.innerHTML = `
+      <div class="h-sec">＋ Nueva orden para Rubén</div>
+      <div class="card" id="rdForm">
+        <label>🧾 Factura del CRM (opcional — al pagar, el valor de Rubén se SUMA a su costo)</label>
+        ${b.factura
+          ? `<div class="fila" style="gap:8px">
+              <input value="🧾 ${esc(b.factura.cliente || '')} ${esc(b.factura.rotulo || '')}" readonly style="flex:1">
+              <button type="button" class="btn-sm" id="rdFacX" style="flex:0 0 auto;color:var(--red)">✕</button>
+            </div>`
+          : `<button type="button" class="btn ghost" id="rdFacBuscar" style="margin-top:0">🔍 Buscar la factura…</button>`}
+        <div class="sub" style="margin-top:6px">Nº asignado: <b class="money">${b.factura && b.factura.orden ? '#' + esc(b.factura.orden) + '-' + sec : '#' + sec}</b> <span class="sub">(secuencial del taller: ${sec} — sigue solo)</span></div>
+
+        <label>🔨 Tipo de trabajo</label>
+        <div class="chips" id="rdTipos">
+          ${Object.entries(TIPOS_RD).map(([k, lbl]) => `<button type="button" data-t="${k}" class="${b.tipo === k ? 'on' : ''}">${lbl}</button>`).join('')}
+        </div>
+        <div id="rdPlantilla"></div>
+
+        <label>✍️ Descripción para Rubén <span style="font-weight:400">(se arma sola — puedes retocarla)</span></label>
+        <textarea id="rdDesc" style="min-height:70px" placeholder="Describe el trabajo…">${esc(b.desc)}</textarea>
+
+        <label>📷 Fotos de referencia (opcional — Rubén solo mira; arrastra o toca ＋)</label>
+        <div class="galeria" id="rdFotos"><button type="button" class="mas" id="rdFotosMas">＋</button></div>
+
+        <div class="fila" style="gap:10px;align-items:flex-end;margin-top:10px">
+          <button type="button" class="btn ghost" id="rdRush" style="margin-top:0;flex:1;border-color:var(--red);font-weight:700;color:${b.rush ? '#fff' : 'var(--red)'};background:${b.rush ? 'var(--red)' : 'none'}">🔴 RUSH</button>
+          <div style="flex:1.3"><label style="margin-top:0">🎯 Entrega prometida</label><input id="rdEntrega" type="date" value="${esc(b.entrega)}"></div>
+        </div>
+        <button class="btn rosa" id="rdGuardar">Guardar — le aparece a Rubén al instante</button>
+        <button class="btn ghost" id="rdCancelar">‹ Volver</button>
+      </div>`;
+
+    const pintarPlantilla = () => {
+      const p = $('#rdPlantilla');
+      if (b.tipo === 'grabado') {
+        p.innerHTML = `<div id="rdGLineas">${b.grabados.map((g, i) => `
+          <div class="glinea">
+            <div class="fila" style="gap:8px">
+              <input type="text" class="rdGPieza" data-i="${i}" placeholder="¿en cuál pieza? (opcional — ej: 2mm, el suyo)" value="${esc(g.pieza)}" style="flex:1;font-size:12.5px">
+              ${b.grabados.length > 1 ? `<button type="button" class="rdGQuitar" data-i="${i}" title="quitar" style="border:0;background:none;color:var(--red);font-size:17px;cursor:pointer;padding:2px 6px">✕</button>` : ''}
+            </div>
+            <input type="text" class="rdGTxt" data-i="${i}" placeholder="Texto a grabar" value="${esc(g.txt)}" style="margin-top:6px">
+            <div class="chips chips-mini" style="margin-top:6px">
+              <button type="button" class="rdGEstilo ${g.estilo === 'normal' ? 'on' : ''}" data-i="${i}" data-v="normal">normal</button>
+              <button type="button" class="rdGEstilo ${g.estilo === 'láser' ? 'on' : ''}" data-i="${i}" data-v="láser">láser</button>
+            </div>
+          </div>`).join('')}</div>
+          <button type="button" class="btn-sm" id="rdGMas" style="margin-top:8px">＋ otro grabado (otra pieza del duo/trio)</button>`;
+      } else if (b.tipo === 'montura') {
+        p.innerHTML = `<label>Piedra (qué es y tamaño)</label>
+          <input type="text" id="rdMPiedra" placeholder="Ej: oval 8×6, va con la pieza" value="${esc(b.mPiedra)}">
+          <label>Engaste</label>
+          <div class="chips chips-mini" id="rdMEngaste">
+            ${['4 uñas', '6 uñas', 'bisel'].map(x => `<button type="button" data-v="${x}" class="${b.mEngaste === x ? 'on' : ''}">${x}</button>`).join('')}
+          </div>`;
+      } else if (b.tipo === 'cambiar') {
+        p.innerHTML = `<label>¿Qué piedras se cambian y por cuáles?</label>
+          <input type="text" id="rdCPiedras" placeholder="Ej: las 3 circonias laterales por moissanitas 2mm" value="${esc(b.cPiedras)}">`;
+      } else if (b.tipo === 'reparacion') {
+        p.innerHTML = `<label>¿Qué hay que reparar?</label>
+          <input type="text" id="rdRQue" placeholder="Ej: soldar el aro partido y pulir" value="${esc(b.rQue)}">`;
+      } else if (b.tipo === 'garantia') {
+        p.innerHTML = `<label>¿Qué defecto de fábrica hay que arreglar?</label>
+          <input type="text" id="rdWQue" placeholder="Ej: se soltó la piedra central, re-engastar" value="${esc(b.wQue)}">
+          <div class="sub" style="margin-top:6px">🛡️ Va marcada GARANTÍA — lo que cobre Rubén queda solo en su cuenta, NO toca el costo de la factura.</div>`;
+      } else {
+        p.innerHTML = `<div class="sub" style="margin-top:8px">Sin campitos — escribe el trabajo directo en la descripción de abajo. ✍️</div>`;
+      }
+      const alCambiar = () => { b.tocada = false; componerRD(b); $('#rdDesc').value = b.desc; };
+      const inp = (sel, campo) => { const el = $(sel); if (el) el.addEventListener('input', () => { b[campo] = el.value; alCambiar(); }); };
+      inp('#rdMPiedra', 'mPiedra'); inp('#rdCPiedras', 'cPiedras'); inp('#rdRQue', 'rQue'); inp('#rdWQue', 'wQue');
+      $$('#rdMEngaste button').forEach(x => x.addEventListener('click', () => {
+        b.mEngaste = x.dataset.v;
+        $$('#rdMEngaste button').forEach(y => y.classList.toggle('on', y === x));
+        alCambiar();
+      }));
+      const gl = $('#rdGLineas');
+      if (gl) {
+        gl.addEventListener('input', e => {
+          const i = +e.target.dataset.i;
+          if (e.target.classList.contains('rdGPieza')) b.grabados[i].pieza = e.target.value;
+          else if (e.target.classList.contains('rdGTxt')) b.grabados[i].txt = e.target.value;
+          else return;
+          alCambiar();
+        });
+        gl.addEventListener('click', e => {
+          const x = e.target.closest('button');
+          if (!x) return;
+          const i = +x.dataset.i;
+          if (x.classList.contains('rdGEstilo')) b.grabados[i].estilo = x.dataset.v;
+          else if (x.classList.contains('rdGQuitar')) b.grabados.splice(i, 1);
+          else return;
+          pintarPlantilla();
+          alCambiar();
+        });
+        $('#rdGMas').addEventListener('click', () => {
+          b.grabados.push({ pieza: '', txt: '', estilo: 'normal' });
+          pintarPlantilla();
+          alCambiar();
+          const u = $$('#rdGLineas .rdGTxt');
+          if (u.length) u[u.length - 1].focus();
+        });
+      }
+    };
+    pintarPlantilla();
+
+    $$('#rdTipos [data-t]').forEach(x => x.addEventListener('click', () => {
+      b.tipo = x.dataset.t;
+      b.tocada = false;
+      if (b.tipo === 'otro') b.desc = '';
+      $$('#rdTipos [data-t]').forEach(y => y.classList.toggle('on', y === x));
+      componerRD(b);
+      $('#rdDesc').value = b.desc;
+      pintarPlantilla();
+    }));
+    $('#rdDesc').addEventListener('input', () => { b.desc = $('#rdDesc').value; b.tocada = true; });
+
+    const on = (id, fn) => { const x = $(id); if (x) x.addEventListener('click', fn); };
+    on('#rdFacX', () => { b.factura = null; render(); });
+    on('#rdFacBuscar', () => buscarFacturaRD(b));
+
+    for (const blob of fotosRDNueva) {
+      const im = document.createElement('img');
+      im.src = URL.createObjectURL(blob);
+      $('#rdFotos').insertBefore(im, $('#rdFotosMas'));
+    }
+    const agregarFotosRD = async archivos => {
+      for (const f of archivos) {
+        try {
+          const blob = await comprimir(f);
+          fotosRDNueva.push(blob);
+          const im = document.createElement('img');
+          im.src = URL.createObjectURL(blob);
+          $('#rdFotos').insertBefore(im, $('#rdFotosMas'));
+        } catch { toast('⚠ ' + f.name); }
+      }
+    };
+    $('#rdFotosMas').addEventListener('click', async () => agregarFotosRD(await elegirArchivos('image/*')));
+    zonaArrastre($('#rdFotos'), agregarFotosRD);
+    zonaArrastre($('#rdForm'), agregarFotosRD);
+
+    $('#rdRush').addEventListener('click', () => {
+      b.rush = !b.rush;
+      $('#rdRush').style.background = b.rush ? 'var(--red)' : 'none';
+      $('#rdRush').style.color = b.rush ? '#fff' : 'var(--red)';
+    });
+    $('#rdEntrega').addEventListener('input', () => { b.entrega = $('#rdEntrega').value; });
+
+    $('#rdCancelar').addEventListener('click', () => nav('rd'));
+    $('#rdGuardar').addEventListener('click', async () => {
+      const desc = $('#rdDesc').value.trim();
+      if (!desc) { toast('⚠ Escribe la descripción del trabajo'); $('#rdDesc').focus(); return; }
+      $('#rdGuardar').disabled = true;
+      toast(T('subiendo'));
+      try {
+        const t = {
+          id: uid('trd'), tipo: 'trd', creado: new Date().toISOString(),
+          sec: secSiguienteRD(),
+          facturaOrden: (b.factura && b.factura.orden) || '',
+          facturaCRM: b.factura ? { id: b.factura.id, rotulo: b.factura.rotulo, cliente: b.factura.cliente } : null,
+          tipoTrabajo: b.tipo, desc,
+          plantilla: { grabados: b.grabados, mPiedra: b.mPiedra, mEngaste: b.mEngaste, cPiedras: b.cPiedras, rQue: b.rQue, wQue: b.wQue },
+          rush: !!b.rush, entrega: b.entrega || '',
+          fotos: [],
+        };
+        for (let i = 0; i < fotosRDNueva.length; i++) {
+          const p = `trd/${t.id}/foto-${Date.now()}-${i + 1}.jpg`;
+          await Nube.subirArchivo(p, fotosRDNueva[i], 'image/jpeg');
+          t.fotos.push({ path: p });
+        }
+        await guardarDoc(t);
+        borradorRD = null;
+        fotosRDNueva = [];
+        toast(`🔨 ${numTrd(t)} guardado — Rubén ya lo ve`);
+        nav('rd');
+      } catch (e) {
+        toast('⚠ ' + e.message);
+        $('#rdGuardar').disabled = false;
+      }
+    });
+  }
+
+  async function buscarFacturaRD(b) {
+    abrirModal('🧾 Factura del CRM', `<p class="sub">${T('cargando')}</p>`);
+    let filas;
+    try { filas = await Nube.listarFacturas(); }
+    catch (e) { $('#modalCuerpo').innerHTML = `<p class="sub rojo">⚠ ${esc(e.message)}</p>`; return; }
+    const facturas = filas.map(x => x.data).filter(f => f && f.estado !== 'anulada');
+    const rotulo = f => f.orden ? `#${f.orden}` : (f.numero || 's/n');
+    $('#modalCuerpo').innerHTML = `
+      <input type="search" id="rfBuscar" placeholder="${T('f_buscar')}" autocomplete="off">
+      <div id="rfLista" style="margin-top:10px"></div>`;
+    const pintar = q => {
+      const txt = q.trim().toLowerCase();
+      const hits = (txt
+        ? facturas.filter(f => (f.clienteNombre || '').toLowerCase().includes(txt) ||
+            String(f.orden || '').includes(txt) || (f.numero || '').toLowerCase().includes(txt))
+        : facturas).slice(0, 12);
+      $('#rfLista').innerHTML = hits.map((f, i) => `
+        <div class="card click" data-rf="${i}">
+          <div class="fila"><div class="crece">
+            <div class="nombre" style="font-size:14px">${esc(f.clienteNombre || '(sin cliente)')} <span class="sub">${esc(rotulo(f))}</span></div>
+            <div class="sub">${fmtFecha(f.fecha)} · total ${esc(f.moneda || 'DOP')} ${Number(f.total || 0).toLocaleString()}</div>
+          </div><span class="sub">›</span></div>
+        </div>`).join('') || `<div class="vacio"><span>🔍</span>—</div>`;
+      $$('#rfLista [data-rf]').forEach(el => el.addEventListener('click', () => {
+        const f = hits[Number(el.dataset.rf)];
+        b.factura = { id: f.id, orden: f.orden || '', rotulo: rotulo(f), cliente: f.clienteNombre || '' };
+        cerrarModal();
+        render();
+      }));
+    };
+    $('#rfBuscar').addEventListener('input', e => pintar(e.target.value));
+    pintar('');
+  }
+
+  /* ── José: pago en LOTE — checkboxes grandes y suma viva ── */
+  function vRDPagar(c) {
+    const pend = deudaRD().sort((a, b) => (a.enviado || '').localeCompare(b.enviado || ''));
+    const pagos = pagosRD();
+    let html = `<button class="btn-sm" id="btnVolver">‹ Volver</button>
+      <div class="h-sec">💵 Pagar a Rubén · marca las que vas a pagar</div>`;
+    if (!pend.length) html += `<div class="vacio"><span>✓</span>Nada pendiente de pago.</div>`;
+    html += pend.map(t => `
+      <label class="pagorow">
+        <input type="checkbox" class="chkPagoRD" data-id="${t.id}" data-m="${Number(t.valor) || 0}" checked>
+        <div class="crece">
+          <div class="nombre" style="font-size:13.5px">${numTrd(t)} · ${TIPOS_RD[t.tipoTrabajo] || ''}${t.facturaCRM ? ` — ${esc(t.facturaCRM.cliente || '')}` : ''}</div>
+          <div class="sub">enviado ${fmtFecha(t.enviado)}${t.tipoTrabajo === 'garantia' ? ' · 🛡️ garantía (no toca la factura)' : t.facturaCRM ? ' · se suma al costo de su factura' : ''}</div>
+        </div>
+        <span class="money">${fmtRD(t.valor)}</span>
+      </label>`).join('');
+    if (pend.length) {
+      html += `<p class="sub" style="margin-top:6px">Marca y desmarca — el total se arma solo. Al registrar el pago, el «me deben» de Rubén baja al instante en su teléfono.</p>
+        <button class="btn rosa" id="btnRdPagarOk">💵 Registrar pago: <span id="rdPagoTotal"></span> (<span id="rdPagoN"></span>)</button>`;
+    }
+    if (pagos.length) {
+      html += `<div class="h-sec">Pagos hechos (${pagos.length})</div>` + pagos.slice(0, 12).map(p => `
+        <div class="card"><div class="fila"><div class="crece">
+          <div class="nombre" style="font-size:13.5px">${fmtFecha(p.fecha)} · ${(p.trabajos || []).length} trabajo${(p.trabajos || []).length === 1 ? '' : 's'}</div>
+          <div class="sub">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}</div>
+        </div><span class="money">${fmtRD(p.monto)}</span></div></div>`).join('');
+    }
+    c.innerHTML = html;
+    $('#btnVolver').addEventListener('click', () => nav('rd'));
+    const chks = $$('#cuerpo .chkPagoRD');
+    const sumar = () => {
+      let tot = 0, n = 0;
+      chks.forEach(x => {
+        x.closest('.pagorow').classList.toggle('sel', x.checked);
+        if (x.checked) { tot += Number(x.dataset.m); n++; }
+      });
+      const bt = $('#btnRdPagarOk');
+      if (bt) {
+        $('#rdPagoTotal').textContent = fmtRD(tot);
+        $('#rdPagoN').textContent = n + (n === 1 ? ' trabajo' : ' trabajos');
+        bt.disabled = !n;
+      }
+    };
+    chks.forEach(x => x.addEventListener('change', sumar));
+    sumar();
+    const bt = $('#btnRdPagarOk');
+    if (bt) bt.addEventListener('click', async () => {
+      const marcados = chks.filter(x => x.checked).map(x => doc(x.dataset.id)).filter(Boolean);
+      if (!marcados.length) return;
+      const monto = marcados.reduce((s, t) => s + (Number(t.valor) || 0), 0);
+      if (!confirm(`¿Registrar el pago de ${fmtRD(monto)} a Rubén (${marcados.length} trabajo${marcados.length === 1 ? '' : 's'})?`)) return;
+      bt.disabled = true;
+      toast(T('subiendo'));
+      try {
+        const pago = { id: uid('pagoRD'), tipo: 'pagoRD', fecha: hoyISO(), monto,
+          trabajos: marcados.map(t => ({ id: t.id, num: numTrd(t), valor: Number(t.valor) || 0 })) };
+        await guardarDoc(pago);
+        /* el valor de Rubén se SUMA al costo que la factura ya tenga
+           (material + taller = costo total) — 🛡️ Garantía NO la toca */
+        let filas = null, factos = 0;
+        const errores = [];
+        for (const t of marcados) {
+          t.pagado = { fecha: hoyISO(), pagoId: pago.id };
+          if (t.facturaCRM && t.tipoTrabajo !== 'garantia' && !t.costoAplicado) {
+            try {
+              if (!filas) filas = await Nube.listarFacturas();
+              const fila = filas.find(x => x.id === t.facturaCRM.id);
+              if (fila) {
+                const f = fila.data;
+                f.costo = Math.round(((Number(f.costo) || 0) + (Number(t.valor) || 0)) * 100) / 100;
+                f.costoTallerRD = [...(f.costoTallerRD || []), { trabajo: t.id, num: numTrd(t), monto: Number(t.valor) || 0, fecha: hoyISO() }];
+                await Nube.upsertFactura(f);
+                t.costoAplicado = { rd: Number(t.valor) || 0, fecha: hoyISO() };
+                factos++;
+              }
+            } catch (e) { errores.push(`${numTrd(t)}: ${e.message}`); }
+          }
+          await guardarDoc(t);
+        }
+        toast(`💵 ${fmtRD(monto)} pagado ✓${factos ? ` · ${factos} factura${factos === 1 ? '' : 's'} con el costo sumado` : ''}${errores.length ? ' · ⚠ ' + errores.join('; ') : ''}`);
+        nav('rd');
+      } catch (e) {
+        toast('⚠ ' + e.message);
+        bt.disabled = false;
+      }
+    });
+  }
+
+  /* ═══ El lado de RUBÉN: en español, azul, dos pestañas y nada más.
+     NUNCA ve nombres de clientes — solo el número y el trabajo. ═══ */
+  function renderRD() {
+    document.body.className = 'rol-rd';
+    if (!['rTrabajos', 'rCuentas'].includes(vista)) vista = 'rTrabajos';
+    $('#app').innerHTML = `
+      <div class="topbar">
+        <h1>Taller SilverShine</h1>
+        <button id="btnRefrescar" title="Actualizar">🔄</button>
+        <span class="quien rd">${esc((Nube.info() || {}).nombre || 'Rubén')}</span>
+      </div>
+      <main id="cuerpo"></main>
+      <nav class="nav">
+        <button data-nav="rTrabajos" class="${vista === 'rTrabajos' ? 'on' : ''}"><span class="ico">🔨</span>Trabajos</button>
+        <button data-nav="rCuentas" class="${vista === 'rCuentas' ? 'on' : ''}"><span class="ico">💵</span>Mis cuentas</button>
+      </nav>
+      <div id="toast"></div>`;
+    $$('.nav [data-nav]').forEach(x => x.addEventListener('click', () => nav(x.dataset.nav)));
+    $('#btnRefrescar').addEventListener('click', () => cargar());
+    const c = $('#cuerpo');
+    if (vista === 'rCuentas') vRCuentas(c);
+    else vRTrabajos(c);
+  }
+
+  function vRTrabajos(c) {
+    const ts = trabajosRD().filter(t => !t.pagado)
+      .sort((a, b) => (b.rush ? 1 : 0) - (a.rush ? 1 : 0) ||
+        String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')) ||
+        (b.creado || '').localeCompare(a.creado || ''));
+    const nuevos = ts.filter(t => !t.recibido).length;
+    c.innerHTML = `<div class="h-sec">🔨 Trabajos${nuevos ? ` · ${nuevos} nuevo${nuevos === 1 ? '' : 's'}` : ''}</div>` +
+      (ts.map(t => {
+        const est = estadoTrd(t);
+        return `<div class="card ${t.rush ? 'rush' : ''}">
+        <div class="fila"><div class="crece">
+          <div class="nombre">${numTrd(t)}${t.rush ? ' <span class="badge b-rush">🔴 RUSH</span>' : ''}</div>
+          <div class="sub"><b>${TIPOS_RD[t.tipoTrabajo] || ''}</b></div>
+        </div>${est === 'porRecibir' ? '<span class="badge b-rojo">NUEVO</span>' : est === 'enviadoRD' ? '<span class="badge b-verde">✅ ENVIADO</span>' : '<span class="badge b-azul">EN EL TALLER</span>'}</div>
+        <div style="font-size:14.5px;margin-top:6px;white-space:pre-wrap">✍️ ${esc(t.desc || '')}</div>
+        ${(t.fotos || []).length ? `<div class="galeria">${t.fotos.map(f => `<img data-path="${f.path}" alt="">`).join('')}</div>` : ''}
+        <div class="sub" style="margin-top:6px">${[t.entrega ? `🎯 Entrega: <b class="${t.rush ? 'rojo' : ''}">${fmtFecha(t.entrega)}</b>` : '', t.recibido ? `📥 recibido ${fmtFecha(t.recibido)}` : ''].filter(Boolean).join(' · ')}</div>
+        ${!t.recibido ? `<button class="btn azul" data-rec="${t.id}">📥 Lo recibí</button>`
+          : !t.enviado ? `<button class="btn azul" data-env="${t.id}">✅ Enviado — poner mi valor</button>`
+          : `<div class="fila" style="margin-top:10px;gap:10px">
+              <div class="crece"><span class="money" style="font-size:16px">${fmtRD(t.valor)}</span>
+              <div class="sub">enviado ${fmtFecha(t.enviado)} — te lo deben</div></div>
+              <button class="btn-sm" data-corr="${t.id}">✏️ corregir</button>
+            </div>`}
+      </div>`;
+      }).join('') || `<div class="vacio"><span>🔨</span>Sin trabajos pendientes — todo al día.</div>`);
+    pintarImagenes(c);
+    $$('#cuerpo img[data-path]').forEach(img => img.addEventListener('click', () => verImagen(img.dataset.path)));
+
+    $$('#cuerpo [data-rec]').forEach(x => x.addEventListener('click', async () => {
+      const t = doc(x.dataset.rec);
+      if (!t) return;
+      t.recibido = hoyISO();
+      await guardarDoc(t);
+      await avisarRD('rdRecibido', numTrd(t), t.id);
+      toast('📥 ✓');
+      render();
+    }));
+    $$('#cuerpo [data-env]').forEach(x => x.addEventListener('click', () => {
+      const t = doc(x.dataset.env);
+      if (!t) return;
+      abrirModal('✅ ' + numTrd(t), `
+        <label>¿Cuánto cobras por este trabajo? (RD$)</label>
+        <input id="rvMonto" type="number" min="0" step="1" inputmode="numeric" placeholder="800">
+        <p class="sub" style="margin-top:6px">José lo verá al instante y se suma a lo que te deben. Si te equivocas, después lo corriges con ✏️.</p>
+        <button class="btn azul" id="rvOk">✅ Enviado — guardar</button>`);
+      $('#rvOk').addEventListener('click', async () => {
+        const v = Number($('#rvMonto').value);
+        if (!(v > 0)) { toast('⚠ Pon tu valor'); return; }
+        t.enviado = hoyISO();
+        t.valor = v;
+        await guardarDoc(t);
+        await avisarRD('rdEnviado', `${numTrd(t)} · ${fmtRD(v)}`, t.id);
+        cerrarModal();
+        toast('✅ ✓ — se le avisó a José');
+        render();
+      });
+    }));
+    $$('#cuerpo [data-corr]').forEach(x => x.addEventListener('click', () => {
+      const t = doc(x.dataset.corr);
+      if (!t) return;
+      abrirModal('✏️ ' + numTrd(t), `
+        <label>Valor corregido (RD$)</label>
+        <input id="rcMonto" type="number" min="0" step="1" inputmode="numeric" value="${Number(t.valor) || ''}">
+        <button class="btn azul" id="rcOk">${T('guardar')}</button>`);
+      $('#rcOk').addEventListener('click', async () => {
+        const v = Number($('#rcMonto').value);
+        if (!(v > 0)) { toast('⚠ Pon el valor'); return; }
+        const antes = Number(t.valor) || 0;
+        if (v !== antes) {
+          t.correcciones = [...(t.correcciones || []), { antes, ahora: v, fecha: hoyISO() }];
+          t.valor = v;
+          await guardarDoc(t);
+          await avisarRD('rdValor', `${numTrd(t)} · ${fmtRD(antes)} → ${fmtRD(v)}`, t.id);
+        }
+        cerrarModal();
+        toast('✏️ ✓');
+        render();
+      });
+    }));
+  }
+
+  function vRCuentas(c) {
+    const deben = deudaRD().sort((a, b) => (a.enviado || '').localeCompare(b.enviado || ''));
+    const totalDeben = deben.reduce((s, t) => s + (Number(t.valor) || 0), 0);
+    const pagos = pagosRD();
+    const totalPagado = pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+    c.innerHTML = `
+      <div class="h-sec">💵 Mis cuentas</div>
+      <div class="card"><div class="fila"><div class="crece">
+        <div class="nombre">Me deben</div>
+        <div class="sub">${deben.length ? `${deben.length} trabajo${deben.length === 1 ? '' : 's'} enviado${deben.length === 1 ? '' : 's'}` : 'Nada pendiente ✓'}</div>
+      </div><span class="money ${totalDeben ? 'rojo' : 'verde'}" style="font-size:18px">${fmtRD(totalDeben)}</span></div>
+      ${deben.map(t => `<div class="sub" style="margin-top:5px">· ${numTrd(t)} — ${TIPOS_RD[t.tipoTrabajo] || ''} · enviado ${fmtFecha(t.enviado)} — <b class="money">${fmtRD(t.valor)}</b></div>`).join('')}
+      </div>
+      <div class="h-sec">Pagos recibidos${pagos.length ? ` (${pagos.length})` : ''}</div>
+      ${pagos.map(p => `
+        <div class="card"><div class="fila"><div class="crece">
+          <div class="nombre" style="font-size:13.5px">${fmtFecha(p.fecha)} · ${(p.trabajos || []).length} trabajo${(p.trabajos || []).length === 1 ? '' : 's'}</div>
+          <div class="sub">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}</div>
+        </div><span class="money verde">${fmtRD(p.monto)}</span></div></div>`).join('') || '<div class="card"><div class="sub">Aún sin pagos.</div></div>'}
+      ${pagos.length ? `<div class="card"><table class="qt"><tr class="total"><td>Total cobrado</td><td class="money verde">${fmtRD(totalPagado)}</td></tr></table></div>` : ''}`;
+  }
+
   /* ═══ arranque ═══ */
   async function init() {
     /* ¿Viene con el link secreto de Karen? */
@@ -2721,12 +3406,12 @@ Si no es legible responde {"error": "motivo corto"}.`;
       history.replaceState(null, '', location.pathname);
       const yo = Nube.info();
       if (yo && yo.rol === 'jose') {
-        /* José abrió el link de Karen en SU dispositivo: no dejar que le
-           secuestre la sesión — para probar el lado de ella, incógnito */
-        avisoLink = '🔗 Ese link es el de Julia — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.';
+        /* José abrió el link de Karen (o de Rubén) en SU dispositivo: no
+           dejar que le secuestre la sesión — para probarlo, incógnito */
+        avisoLink = `🔗 Ese link es el de ${linkKaren.r === 'rd' ? esc(linkKaren.n || 'Rubén') : 'Julia'} — sigues conectado como tú. Para ver su lado, ábrelo en una ventana de incógnito.`;
       } else {
         try {
-          await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p, linkKaren.n);
+          await Nube.conectarTaller(linkKaren.u, linkKaren.a, linkKaren.e, linkKaren.p, linkKaren.n, linkKaren.r);
         } catch (e) {
           document.body.innerHTML = `<div class="login"><h1>Tonglin</h1><p class="sub">This link is not valid anymore — ask José for a new one.<br><span style="opacity:.6">${esc(e.message)}</span></p></div>`;
           return;

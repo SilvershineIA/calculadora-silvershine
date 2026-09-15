@@ -12,6 +12,8 @@
   --muted:#6B7280;
   --jade:#1c7a5e;          /* lado Tonglin */
   --jade-100:#dcefe7;
+  --azul:#2456A6;          /* lado Taller RD (Rubén) */
+  --azul-100:#E5EDF8;
   --green:#2e7d32;  --green-100:#E2F0E3;
   --red:#bb171b;    --red-100:#F9E3E2;
   --chip:#F1EDE9;
@@ -213,6 +215,26 @@ body.rol-taller .pasos span.ok{background:var(--jade)}
   opacity:0;transition:opacity .2s;pointer-events:none;text-align:center;
 }
 #toast.ver{opacity:1}
+
+/* ── Taller RD (Rubén): lado azul ── */
+.quien.rd{background:var(--azul-100);color:var(--azul)}
+body.rol-rd .nav button.on{color:var(--azul)}
+body.rol-rd .card.click:active{border-color:var(--azul)}
+body.rol-rd input:focus,body.rol-rd textarea:focus{border-color:var(--azul)}
+.btn.azul{background:var(--azul);color:#fff}
+.b-azul{background:var(--azul-100);color:var(--azul)}
+.b-rush{background:var(--red-100);color:var(--red)}
+.card.rush{border-left:4px solid var(--red)}
+/* pago en lote: filas con checkbox grande y suma viva */
+.pagorow{
+  display:flex;align-items:center;gap:12px;background:var(--panel);
+  border:1.5px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;margin-bottom:8px;cursor:pointer;
+}
+.pagorow input[type=checkbox]{width:22px;height:22px;accent-color:var(--rose-700);flex:0 0 auto}
+.pagorow.sel{border-color:var(--rose)}
+/* plantilla de grabado: una línea por pieza */
+.glinea{border:1.5px dashed var(--border);border-radius:12px;padding:9px 11px;margin-top:8px}
 
 /* pantalla de login / carga */
 .login{max-width:400px;margin:8vh auto;padding:0 18px}

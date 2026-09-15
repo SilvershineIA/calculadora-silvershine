@@ -218,6 +218,11 @@ const I18N = (() => {
     ev_ordenEditada:['Orden editada', '⚠ José EDITED an order — please check the changes'],
     ev_cadOmitido:  ['⏭ Tonglin seguirá SIN CAD nuevo (ya lo tienen u otra razón)', 'CAD skipped'],
 
+    /* ── Taller RD (Rubén) — solo lo ve José ── */
+    ev_rdRecibido:  ['📥 Rubén recibió un trabajo', ''],
+    ev_rdEnviado:   ['🔨 Rubén terminó y ENVIÓ un trabajo — ya puso su valor', ''],
+    ev_rdValor:     ['✏️ Rubén corrigió el valor de un trabajo', ''],
+
     /* ── login / ajustes ── */
     a_conectar:     ['Conectar', 'Connect'],
     a_email:        ['Tu correo del CRM', 'Email'],

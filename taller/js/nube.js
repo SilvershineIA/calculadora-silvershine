@@ -47,12 +47,13 @@ const Nube = (() => {
     guardar();
   }
 
-  /* Lado Tonglin: sus credenciales viven en el dispositivo → si la sesión
-     se cae, se re-conecta sola. El NOMBRE viaja en el link: el mismo
-     usuario puede tener un link para Julia y otro para Karen. */
-  async function conectarTaller(url, anonKey, email, password, nombre) {
+  /* Lado Tonglin (o Taller RD): sus credenciales viven en el dispositivo →
+     si la sesión se cae, se re-conecta sola. El NOMBRE viaja en el link:
+     el mismo usuario puede tener un link para Julia, otro para Karen…
+     y con rolLink 'rd' el link es de Rubén (Taller RD, en español). */
+  async function conectarTaller(url, anonKey, email, password, nombre, rolLink) {
     const session = await loginRaw(url, anonKey, email, password);
-    cfg = { rol: 'taller', url, anonKey, email, pass: password, nombre: nombre || 'Julia', session };
+    cfg = { rol: rolLink === 'rd' ? 'rd' : 'taller', url, anonKey, email, pass: password, nombre: nombre || (rolLink === 'rd' ? 'Rubén' : 'Julia'), session };
     guardar();
   }
 
@@ -72,8 +73,8 @@ const Nube = (() => {
       };
       guardar();
     } catch (e) {
-      /* Karen guarda su clave: reintento silencioso con login completo */
-      if (cfg.rol === 'taller' && cfg.pass) {
+      /* Karen y Rubén guardan su clave: reintento silencioso con login completo */
+      if ((cfg.rol === 'taller' || cfg.rol === 'rd') && cfg.pass) {
         cfg.session = await loginRaw(cfg.url, cfg.anonKey, cfg.email, cfg.pass);
         guardar();
       } else {
@@ -220,9 +221,11 @@ const Nube = (() => {
   }
 
   /* Link secreto del taller: #k=<base64url(JSON)> con todo lo necesario,
-     incluido el nombre de quien lo usará (Julia, Karen…) */
-  const armarLink = (email, password, nombre) => {
+     incluido el nombre de quien lo usará (Julia, Karen…) y el rol —
+     `r:'rd'` = link de Rubén (Taller RD) */
+  const armarLink = (email, password, nombre, rolLink) => {
     const payload = { u: cfg.url, a: cfg.anonKey, e: email, p: password, n: nombre || 'Julia' };
+    if (rolLink === 'rd') payload.r = 'rd';
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return `${location.origin}${location.pathname}#k=${b64}`;
@@ -238,11 +241,13 @@ const Nube = (() => {
 
   /* Clonar un link que YA FUNCIONA con otro nombre — mismas credenciales
      exactas, sin retecleos (que fue lo que mató el primer link de Karen) */
-  const renombrarLink = (linkTexto, nombre) => {
+  const renombrarLink = (linkTexto, nombre, rolLink) => {
     const t = String(linkTexto || '').trim();
     const p = leerLink(t.includes('#') ? t.slice(t.indexOf('#')) : '#k=' + t);
     if (!p || !p.e || !p.p) return null;
     const payload = { u: p.u, a: p.a, e: p.e, p: p.p, n: nombre || 'Julia' };
+    const r = rolLink || p.r;
+    if (r === 'rd') payload.r = 'rd';
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return `${location.origin}${location.pathname}#k=${b64}`;
