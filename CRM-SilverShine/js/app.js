@@ -11,7 +11,7 @@
     calculadora:  () => Calculadora.abrir(),
     facturas:     () => Facturas.render(),
     cotizaciones: () => Cotizaciones.render(),
-    confecciones: () => Confecciones.render(),
+    confecciones: () => TallerRD.render(),
     cobros:       () => Cobros.render(),
     finanzas:     () => Finanzas.render(),
     cuadre:       () => Caja.render(),

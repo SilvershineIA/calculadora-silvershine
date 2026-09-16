@@ -133,16 +133,24 @@ const TallerRD = (() => {
     return false;
   };
 
-  /* ═══ TABLERO ═══ */
-  async function abrir() {
-    if (sinNube()) return;
-    abrirModal('🔨 Taller RD — Rubén', '<p class="muted">Cargando el taller…</p>');
+  /* ═══ TABLERO — la vista Confecciones ES el Taller RD (con historial) ═══ */
+  async function render() {
+    const cont = document.getElementById('tallerRDvista');
+    if (!cont) return;
+    if (typeof Sync === 'undefined' || !Sync.conectado()) {
+      cont.innerHTML = '<div class="empty"><span>☁️</span>Conecta la nube en Ajustes — el Taller RD vive en Supabase.</div>';
+      return;
+    }
+    cont.innerHTML = '<div class="empty"><span>🔨</span>Cargando el taller…</div>';
     try { await bajar(); }
-    catch (e) { $('#modalBody').innerHTML = `<p class="muted rojo">⚠ ${esc(e.message)}</p>`; return; }
+    catch (e) { cont.innerHTML = `<div class="empty"><span>⚠</span>${esc(e.message)}</div>`; return; }
     pintarTablero();
   }
+  const abrir = render;   // compat con quien llame abrir()
 
   function pintarTablero() {
+    const cont = document.getElementById('tallerRDvista');
+    if (!cont) return;
     const ts = trabajos();
     const activos = ts.filter(t => !(t.pagado && t.llegoDeVuelta))
       .sort((a, b) => (b.rush ? 1 : 0) - (a.rush ? 1 : 0) ||
@@ -171,7 +179,20 @@ const TallerRD = (() => {
       </div>`;
     };
 
-    $('#modalBody').innerHTML = `
+    /* ── 📚 historial: los terminados agrupados por mes + los pagos ── */
+    const MESL = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const mesDe = t => String((t.pagado || {}).fecha || t.creado || '').slice(0, 7);
+    const mesTxt = k => { const [y, m] = k.split('-'); return `${MESL[Number(m) - 1] || '?'} ${y}`; };
+    const porMes = new Map();
+    for (const t of listos) {
+      const k = mesDe(t);
+      if (!porMes.has(k)) porMes.set(k, []);
+      porMes.get(k).push(t);
+    }
+    const hist = pagosRD();
+    const totalPagado = hist.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+
+    cont.innerHTML = `
       ${nov.length ? `<h3 class="sub-h">🔔 Novedades de Rubén (${nov.length})</h3>` + nov.map(e => `
         <div class="item" data-ev="${e.id}">
           <div class="item-info">
@@ -181,25 +202,35 @@ const TallerRD = (() => {
             <div class="item-sub">${esc(e.ctx || '')} · ${fmtFecha(e.fecha)}</div>
           </div><span class="item-arrow">›</span>
         </div>`).join('') : ''}
-      <div class="abono-row"><span><b>💵 Le debes a Rubén</b><br><span class="muted" style="font-size:.78rem">${pend.length ? `${pend.length} trabajo${pend.length === 1 ? '' : 's'} enviado${pend.length === 1 ? '' : 's'} sin pagar` : 'Nada pendiente ✓'}</span></span>
-        <b class="${totalDeuda ? 'rojo' : 'verde'}">${RD(totalDeuda)}</b></div>
+      <div class="stat-grid">
+        ${UI.statTile(RD(totalDeuda), 'Le debes a Rubén', totalDeuda ? 'rojo' : 'verde')}
+        ${UI.statTile(activos.length, 'En el taller')}
+        ${UI.statTile(RD(totalPagado), 'Pagado histórico')}
+      </div>
       <div class="row" style="margin:10px 0 4px">
         <button type="button" class="btn-gold btn-block" id="trdNueva">＋ Nueva orden</button>
-        <button type="button" class="btn-ghost btn-block" id="trdPagar" ${pend.length ? '' : 'disabled'}>💵 Pagar a Rubén</button>
+        <button type="button" class="btn-ghost btn-block" id="trdPagar" ${pend.length ? '' : 'disabled'}>💵 Pagar a Rubén${pend.length ? ` (${RD(totalDeuda)})` : ''}</button>
       </div>
       <h3 class="sub-h">En el taller (${activos.length})</h3>
-      ${activos.map(fila).join('') || '<div class="empty"><span>🔨</span>Sin trabajos — crea el primero.</div>'}
-      ${listos.length ? `<h3 class="sub-h">Terminados (${listos.length})</h3>` + listos.slice(0, 8).map(fila).join('') : ''}
-      <p class="muted" style="margin-top:12px;font-size:.78rem">Rubén ve cada trabajo en SU app (sin nombres de clientes) SOLO cuando marcas 📤 "ya se lo envié" — antes de eso no le aparece y no se confunde. El link se genera abajo.</p>
+      ${activos.map(fila).join('') || '<div class="empty"><span>🔨</span>Sin trabajos — crea el primero con ＋.</div>'}
+      <h3 class="sub-h">📚 Historial (${listos.length})</h3>
+      ${[...porMes.entries()].map(([k, arr]) => `
+        <p class="muted" style="margin:8px 2px 4px"><b>${mesTxt(k)}</b> · ${arr.length} trabajo${arr.length === 1 ? '' : 's'} · ${RD(arr.reduce((s, t) => s + (Number(t.valor) || 0), 0))}</p>
+        ${arr.map(fila).join('')}`).join('') || '<div class="empty"><span>📚</span>Aún sin trabajos terminados (pagados y de vuelta).</div>'}
+      ${hist.length ? `<h3 class="sub-h">💵 Pagos a Rubén (${hist.length})</h3>` + hist.map(p => `
+        <div class="abono-row"><span>${fmtFecha(p.fecha)} · ${(p.trabajos || []).length} trabajo${(p.trabajos || []).length === 1 ? '' : 's'}<br>
+          <span class="muted" style="font-size:.78rem">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}</span></span>
+          <b>${RD(p.monto)}</b></div>`).join('') : ''}
+      <p class="muted" style="margin-top:12px;font-size:.78rem">Rubén ve cada trabajo en SU app (sin nombres de clientes) SOLO cuando marcas 📤 "ya se lo envié" — antes de eso no le aparece y no se confunde.</p>
       <button type="button" class="btn-ghost btn-block" id="trdLink" style="margin-top:6px">🔗 Generar el link de Rubén</button>`;
 
-    $$('#modalBody [data-trd]').forEach(el => el.addEventListener('click', e => {
+    $$('#tallerRDvista [data-trd]').forEach(el => el.addEventListener('click', e => {
       if (e.target.closest('[data-nodetalle]')) return;   // el checkbox no abre la ficha
       detalle(el.dataset.trd);
     }));
-    /* 📤 checkbox "ya se lo envié": marca la salida de aquí — Rubén ve
-       al instante que su pieza va en camino */
-    $$('#modalBody .trdSalio').forEach(ch => ch.addEventListener('change', () => {
+    /* 📤 checkbox "ya se lo envié": marca la salida de aquí — recién
+       entonces el trabajo le APARECE a Rubén */
+    $$('#tallerRDvista .trdSalio').forEach(ch => ch.addEventListener('change', () => {
       const t = doc(ch.dataset.id);
       if (!t || !ch.checked) return;
       t.salio = hoyISO();
@@ -207,7 +238,7 @@ const TallerRD = (() => {
       toast(`📤 ${numTrd(t)} salió — el trabajo le apareció a Rubén`);
       pintarTablero();
     }));
-    $$('#modalBody [data-ev]').forEach(el => el.addEventListener('click', () => {
+    $$('#tallerRDvista [data-ev]').forEach(el => el.addEventListener('click', () => {
       const e = doc(el.dataset.ev);
       if (e) { e.visto = true; guardar(e); }
       if (e && doc(e.trdId)) detalle(e.trdId); else pintarTablero();
@@ -464,7 +495,7 @@ const TallerRD = (() => {
       $('#trdRush').style.color = b.rush ? '#fff' : 'var(--red)';
     });
     $('#trdEntrega').addEventListener('input', e => { b.entrega = e.target.value; });
-    $('#trdVolver').addEventListener('click', abrir);
+    $('#trdVolver').addEventListener('click', () => { cerrarModal(); pintarTablero(); });
 
     $('#trdGuardar').addEventListener('click', async () => {
       const desc = $('#trdDesc').value.trim();
@@ -488,7 +519,7 @@ const TallerRD = (() => {
         }
         guardar(t);
         toast(`🔨 ${numTrd(t)} guardado — le aparecerá a Rubén cuando marques 📤 "ya se lo envié"`);
-        abrirModal('🔨 Taller RD — Rubén', '');
+        cerrarModal();
         pintarTablero();
       } catch (e) {
         toast('⚠ ' + e.message);
@@ -523,18 +554,39 @@ const TallerRD = (() => {
       ${t.enviado && !t.pagado ? '<button type="button" class="btn-ghost btn-block" id="trdIrPagar" style="margin-top:8px">💵 Pagar a Rubén…</button>' : ''}
       ${!t.enviado ? '<button type="button" class="btn-ghost btn-block" id="trdEditar" style="margin-top:8px">✏️ Editar (descripción, RUSH, entrega)</button>' : ''}
       ${!t.recibido ? '<button type="button" class="btn-ghost btn-block" id="trdBorrar" style="margin-top:8px;color:var(--red)">🗑 Eliminar</button>' : ''}
+      ${(t.llegoDeVuelta || (t.enviado && !t.pagado) || (t.recibido && !t.enviado) || (t.salio && !t.recibido)) ? `
+        <h3 class="sub-h">↩ Corregir una marca puesta por error</h3>
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          ${t.llegoDeVuelta ? '<button type="button" class="btn-ghost btn-sm" id="undoVuelta">↩ deshacer «me llegó de vuelta»</button>' : ''}
+          ${t.enviado && !t.pagado ? '<button type="button" class="btn-ghost btn-sm" id="undoEnviado">↩ deshacer «Rubén lo envió» (borra su valor)</button>' : ''}
+          ${t.recibido && !t.enviado ? '<button type="button" class="btn-ghost btn-sm" id="undoRecibido">↩ deshacer «Rubén lo recibió»</button>' : ''}
+          ${t.salio && !t.recibido ? '<button type="button" class="btn-ghost btn-sm" id="undoSalio">↩ deshacer «se lo envié» (desaparece de su app)</button>' : ''}
+        </div>` : ''}
       <button type="button" class="btn-ghost btn-block" id="trdVolver" style="margin-top:8px">‹ Volver al tablero</button>`);
     pintarFotos($('#modalBody'));
     const on = (sel, fn) => { const x = $(sel); if (x) x.addEventListener('click', fn); };
-    on('#trdVolver', () => { abrirModal('🔨 Taller RD — Rubén', ''); pintarTablero(); });
-    on('#trdSalioBtn', () => { t.salio = hoyISO(); guardar(t); toast('📤 Marcado — el trabajo le apareció a Rubén'); detalle(id); });
-    on('#trdVuelta', () => { t.llegoDeVuelta = hoyISO(); guardar(t); toast('📦 ✓'); detalle(id); });
+    on('#trdVolver', () => { cerrarModal(); pintarTablero(); });
+    on('#trdSalioBtn', () => { t.salio = hoyISO(); guardar(t); toast('📤 Marcado — el trabajo le apareció a Rubén'); pintarTablero(); detalle(id); });
+    on('#trdVuelta', () => { t.llegoDeVuelta = hoyISO(); guardar(t); toast('📦 ✓'); pintarTablero(); detalle(id); });
+    /* ↩ deshacer marcas puestas por error (pruebas, toques accidentales) */
+    const undo = (sel, msj, fn) => on(sel, () => {
+      if (!confirm(msj)) return;
+      fn();
+      guardar(t);
+      toast('↩ ✓ marca revertida');
+      pintarTablero();
+      detalle(id);
+    });
+    undo('#undoVuelta', '¿Deshacer «me llegó de vuelta»?', () => { delete t.llegoDeVuelta; });
+    undo('#undoEnviado', '¿Deshacer «Rubén lo envió»? Se borra su valor y vuelve a EN EL TALLER.', () => { delete t.enviado; delete t.valor; delete t.correcciones; });
+    undo('#undoRecibido', '¿Deshacer «Rubén lo recibió»? Vuelve a ENVIADO — sin recibir.', () => { delete t.recibido; });
+    undo('#undoSalio', '¿Deshacer «se lo envié»? El trabajo DESAPARECE de la app de Rubén y vuelve a POR ENVIARLE.', () => { delete t.salio; });
     on('#trdIrPagar', pagar);
     on('#trdBorrar', () => {
       if (!confirm(`¿Eliminar ${numTrd(t)}? Rubén aún no lo ha recibido.`)) return;
       borrar(t.id);
       toast('🗑 ✓');
-      abrirModal('🔨 Taller RD — Rubén', '');
+      cerrarModal();
       pintarTablero();
     });
     on('#trdEditar', () => {
@@ -584,7 +636,7 @@ const TallerRD = (() => {
           <b>${RD(p.monto)}</b></div>`).join('') : ''}
       <button type="button" class="btn-ghost btn-block" id="trdVolver" style="margin-top:10px">‹ Volver al tablero</button>`);
 
-    $('#trdVolver').addEventListener('click', () => { abrirModal('🔨 Taller RD — Rubén', ''); pintarTablero(); });
+    $('#trdVolver').addEventListener('click', () => { cerrarModal(); pintarTablero(); });
     const chks = $$('#modalBody .trdChk');
     const sumar = () => {
       let tot = 0, n = 0;
@@ -626,7 +678,7 @@ const TallerRD = (() => {
         guardar(t);
       }
       toast(`💵 ${RD(monto)} pagado ✓${factos ? ` · ${factos} factura${factos === 1 ? '' : 's'} con el costo sumado` : ''}`);
-      abrirModal('🔨 Taller RD — Rubén', '');
+      cerrarModal();
       pintarTablero();
     });
   }
@@ -647,7 +699,7 @@ const TallerRD = (() => {
         <button type="button" class="btn-ghost btn-block" id="tlCopiar" style="margin-top:6px">Copiar</button>
       </div>
       <button type="button" class="btn-ghost btn-block" id="trdVolver" style="margin-top:10px">‹ Volver al tablero</button>`);
-    $('#trdVolver').addEventListener('click', () => { abrirModal('🔨 Taller RD — Rubén', ''); pintarTablero(); });
+    $('#trdVolver').addEventListener('click', () => { cerrarModal(); pintarTablero(); });
     $('#tlGenerar').addEventListener('click', () => {
       const e = $('#tlEmail').value.trim(), p = $('#tlPass').value.trim(), n = $('#tlNombre').value.trim() || 'Rubén';
       if (!e || !p) { toast('Pon el email y la clave del usuario del taller'); return; }
@@ -666,9 +718,9 @@ const TallerRD = (() => {
   }
 
   function init() {
-    const b = document.getElementById('btnTallerRD');
-    if (b) b.addEventListener('click', abrir);
+    const b = document.getElementById('btnTallerRDNueva');
+    if (b) b.addEventListener('click', () => { if (!sinNube()) nueva(); });
   }
 
-  return { init, abrir, nueva, pagar };
+  return { init, render, abrir, nueva, pagar };
 })();

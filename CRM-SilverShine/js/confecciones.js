@@ -111,8 +111,10 @@ const Confecciones = (() => {
     return true;
   }
 
-  /* ── Lista ── */
+  /* ── Lista (LEGADO): la vista Confecciones ahora es el Taller RD
+     (taller-rd.js) — este render solo corre si el HTML viejo existe ── */
   async function render() {
+    if (!$('#confStats')) return;
     const lista = await activas();
     const tasa = typeof Calculadora !== 'undefined' ? (Calculadora.tasaActual() || 0) : 0;
     const conv = f => (f.moneda === 'USD' && tasa ? f.saldo * tasa : f.saldo) || 0;
@@ -955,21 +957,13 @@ const Confecciones = (() => {
      app del Taller (tabla `taller` de la misma nube) YA ENLAZADA a esta
      factura — en la app solo se completan los detalles que Tonglin pide. */
   function pactar(f, alListo) {
-    const listo = () => { if (alListo) alListo(); else { cerrarModal(); render(); } };
+    const listo = () => { if (alListo) alListo(); else cerrarModal(); };
     abrirModal(`Confección — ${rotulo(f)}`, `
       <p class="muted" style="margin-bottom:14px">Esta pieza es de confección 🧵 ¿Quién la hace?</p>
       <button class="btn-gold btn-block" id="confTonglin" style="margin-bottom:10px">🇨🇳 Tonglin — crear la orden en la app del Taller</button>
       <button class="btn-gold btn-block" id="confRuben" style="margin-bottom:14px;background:#2456A6">🔨 Rubén — orden al Taller RD (ya enlazada a esta factura)</button>
-      <p class="muted" style="margin-bottom:10px">O el seguimiento clásico del taller local (plazo pactado con el cliente):</p>
-      <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
-      <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
-      <div class="row" style="margin-top:12px;align-items:flex-end">
-        <div><label>U otro plazo (días)</label><input type="number" id="confOtro" min="1" step="1" placeholder="Ej: 10"></div>
-        <div style="flex:0 0 auto"><button class="btn-ghost" id="confOtroOk">Pactar</button></div>
-      </div>
       <button class="btn-ghost btn-block" id="confLuego" style="margin-top:12px">Ahora no — la registro luego</button>
     `);
-    const arrancar = async dias => { if (await iniciar(f, dias)) listo(); };
     /* 🔨 Rubén: la orden nace en el tablero del Taller RD (mismo módulo,
        dentro del CRM) YA enlazada — al pagarle, su valor se SUMA al costo */
     $('#confRuben').addEventListener('click', () => {
@@ -1003,17 +997,14 @@ const Confecciones = (() => {
       toast(`🇨🇳 Orden ${orden.numero ? '#' + orden.numero : ''} creada en el Taller — ábrelo para completar fotos y detalles`);
       listo();
     });
-    $('#conf5').addEventListener('click', () => arrancar(5));
-    $('#conf20').addEventListener('click', () => arrancar(20));
-    $('#confOtroOk').addEventListener('click', () => {
-      const d = Number($('#confOtro').value);
-      if (d >= 1) arrancar(Math.round(d));
-    });
     $('#confLuego').addEventListener('click', listo);
   }
 
   function init() {
-    $('#btnNuevaConfeccion').addEventListener('click', nueva);
+    /* el botón viejo "+ Nueva confección" ya no existe (la vista es el
+       Taller RD) — el guard evita el crash si el HTML es el nuevo */
+    const b = $('#btnNuevaConfeccion');
+    if (b) b.addEventListener('click', nueva);
   }
 
   return { init, render, detalle, iniciar, nueva, pactar, esDeConfeccion };
