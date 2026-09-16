@@ -480,7 +480,7 @@ const App = (() => {
     const sinVer = eventos().filter(e => e.para === (karen ? 'karen' : 'jose') && !e.visto).length;
     const tabs = karen
       ? [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['ajustes','⚙️',T('ajustes')]]
-      : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['rd','🔨','Taller RD'],['historial','📚','Hist.'],['ajustes','⚙️',T('ajustes')]];
+      : [['novedades','🔔',T('novedades')],['lotes','🗂',T('lotes')],['nueva','＋',T('nueva')],['historial','📚','Historial'],['ajustes','⚙️',T('ajustes')]];
     const tabOn = (vista === 'lote' || vista === 'orden') ? 'lotes'
       : ['rdNueva', 'rdPagar', 'rdTrabajo'].includes(vista) ? 'rd' : vista;
 
@@ -551,7 +551,8 @@ const App = (() => {
   /* ═══ novedades ═══ */
   function vNovedades(c) {
     const karen = I18N.esKaren();
-    const mios = eventos().filter(e => e.para === (karen ? 'karen' : 'jose'))
+    /* las novedades del Taller RD (trdId) se atienden en el CRM, no aquí */
+    const mios = eventos().filter(e => e.para === (karen ? 'karen' : 'jose') && !e.trdId)
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
     const nuevos = mios.filter(e => !e.visto);
     const viejos = mios.filter(e => e.visto).slice(0, 8);
@@ -3534,9 +3535,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     }
     if (Nube.conectado()) {
       I18N.setRol(Nube.rol());
-      /* #rd: acceso directo desde el CRM a la pestaña del Taller RD */
-      vista = (location.hash === '#rd' && Nube.rol() === 'jose') ? 'rd' : 'novedades';
-      if (location.hash === '#rd') history.replaceState(null, '', location.pathname);
+      vista = 'novedades';
       history.replaceState({ v: vista, l: null, o: null, t: null }, '');
       $('#app').innerHTML = `<div class="vacio" style="padding-top:30vh"><span>🧵</span>${T('cargando')}</div>`;
       await cargar();

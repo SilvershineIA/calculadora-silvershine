@@ -267,6 +267,8 @@ const Sync = (() => {
     /* Acceso REST directo a tablas que NO son colecciones locales (leads,
        capi_eventos): viven solo en la nube y se leen bajo demanda. */
     api: rest, funcion,
+    /* token vivo para módulos que hablan con Storage (fotos del Taller RD) */
+    token,
     pendientes: () => cola.leer().length,
     info: () => cfg ? { url: cfg.url, email: cfg.email } : null,
     cfgPublica: () => cfg ? { url: cfg.url, anonKey: cfg.anonKey, email: cfg.email } : null,

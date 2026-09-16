@@ -958,8 +958,9 @@ const Confecciones = (() => {
     const listo = () => { if (alListo) alListo(); else { cerrarModal(); render(); } };
     abrirModal(`Confección — ${rotulo(f)}`, `
       <p class="muted" style="margin-bottom:14px">Esta pieza es de confección 🧵 ¿Quién la hace?</p>
-      <button class="btn-gold btn-block" id="confTonglin" style="margin-bottom:14px">🇨🇳 Tonglin — crear la orden en la app del Taller</button>
-      <p class="muted" style="margin-bottom:10px">O el taller local (plazo pactado con el cliente):</p>
+      <button class="btn-gold btn-block" id="confTonglin" style="margin-bottom:10px">🇨🇳 Tonglin — crear la orden en la app del Taller</button>
+      <button class="btn-gold btn-block" id="confRuben" style="margin-bottom:14px;background:#2456A6">🔨 Rubén — orden al Taller RD (ya enlazada a esta factura)</button>
+      <p class="muted" style="margin-bottom:10px">O el seguimiento clásico del taller local (plazo pactado con el cliente):</p>
       <button class="btn-gold btn-block" id="conf5" style="margin-bottom:10px">⚡ Confección a 5 días</button>
       <button class="btn-gold btn-block" id="conf20">🗓 Confección a 20 días</button>
       <div class="row" style="margin-top:12px;align-items:flex-end">
@@ -969,6 +970,15 @@ const Confecciones = (() => {
       <button class="btn-ghost btn-block" id="confLuego" style="margin-top:12px">Ahora no — la registro luego</button>
     `);
     const arrancar = async dias => { if (await iniciar(f, dias)) listo(); };
+    /* 🔨 Rubén: la orden nace en el tablero del Taller RD (mismo módulo,
+       dentro del CRM) YA enlazada — al pagarle, su valor se SUMA al costo */
+    $('#confRuben').addEventListener('click', () => {
+      if (typeof Sync === 'undefined' || !Sync.conectado()) {
+        toast('⚠ Conecta la nube en Ajustes primero — el Taller RD vive en Supabase');
+        return;
+      }
+      TallerRD.nueva(f);
+    });
     $('#confTonglin').addEventListener('click', async () => {
       if (typeof Sync === 'undefined' || !Sync.conectado()) {
         toast('⚠ Conecta la nube en Ajustes primero — la orden del Taller vive en Supabase');

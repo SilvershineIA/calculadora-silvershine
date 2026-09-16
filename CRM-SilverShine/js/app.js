@@ -747,7 +747,7 @@
      Cada init va protegido: si un módulo falla (p. ej. un HTML viejo en
      caché con JS nuevo durante una actualización), el resto de la app
      sigue funcionando en vez de quedarse en blanco. */
-  for (const M of [Clientes, Catalogo, Calculadora, Facturas, Cotizaciones, Confecciones, Finanzas, Inventario, Tareas]) {
+  for (const M of [Clientes, Catalogo, Calculadora, Facturas, Cotizaciones, Confecciones, TallerRD, Finanzas, Inventario, Tareas]) {
     try { M.init(); } catch (e) { console.error('Init falló:', e); }
   }
   renderPanel();
