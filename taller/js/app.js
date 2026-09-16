@@ -3396,6 +3396,9 @@ Si no es legible responde {"error": "motivo corto"}.`;
         </div>${est === 'porRecibir' ? '<span class="badge b-rojo">NUEVO</span>' : est === 'enviadoRD' ? '<span class="badge b-verde">✅ ENVIADO</span>' : '<span class="badge b-azul">EN EL TALLER</span>'}</div>
         <div style="font-size:14.5px;margin-top:6px;white-space:pre-wrap">✍️ ${esc(t.desc || '')}</div>
         ${(t.fotos || []).length ? `<div class="galeria">${t.fotos.map(f => `<img data-path="${f.path}" alt="">`).join('')}</div>` : ''}
+        ${!t.recibido ? `<div class="sub" style="margin-top:6px">${t.salio
+          ? `<b class="verde">📤 José te lo envió el ${fmtFecha(t.salio)} — va en camino</b>`
+          : `⏳ José todavía <b>NO</b> te lo ha enviado`}</div>` : ''}
         <div class="sub" style="margin-top:6px">${[t.entrega ? `🎯 Entrega: <b class="${t.rush ? 'rojo' : ''}">${fmtFecha(t.entrega)}</b>` : '', t.recibido ? `📥 recibido ${fmtFecha(t.recibido)}` : ''].filter(Boolean).join(' · ')}</div>
         ${!t.recibido ? `<button class="btn azul" data-rec="${t.id}">📥 Lo recibí</button>`
           : !t.enviado ? `<button class="btn azul" data-env="${t.id}">✅ Enviado — poner mi valor</button>`
@@ -3413,6 +3416,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       const t = doc(x.dataset.rec);
       if (!t) return;
       t.recibido = hoyISO();
+      t.salio = t.salio || hoyISO();   // si le llegó, obviamente ya había salido
       await guardarDoc(t);
       await avisarRD('rdRecibido', numTrd(t), t.id);
       toast('📥 ✓');

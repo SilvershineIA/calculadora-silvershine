@@ -54,10 +54,16 @@ const TallerRD = (() => {
     return 'porRecibir';
   }
   const BADGE = {
-    porRecibir: ['b-roja', '📥 Rubén no lo ha recibido'],
     enTaller: ['b-pend', '🔨 En el taller'],
     enviadoRD: ['b-pend', '✅ Enviado — por pagar'],
     pagado: ['b-pag', '💵 Pagado'],
+  };
+  /* antes de que Rubén lo reciba hay DOS momentos: la pieza sigue aquí
+     (por enviarle) o ya salió (t.salio = José marcó 📤 "ya se lo envié") */
+  const badgeTrd = t => {
+    const e = estadoTrd(t);
+    if (e === 'porRecibir') return t.salio ? ['b-pend', '📤 Enviado — Rubén no lo ha recibido'] : ['b-roja', '📋 Por ENVIARLE a Rubén'];
+    return BADGE[e];
   };
   const deuda = () => trabajos().filter(t => t.enviado && !t.pagado);
 
@@ -149,14 +155,17 @@ const TallerRD = (() => {
     const nov = novedades();
 
     const fila = t => {
-      const [bcl, btx] = BADGE[estadoTrd(t)];
+      const [bcl, btx] = badgeTrd(t);
       return `
       <div class="item" data-trd="${t.id}">
         <div class="item-info">
           <div class="item-name">${numTrd(t)}${t.rush ? ' <span class="badge b-roja">🔴 RUSH</span>' : ''}
             <span class="badge ${bcl}">${btx}</span></div>
           <div class="item-sub"><b>${TIPOS[t.tipoTrabajo] || ''}</b>${t.facturaCRM ? ` · ${esc(t.facturaCRM.cliente || '')}` : ''} · ${esc(String(t.desc || '').split('\n')[0].slice(0, 60))}</div>
-          <div class="item-sub">${[t.entrega ? `🎯 ${fmtFecha(t.entrega)}` : '', t.llegoDeVuelta ? '📦 de vuelta ✓' : ''].filter(Boolean).join(' · ')}</div>
+          <div class="item-sub">${[t.entrega ? `🎯 ${fmtFecha(t.entrega)}` : '', t.salio ? `📤 salió el ${fmtFecha(t.salio)}` : '', t.llegoDeVuelta ? '📦 de vuelta ✓' : ''].filter(Boolean).join(' · ')}</div>
+          ${!t.salio && !t.recibido ? `<label class="item-sub" data-nodetalle style="display:flex;align-items:center;gap:7px;margin-top:4px;cursor:pointer;color:var(--red)">
+            <input type="checkbox" class="trdSalio" data-id="${t.id}" style="width:17px;height:17px;flex:0 0 auto">
+            <b>📤 Marcar: ya se lo envié (salió de aquí)</b></label>` : ''}
         </div>
         ${t.valor != null ? `<b class="${t.pagado ? 'verde' : 'rojo'}">${RD(t.valor)}</b>` : '<span class="item-arrow">›</span>'}
       </div>`;
@@ -184,7 +193,20 @@ const TallerRD = (() => {
       <p class="muted" style="margin-top:12px;font-size:.78rem">Rubén ve estos trabajos al instante en SU app (sin nombres de clientes) — el link se genera abajo.</p>
       <button type="button" class="btn-ghost btn-block" id="trdLink" style="margin-top:6px">🔗 Generar el link de Rubén</button>`;
 
-    $$('#modalBody [data-trd]').forEach(el => el.addEventListener('click', () => detalle(el.dataset.trd)));
+    $$('#modalBody [data-trd]').forEach(el => el.addEventListener('click', e => {
+      if (e.target.closest('[data-nodetalle]')) return;   // el checkbox no abre la ficha
+      detalle(el.dataset.trd);
+    }));
+    /* 📤 checkbox "ya se lo envié": marca la salida de aquí — Rubén ve
+       al instante que su pieza va en camino */
+    $$('#modalBody .trdSalio').forEach(ch => ch.addEventListener('change', () => {
+      const t = doc(ch.dataset.id);
+      if (!t || !ch.checked) return;
+      t.salio = hoyISO();
+      guardar(t);
+      toast(`📤 ${numTrd(t)} marcado como enviado a Rubén`);
+      pintarTablero();
+    }));
     $$('#modalBody [data-ev]').forEach(el => el.addEventListener('click', () => {
       const e = doc(el.dataset.ev);
       if (e) { e.visto = true; guardar(e); }
@@ -479,7 +501,7 @@ const TallerRD = (() => {
   function detalle(id) {
     const t = doc(id);
     if (!t) { pintarTablero(); return; }
-    const [bcl, btx] = BADGE[estadoTrd(t)];
+    const [bcl, btx] = badgeTrd(t);
     abrirModal(`${numTrd(t)} — Taller RD`, `
       <div class="item-name" style="margin-bottom:6px">${TIPOS[t.tipoTrabajo] || ''}
         <span class="badge ${bcl}">${btx}</span>${t.rush ? ' <span class="badge b-roja">🔴 RUSH</span>' : ''}</div>
@@ -489,12 +511,14 @@ const TallerRD = (() => {
         ? '🛡️ garantía: NO toca el costo de la factura'
         : t.costoAplicado ? `<span class="verde">💵 ${RD(t.costoAplicado.rd)} sumado al costo · ${fmtFecha(t.costoAplicado.fecha)}</span>` : 'al pagarle, su valor se SUMA al costo'}</p>` : ''}
       <div class="abono-row"><span>Creado</span><b>${fmtFecha(t.creado)}</b></div>
+      <div class="abono-row"><span>📤 Se lo enviaste (salió de aquí)</span><b>${t.salio ? fmtFecha(t.salio) : '—'}</b></div>
       <div class="abono-row"><span>📥 Rubén lo recibió</span><b>${t.recibido ? fmtFecha(t.recibido) : '—'}</b></div>
       <div class="abono-row"><span>✅ Rubén lo envió</span><b>${t.enviado ? fmtFecha(t.enviado) : '—'}</b></div>
       ${t.valor != null ? `<div class="abono-row"><span><b>Valor de Rubén</b></span><b class="${t.pagado ? 'verde' : 'rojo'}">${RD(t.valor)}</b></div>` : ''}
       ${(t.correcciones || []).map(x => `<div class="abono-row"><span class="muted">✏️ corrigió el ${fmtFecha(x.fecha)}</span><span class="muted">${RD(x.antes)} → ${RD(x.ahora)}</span></div>`).join('')}
       <div class="abono-row"><span>💵 Pagado</span><b>${t.pagado ? fmtFecha(t.pagado.fecha) : '—'}</b></div>
       <div class="abono-row"><span>📦 Me llegó de vuelta</span><b>${t.llegoDeVuelta ? fmtFecha(t.llegoDeVuelta) : '—'}</b></div>
+      ${!t.salio && !t.recibido ? '<button type="button" class="btn-gold btn-block" id="trdSalioBtn" style="margin-top:10px;background:#2456A6">📤 Ya se lo envié (salió de aquí)</button>' : ''}
       ${t.enviado && !t.llegoDeVuelta ? '<button type="button" class="btn-gold btn-block" id="trdVuelta" style="margin-top:10px">📦 Me llegó de vuelta</button>' : ''}
       ${t.enviado && !t.pagado ? '<button type="button" class="btn-ghost btn-block" id="trdIrPagar" style="margin-top:8px">💵 Pagar a Rubén…</button>' : ''}
       ${!t.enviado ? '<button type="button" class="btn-ghost btn-block" id="trdEditar" style="margin-top:8px">✏️ Editar (descripción, RUSH, entrega)</button>' : ''}
@@ -503,6 +527,7 @@ const TallerRD = (() => {
     pintarFotos($('#modalBody'));
     const on = (sel, fn) => { const x = $(sel); if (x) x.addEventListener('click', fn); };
     on('#trdVolver', () => { abrirModal('🔨 Taller RD — Rubén', ''); pintarTablero(); });
+    on('#trdSalioBtn', () => { t.salio = hoyISO(); guardar(t); toast('📤 Marcado — Rubén lo ve en camino'); detalle(id); });
     on('#trdVuelta', () => { t.llegoDeVuelta = hoyISO(); guardar(t); toast('📦 ✓'); detalle(id); });
     on('#trdIrPagar', pagar);
     on('#trdBorrar', () => {
