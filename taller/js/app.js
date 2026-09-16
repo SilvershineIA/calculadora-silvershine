@@ -253,7 +253,7 @@ const App = (() => {
   /* numeración #[factura CRM]-[secuencial del taller] — sin factura, solo el secuencial */
   const numTrd = t => '#' + (t.facturaOrden ? t.facturaOrden + '-' : '') + t.sec;
   const secSiguienteRD = () => Math.max(383, ...trabajosRD().map(t => Number(t.sec) || 0)) + 1;
-  const TIPOS_RD = { confeccion: 'Confeccionar', grabado: 'Grabado', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
+  const TIPOS_RD = { confeccion: 'Confeccionar', grabado: 'Grabado', talla: 'Ajustar talla', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
   /* estado derivado del trabajo (auto-reparable, como los lotes) */
   function estadoTrd(t) {
     if (t.pagado) return 'pagado';

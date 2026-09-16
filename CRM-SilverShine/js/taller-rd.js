@@ -44,7 +44,7 @@ const TallerRD = (() => {
   }
 
   /* ── modelo (idéntico al de la app de Rubén) ── */
-  const TIPOS = { confeccion: 'Confeccionar', grabado: 'Grabado', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
+  const TIPOS = { confeccion: 'Confeccionar', grabado: 'Grabado', talla: 'Ajustar talla', montura: 'Montura', cambiar: 'Cambiar piedras', reparacion: 'Reparación', garantia: '🛡️ Garantía', otro: 'Otro' };
   const numTrd = t => '#' + (t.facturaOrden ? t.facturaOrden + '-' : '') + t.sec;
   const secSiguiente = () => Math.max(383, ...trabajos().map(t => Number(t.sec) || 0)) + 1;
   function estadoTrd(t) {
@@ -256,6 +256,7 @@ const TallerRD = (() => {
       tipo: 'confeccion',
       oroK: '14K', oroColor: 'amarillo', aros: [{ mm: '2mm', talla: '', grab: '' }],
       grabados: [{ pieza: '', txt: '', estilo: 'normal' }],
+      tActual: '', tNueva: '',
       mPiedra: '', mEngaste: '4 uñas', cPiedras: '', rQue: '', wQue: '',
       desc: '', tocada: false, rush: false, entrega: '',
     };
@@ -280,6 +281,10 @@ const TallerRD = (() => {
         } else {
           b.desc = 'Grabar:\n' + gs.map((g, i) => '— ' + (g.pieza.trim() || 'pieza ' + (i + 1)) + ': «' + (g.txt.trim() || '…') + '» (' + g.estilo + ')').join('\n');
         }
+      } else if (b.tipo === 'talla') {
+        b.desc = b.tNueva.trim()
+          ? 'Ajustar talla' + (b.tActual.trim() ? ': de ' + b.tActual.trim() : '') + (b.tActual.trim() ? ' a ' : ' a la ') + b.tNueva.trim()
+          : '';
       } else if (b.tipo === 'montura') {
         b.desc = b.mPiedra.trim() ? 'Montar ' + b.mPiedra.trim() + ' — engaste de ' + b.mEngaste : '';
       } else if (b.tipo === 'cambiar') {
@@ -432,6 +437,14 @@ const TallerRD = (() => {
           b.grabados.push({ pieza: '', txt: '', estilo: 'normal' });
           pintarPlantilla(); alCambiar();
         });
+      } else if (b.tipo === 'talla') {
+        p.innerHTML = `<div class="row">
+            <div><label>Talla actual (como está)</label><input type="text" id="trdTActual" placeholder="Ej: 9" value="${esc(b.tActual)}" inputmode="decimal"></div>
+            <div><label>Talla nueva (a la que va) *</label><input type="text" id="trdTNueva" placeholder="Ej: 7" value="${esc(b.tNueva)}" inputmode="decimal"></div>
+          </div>
+          <p class="muted" style="margin:4px 0 10px">Si es más de un anillo o hay algo especial (piedras corridas, aro grabado…), agrégalo en la descripción de abajo.</p>`;
+        $('#trdTActual').addEventListener('input', e => { b.tActual = e.target.value; alCambiar(); });
+        $('#trdTNueva').addEventListener('input', e => { b.tNueva = e.target.value; alCambiar(); });
       } else if (b.tipo === 'montura') {
         p.innerHTML = `<label>Piedra (qué es y tamaño)</label>
           <input type="text" id="trdMPiedra" placeholder="Ej: oval 8×6, va con la pieza" value="${esc(b.mPiedra)}">
@@ -508,7 +521,7 @@ const TallerRD = (() => {
           facturaOrden: (b.factura && b.factura.orden) || '',
           facturaCRM: b.factura ? { id: b.factura.id, rotulo: b.factura.rotulo, cliente: b.factura.cliente } : null,
           tipoTrabajo: b.tipo, desc,
-          plantilla: { oroK: b.oroK, oroColor: b.oroColor, aros: b.aros, grabados: b.grabados, mPiedra: b.mPiedra, mEngaste: b.mEngaste, cPiedras: b.cPiedras, rQue: b.rQue, wQue: b.wQue },
+          plantilla: { oroK: b.oroK, oroColor: b.oroColor, aros: b.aros, grabados: b.grabados, tActual: b.tActual, tNueva: b.tNueva, mPiedra: b.mPiedra, mEngaste: b.mEngaste, cPiedras: b.cPiedras, rQue: b.rQue, wQue: b.wQue },
           rush: !!b.rush, entrega: b.entrega || '',
           fotos: [],
         };
