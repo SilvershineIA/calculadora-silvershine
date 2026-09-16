@@ -73,8 +73,11 @@ body{
   background:linear-gradient(120deg,var(--gold) 20%,var(--gold-bright) 60%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
 }
-.view-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
-.view-head .view-title{margin-bottom:0}
+/* En el móvil los botones bajan a su propia línea en vez de partirse
+   en varias líneas y estripar el título (Confecciones tiene 3) */
+.view-head{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:18px;flex-wrap:wrap}
+.view-head .view-title{margin-bottom:0;flex:1 1 auto}
+.view-head .btn-sm{white-space:nowrap}
 
 /* ── Tarjetas ── */
 .card{
