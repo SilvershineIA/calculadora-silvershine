@@ -190,7 +190,7 @@ const TallerRD = (() => {
       <h3 class="sub-h">En el taller (${activos.length})</h3>
       ${activos.map(fila).join('') || '<div class="empty"><span>🔨</span>Sin trabajos — crea el primero.</div>'}
       ${listos.length ? `<h3 class="sub-h">Terminados (${listos.length})</h3>` + listos.slice(0, 8).map(fila).join('') : ''}
-      <p class="muted" style="margin-top:12px;font-size:.78rem">Rubén ve estos trabajos al instante en SU app (sin nombres de clientes) — el link se genera abajo.</p>
+      <p class="muted" style="margin-top:12px;font-size:.78rem">Rubén ve cada trabajo en SU app (sin nombres de clientes) SOLO cuando marcas 📤 "ya se lo envié" — antes de eso no le aparece y no se confunde. El link se genera abajo.</p>
       <button type="button" class="btn-ghost btn-block" id="trdLink" style="margin-top:6px">🔗 Generar el link de Rubén</button>`;
 
     $$('#modalBody [data-trd]').forEach(el => el.addEventListener('click', e => {
@@ -204,7 +204,7 @@ const TallerRD = (() => {
       if (!t || !ch.checked) return;
       t.salio = hoyISO();
       guardar(t);
-      toast(`📤 ${numTrd(t)} marcado como enviado a Rubén`);
+      toast(`📤 ${numTrd(t)} salió — el trabajo le apareció a Rubén`);
       pintarTablero();
     }));
     $$('#modalBody [data-ev]').forEach(el => el.addEventListener('click', () => {
@@ -487,7 +487,7 @@ const TallerRD = (() => {
           t.fotos.push({ path: p });
         }
         guardar(t);
-        toast(`🔨 ${numTrd(t)} guardado — Rubén ya lo ve en su app`);
+        toast(`🔨 ${numTrd(t)} guardado — le aparecerá a Rubén cuando marques 📤 "ya se lo envié"`);
         abrirModal('🔨 Taller RD — Rubén', '');
         pintarTablero();
       } catch (e) {
@@ -527,7 +527,7 @@ const TallerRD = (() => {
     pintarFotos($('#modalBody'));
     const on = (sel, fn) => { const x = $(sel); if (x) x.addEventListener('click', fn); };
     on('#trdVolver', () => { abrirModal('🔨 Taller RD — Rubén', ''); pintarTablero(); });
-    on('#trdSalioBtn', () => { t.salio = hoyISO(); guardar(t); toast('📤 Marcado — Rubén lo ve en camino'); detalle(id); });
+    on('#trdSalioBtn', () => { t.salio = hoyISO(); guardar(t); toast('📤 Marcado — el trabajo le apareció a Rubén'); detalle(id); });
     on('#trdVuelta', () => { t.llegoDeVuelta = hoyISO(); guardar(t); toast('📦 ✓'); detalle(id); });
     on('#trdIrPagar', pagar);
     on('#trdBorrar', () => {
