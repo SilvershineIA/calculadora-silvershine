@@ -3391,11 +3391,19 @@ Si no es legible responde {"error": "motivo corto"}.`;
     c.innerHTML = `<div class="h-sec">🔨 Trabajos${nuevos ? ` · ${nuevos} nuevo${nuevos === 1 ? '' : 's'}` : ''}</div>` +
       (ts.map(t => {
         const est = estadoTrd(t);
-        return `<div class="card ${t.rush ? 'rush' : ''}">
+        /* ⏰ pastilla ROJA si lleva demasiado en el taller: 5 días —
+           las confecciones, 15 (se cuenta desde que Rubén la recibió) */
+        const dias = (t.recibido && !t.enviado)
+          ? Math.max(0, Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(t.recibido + 'T00:00:00')) / 864e5))
+          : null;
+        const tope = t.tipoTrabajo === 'confeccion' ? 15 : 5;
+        const tarde = dias !== null && dias > tope;
+        return `<div class="card ${t.rush ? 'rush' : ''} ${tarde ? 'atrasada' : ''}">
         <div class="fila"><div class="crece">
           <div class="nombre">${numTrd(t)}${t.rush ? ' <span class="badge b-rush">🔴 RUSH</span>' : ''}</div>
           <div class="sub"><b>${TIPOS_RD[t.tipoTrabajo] || ''}</b></div>
-        </div>${est === 'porRecibir' ? '<span class="badge b-rojo">NUEVO</span>' : est === 'enviadoRD' ? '<span class="badge b-verde">✅ ENVIADO</span>' : '<span class="badge b-azul">EN EL TALLER</span>'}</div>
+        </div>${est === 'porRecibir' ? '<span class="badge b-rojo">NUEVO</span>' : est === 'enviadoRD' ? '<span class="badge b-verde">✅ ENVIADO</span>' : tarde ? '<span class="badge b-rojo">⏰ ATRASADO</span>' : '<span class="badge b-azul">EN EL TALLER</span>'}</div>
+        ${tarde ? `<div class="sub rojo" style="margin-top:4px"><b>⏰ Ya lleva ${dias} días contigo — hay que entregarlo</b></div>` : ''}
         <div style="font-size:14.5px;margin-top:6px;white-space:pre-wrap">✍️ ${esc(t.desc || '')}</div>
         ${(t.fotos || []).length ? `<div class="galeria">${t.fotos.map(f => `<img data-path="${f.path}" alt="">`).join('')}</div>` : ''}
         ${!t.recibido ? `<div class="sub" style="margin-top:6px"><b class="verde">📤 José te lo envió el ${fmtFecha(t.salio)} — va en camino</b></div>` : ''}

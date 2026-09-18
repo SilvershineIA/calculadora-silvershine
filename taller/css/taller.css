@@ -225,6 +225,9 @@ body.rol-rd input:focus,body.rol-rd textarea:focus{border-color:var(--azul)}
 .b-azul{background:var(--azul-100);color:var(--azul)}
 .b-rush{background:var(--red-100);color:var(--red)}
 .card.rush{border-left:4px solid var(--red)}
+/* ⏰ demasiados días en el taller: la pastilla completa en rojo */
+.card.atrasada{border-color:var(--red);background:var(--red-100)}
+.card.atrasada.rush{border-left-color:var(--red)}
 /* pago en lote: filas con checkbox grande y suma viva */
 .pagorow{
   display:flex;align-items:center;gap:12px;background:var(--panel);

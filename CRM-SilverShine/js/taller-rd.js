@@ -148,14 +148,27 @@ const TallerRD = (() => {
   }
   const abrir = render;   // compat con quien llame abrir()
 
+  /* días que la pieza lleva EN EL TALLER (desde que Rubén la recibió);
+     tope de alarma: 5 días — las confecciones, 15 */
+  const diasEnTaller = t => (t.recibido && !t.enviado)
+    ? Math.max(0, Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(t.recibido + 'T00:00:00')) / 864e5))
+    : null;
+  const topeDias = t => t.tipoTrabajo === 'confeccion' ? 15 : 5;
+  const atrasadoTrd = t => { const d = diasEnTaller(t); return d !== null && d > topeDias(t); };
+
   function pintarTablero() {
     const cont = document.getElementById('tallerRDvista');
     if (!cont) return;
     const ts = trabajos();
-    const activos = ts.filter(t => !(t.pagado && t.llegoDeVuelta))
+    /* EN EL TALLER: todo lo que aún no me ha llegado de vuelta */
+    const activos = ts.filter(t => !t.llegoDeVuelta)
       .sort((a, b) => (b.rush ? 1 : 0) - (a.rush ? 1 : 0) ||
         String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')) ||
         (b.creado || '').localeCompare(a.creado || ''));
+    /* 📦 RECIBIDAS — POR PAGAR: me llegaron de vuelta y falta pagarlas
+       (se marcan con ✕ y se pagan varias de un tirón aquí mismo) */
+    const porPagar = ts.filter(t => t.llegoDeVuelta && !t.pagado)
+      .sort((a, b) => (a.llegoDeVuelta || '').localeCompare(b.llegoDeVuelta || ''));
     const listos = ts.filter(t => t.pagado && t.llegoDeVuelta)
       .sort((a, b) => ((b.pagado || {}).fecha || '').localeCompare((a.pagado || {}).fecha || ''));
     const pend = deuda();
@@ -164,13 +177,16 @@ const TallerRD = (() => {
 
     const fila = t => {
       const [bcl, btx] = badgeTrd(t);
+      const dias = diasEnTaller(t);
+      const tarde = atrasadoTrd(t);
       return `
-      <div class="item" data-trd="${t.id}">
+      <div class="item" data-trd="${t.id}" ${tarde ? 'style="border-color:var(--red)"' : ''}>
         <div class="item-info">
           <div class="item-name">${numTrd(t)}${t.rush ? ' <span class="badge b-roja">🔴 RUSH</span>' : ''}
             <span class="badge ${bcl}">${btx}</span></div>
           <div class="item-sub"><b>${TIPOS[t.tipoTrabajo] || ''}</b>${t.facturaCRM ? ` · ${esc(t.facturaCRM.cliente || '')}` : ''} · ${esc(String(t.desc || '').split('\n')[0].slice(0, 60))}</div>
           <div class="item-sub">${[t.entrega ? `🎯 ${fmtFecha(t.entrega)}` : '', t.salio ? `📤 salió el ${fmtFecha(t.salio)}` : '', t.llegoDeVuelta ? '📦 de vuelta ✓' : ''].filter(Boolean).join(' · ')}</div>
+          ${tarde ? `<div class="item-sub rojo"><b>⏰ Lleva ${dias} días en el taller (tope ${topeDias(t)})</b></div>` : ''}
           ${!t.salio && !t.recibido ? `<label class="item-sub" data-nodetalle style="display:flex;align-items:center;gap:7px;margin-top:4px;cursor:pointer;color:var(--red)">
             <input type="checkbox" class="trdSalio" data-id="${t.id}" style="width:17px;height:17px;flex:0 0 auto">
             <b>📤 Marcar: ya se lo envié (salió de aquí)</b></label>` : ''}
@@ -213,6 +229,9 @@ const TallerRD = (() => {
       </div>
       <h3 class="sub-h">En el taller (${activos.length})</h3>
       ${activos.map(fila).join('') || '<div class="empty"><span>🔨</span>Sin trabajos — crea el primero con ＋.</div>'}
+      ${porPagar.length ? `<h3 class="sub-h">📦 Recibidas — por pagar (${porPagar.length} · ${RD(porPagar.reduce((s, t) => s + (Number(t.valor) || 0), 0))})</h3>
+        ${porPagar.map(fila).join('')}
+        <p class="muted" style="margin:2px 0 8px;font-size:.78rem">Se pagan con el botón 💵 de arriba — marcas con ✕ las que van en el pago.</p>` : ''}
       <h3 class="sub-h">📚 Historial (${listos.length})</h3>
       ${[...porMes.entries()].map(([k, arr]) => `
         <p class="muted" style="margin:8px 2px 4px"><b>${mesTxt(k)}</b> · ${arr.length} trabajo${arr.length === 1 ? '' : 's'} · ${RD(arr.reduce((s, t) => s + (Number(t.valor) || 0), 0))}</p>
@@ -638,7 +657,7 @@ const TallerRD = (() => {
         <label style="display:flex;align-items:center;gap:12px;border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer">
           <input type="checkbox" class="trdChk" data-id="${t.id}" data-m="${Number(t.valor) || 0}" checked style="width:20px;height:20px;flex:0 0 auto">
           <span style="flex:1"><b>${numTrd(t)}</b> · ${TIPOS[t.tipoTrabajo] || ''}${t.facturaCRM ? ` — ${esc(t.facturaCRM.cliente || '')}` : ''}<br>
-            <span class="muted" style="font-size:.78rem">enviado ${fmtFecha(t.enviado)}${t.tipoTrabajo === 'garantia' ? ' · 🛡️ garantía (no toca la factura)' : t.facturaCRM ? ' · se suma al costo de su factura' : ''}</span></span>
+            <span class="muted" style="font-size:.78rem">enviado ${fmtFecha(t.enviado)}${t.llegoDeVuelta ? ' · 📦 de vuelta ✓' : ''}${t.tipoTrabajo === 'garantia' ? ' · 🛡️ garantía (no toca la factura)' : t.facturaCRM ? ' · se suma al costo de su factura' : ''}</span></span>
           <b>${RD(t.valor)}</b>
         </label>`).join('') || '<div class="empty"><span>✓</span>Nada pendiente de pago.</div>'}
       ${pend.length ? `<p class="muted" style="margin:4px 0 10px">Al registrar el pago, el «me deben» de Rubén baja al instante en su app.</p>
