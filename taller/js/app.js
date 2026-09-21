@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-09-21', en: 'Production day counter: once the deposit is in, each batch shows how many days it has been in production. After 10 days the batch card turns ORANGE, after 15 days RED ("please ship the pieces!") — so both sides see what needs to move.' },
     { f: '2026-09-15', en: 'Split shipments! Mark SOME pieces as shipment #1 with its tracking, ship the rest later with another tracking — and when everything is on its way, upload the balance invoice (the app asks for it right there). Each shipment shows which pieces it carries.' },
     { f: '2026-08-27', en: 'Design files section on each piece: when the design is finished, attach the 3 files — .3DM, .STL and CAD — each in its own slot (drag & drop works). The app reminds you until all 3 are in, and José gets notified when the set is complete.' },
     { f: '2026-08-27', en: 'Quote corrections: you can upload a CORRECTED PI even after approval (until the deposit) — the old PI is archived and José simply re-approves. José can also withdraw his approval.' },
@@ -589,17 +590,45 @@ const App = (() => {
   }
 
   /* ═══ lista de lotes ═══ */
+  /* ⏰ días DESPUÉS de entrar a producción (desde el comprobante del
+     depósito) con piezas aún sin despachar: naranja >10 · rojo >15 */
+  function diasProduccion(l) {
+    const est = estadoLote(l);
+    if (!l.prodInicio || !['produccion', 'envioParcial'].includes(est)) return null;
+    return Math.max(0, Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(l.prodInicio + 'T00:00:00')) / 864e5));
+  }
+  const nivelProduccion = l => {
+    const d = diasProduccion(l);
+    return d === null ? '' : d > 15 ? 'atrasada' : d > 10 ? 'tarde10' : '';
+  };
+  function lineaProduccion(l) {
+    const d = diasProduccion(l);
+    const nivel = nivelProduccion(l);
+    if (!nivel) return '';
+    const rojo = nivel === 'atrasada';
+    return `<div class="sub ${rojo ? 'rojo' : 'naranja'}"><b>⏰ ${I18N.esKaren()
+      ? `In production for ${d} days${rojo ? ' — please ship the pieces!' : ''}`
+      : `Lleva ${d} días en producción${rojo ? ' — hay que apurar a Tonglin' : ''}`}</b></div>`;
+  }
+
+  /* 📅 aviso SUAVE (sin drama): la entrega estimada ya pasó y aún hay
+     piezas sin despachar */
+  const fueraDeFecha = l => !!(l.comprobante && l.entregaEst && !todoEnviado(l) && hoyISO() > l.entregaEst);
+  const txtFueraDeFecha = () => `<span class="naranja">📅 ${I18N.esKaren() ? 'past the estimated date' : 'fuera de fecha'}</span>`;
+
   function filaLote(l) {
     const est = estadoLote(l);
     const n = piezasDe(l.id).length;
     const tot = totalCot(l);
     const meToca = LE_TOCA[est] === (I18N.esKaren() ? 'karen' : 'jose');
+    const pasada = fueraDeFecha(l);
     return `
-      <div class="card click" data-lote="${l.id}">
+      <div class="card click ${nivelProduccion(l)}" data-lote="${l.id}">
         <div class="fila">${meToca ? '<span class="punto-rojo"></span>' : ''}
           <div class="crece">
             <div class="nombre">🗂 ${esc(l.nombre)}${l.refTonglin ? ` <span class="badge b-jade">🏷 ${esc(l.refTonglin)}</span>` : ''}</div>
-            <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${l.comprobante && !todoEnviado(l) ? ` · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b>` : ''}</div>
+            <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${l.comprobante && !todoEnviado(l) ? ` · ${T('l_entregaEst')} <b class="${pasada ? 'naranja' : ''}">${fmtFecha(l.entregaEst)}</b>` : ''}${pasada ? ' · ' + txtFueraDeFecha() : ''}</div>
+            ${lineaProduccion(l)}
           </div>
           <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span>
         </div>
@@ -670,6 +699,7 @@ const App = (() => {
       <button class="btn-sm" id="btnVolver">${T('volver')}</button>
       <div class="h-sec">🗂 ${esc(l.nombre)}${l.refTonglin ? ` · 🏷 ${esc(l.refTonglin)}` : ''} · <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span></div>
       <div class="pasos">${ORDEN_ESTADOS.map((_, i) => `<span class="${i <= idx ? 'ok' : ''}"></span>`).join('')}</div>
+      ${nivelProduccion(l) ? `<div class="card ${nivelProduccion(l)}">${lineaProduccion(l)}</div>` : ''}
       <div class="fila" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn-sm" id="btnRefLote">${l.refTonglin ? '🏷 ' + esc(l.refTonglin) : T('l_ref')}</button>
         ${['armando', 'enviado', 'cotizado', 'aprobado', 'porPagar'].includes(est) ? `<button class="btn-sm" id="btnUnirLote">${T('l_unir')}</button>` : ''}
@@ -899,7 +929,7 @@ const App = (() => {
         html += `${!todoEnviado(l) ? `<div class="card"><div class="sub">${T('env_balanceHint')}</div></div>` : ''}
           <button class="btn jade" id="btnSubirFinal">${T('l_subirFinal')}</button>`;
       } else {
-        html += `<div class="card"><div class="sub">🧵 ${T('e_' + (est === 'produccion' ? 'produccion' : est))} · ${T('l_entregaEst')} <b>${fmtFecha(l.entregaEst)}</b></div></div>`;
+        html += `<div class="card"><div class="sub">🧵 ${T('e_' + (est === 'produccion' ? 'produccion' : est))} · ${T('l_entregaEst')} <b class="${fueraDeFecha(l) ? 'naranja' : ''}">${fmtFecha(l.entregaEst)}</b>${fueraDeFecha(l) ? ' · ' + txtFueraDeFecha() : ''}</div></div>`;
       }
     }
 
