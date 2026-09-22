@@ -29,18 +29,9 @@ Cliente ──WhatsApp──▶ 829-956-6588 ──┬─▶ tu celular (app Wha
 
 ---
 
-## LO QUE TE TOCA A TI (4 cosas, en este orden)
+## LO QUE TE TOCA A TI (3 cosas obligatorias + 1 recomendada)
 
-### 1. Verificación de empresa en Meta — empieza hoy, tarda días
-
-- <https://business.facebook.com/settings/security> con la cuenta de Facebook que administra
-  el portafolio **"jose morillo"** → **Iniciar verificación**.
-- Documento legal de **Grupo Morillo Ciprian SRL** (registro mercantil / RNC) y un comprobante
-  con dirección o teléfono a nombre de la empresa (factura de servicio, estado bancario).
-- Mientras se aprueba, el número queda limitado a 250 conversaciones iniciadas por ti al día;
-  las que inicia el cliente (tu caso) no cuentan. No hay que esperar la aprobación para el paso 2.
-
-### 2. Conectar el 829 con coexistencia en Dualhook — 15 minutos
+### 1. Conectar el 829 con coexistencia en Dualhook — 15 minutos
 
 Requisitos en el celular: app **WhatsApp Business** actualizada (2.24.17 o superior). Abrirla al
 menos una vez cada 13 días después de conectar, o Meta desconecta la coexistencia.
@@ -70,14 +61,14 @@ menos una vez cada 13 días después de conectar, o Meta desconecta la coexisten
    empresa → desactivar la IA / saludo automático / mensaje de ausencia. Si no, responderían
    las dos.
 
-### 3. Correr el SQL en Supabase — 5 minutos
+### 2. Correr el SQL en Supabase — 5 minutos
 
 1. Abre `CRM-SilverShine/supabase/meta-capi-schema.sql` con el Bloc de notas.
 2. Arriba, dos líneas marcadas `← REEMPLAZA`: la URL de la función meta-capi con tu
    TU-PROYECTO, y una clave larga que inventas (`CAPI_WEBHOOK_SECRET`, anótala).
 3. Supabase → **SQL Editor** → New query → pega todo → **Run** → *Success*.
 
-### 4. Las claves de los servicios — 10 minutos
+### 3. Las claves de los servicios — 10 minutos
 
 - **Anthropic**: la misma clave de "Foto a gasto" (Ajustes → IA del CRM). Si no la tienes a
   mano, <https://console.anthropic.com> → API keys.
@@ -85,6 +76,15 @@ menos una vez cada 13 días después de conectar, o Meta desconecta la coexisten
 - **Shopify Storefront** (precios para clientes fuera de RD; opcional): Shopify → Configuración
   → Apps y canales de venta → Desarrollar apps → Crear app "Agente WhatsApp" → Configuración →
   Storefront API → marcar lectura de productos → Instalar → copiar el token de Storefront.
+
+### 4. (Recomendada, NO bloquea) Verificación de empresa en Meta
+
+La API funciona sin verificar. Sin verificación el límite es 250 conversaciones **iniciadas por
+ti** al día y 2 números; las que inicia el cliente (todas las tuyas) no cuentan. Verificar sube
+los límites y facilita aprobar plantillas (como el aviso a tu personal). Tarda días, así que
+conviene iniciarla cuando puedas: <https://business.facebook.com/settings/security> con la cuenta
+del portafolio "jose morillo" → *Iniciar verificación* (documento de Grupo Morillo Ciprian SRL +
+comprobante con dirección o teléfono de la empresa).
 
 ---
 
