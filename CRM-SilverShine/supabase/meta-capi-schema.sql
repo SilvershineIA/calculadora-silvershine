@@ -134,6 +134,8 @@ create table if not exists wa_eventos (
 );
 create index if not exists wa_eventos_tel_idx on wa_eventos (telefono, created_at desc);
 alter table wa_chats add column if not exists ad_descripcion text;
+-- Memoria del agente (Claude directo): últimos turnos de la conversación
+alter table wa_chats add column if not exists historial jsonb not null default '[]'::jsonb;
 
 -- Clientes del CRM por teléfono E.164: el puente los reconoce y los pasa directo a José
 -- (los clientes viven como documentos JSON en `clientes`; la vista normaliza el teléfono)
@@ -154,21 +156,13 @@ create index if not exists facturas_lead_idx on facturas (lead_id) where lead_id
 alter table leads enable row level security;
 alter table capi_eventos enable row level security;
 
--- Voiceflow entra con la clave anon: SOLO puede insertar leads, leer el id
--- que le devuelve el insert (POST …/leads?select=id) y actualizar por id
--- unos pocos campos. Nunca lee teléfonos ni datos de clientes.
+-- Los leads los escribe SOLO el puente wa-webhook (service role, salta RLS).
+-- La clave anon (pública) no toca leads: cero superficie de ataque.
 revoke all on leads from anon;
-grant insert (telefono, nombre, origen, ad_id, ad_headline, ctwa_clid, ocasion, material, calificado, resumen) on leads to anon;
-grant select (id) on leads to anon;
-grant update (nombre, ocasion, material, calificado, resumen) on leads to anon;
 revoke all on capi_eventos from anon;
-
 drop policy if exists voiceflow_insert on leads;
-create policy voiceflow_insert on leads for insert to anon with check (true);
 drop policy if exists voiceflow_select_id on leads;
-create policy voiceflow_select_id on leads for select to anon using (true);
 drop policy if exists voiceflow_update on leads;
-create policy voiceflow_update on leads for update to anon using (true) with check (true);
 
 -- El CRM (usuario autenticado) lee y gestiona todo; el usuario del taller
 -- (Tonglin) queda fuera, igual que en las demás tablas del CRM.

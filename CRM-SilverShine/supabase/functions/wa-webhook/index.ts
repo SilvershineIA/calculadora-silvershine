@@ -1,29 +1,31 @@
 /* ═══════════════════════════════════════════════════════════════════
-   wa-webhook — Puente WhatsApp Cloud API ↔ Voiceflow (Edge Function, Deno).
+   wa-webhook — El agente de WhatsApp de SilverShine (Edge Function, Deno).
+   WhatsApp Cloud API ↔ Claude, directo, sin intermediarios.
 
-   Voiceflow no tiene canal nativo de WhatsApp: necesita un servidor que
-   reciba los webhooks de Meta, le pase el mensaje al agente (Dialog Manager
-   API) y devuelva la respuesta por la API de WhatsApp. Este es ese servidor,
-   y de paso hace lo que la Fase 2 necesita:
+   Recibe los webhooks de Meta, arma el contexto, llama a Claude (agente.ts:
+   prompt + herramientas) y devuelve la respuesta por la API de WhatsApp. Y
+   hace lo que la Fase 2 necesita:
 
      · Captura `referral.ctwa_clid` (clic al anuncio) y crea/actualiza el
        lead en `leads` ANTES de que el agente hable → atribución garantizada.
-     · Le pasa al agente el lead_id, el titular del anuncio y el teléfono
-       como variables, así el agente arranca sabiendo qué pieza vio el cliente.
+     · Le pasa al agente el lead_id, el titular y la imagen del anuncio
+       descrita, así arranca sabiendo qué pieza vio el cliente.
      · Coexistencia: si José responde a mano desde su celular, Meta manda un
-       "eco" (smb_message_echoes) → el agente se PAUSA 24 h en ese chat.
+       "eco" (smb_message_echoes) → el agente se PAUSA 15 días en ese chat.
        José escribe "#bot" en el chat para reactivarlo, "#yo" para pausarlo.
-     · Si el agente escala (variable `escalado` = true), marca el lead como
-       escalado (aparece en Mi Día) y pausa el agente.
+     · Si el agente escala (herramienta escalar_a_jose), marca el lead como
+       escalado (aparece en Mi Día), pausa el chat y avisa a José.
+     · Memoria por chat en wa_chats.historial (últimos 30 turnos de Claude).
 
    Secretos (supabase secrets set …):
+     ANTHROPIC_API_KEY   la clave de console.anthropic.com: el CEREBRO del agente
+                         (Claude Opus 5), la descripción de fotos y de anuncios.
      WA_VERIFY_TOKEN     palabra que se pega en Meta → Webhook → Verify token
      WA_ACCESS_TOKEN     token permanente (usuario de sistema, whatsapp_business_messaging)
      WA_APP_SECRET       opcional: "App secret" de la app de Meta, para verificar la firma
      META_GRAPH_VERSION  opcional, por defecto v25.0
-     VF_API_KEY          Voiceflow → Settings → API keys (Dialog Manager)
-     VF_VERSION_ID       opcional: production (defecto) | development
-     VF_DM_URL           opcional: https://general-runtime.voiceflow.com
+     SHOPIFY_STOREFRONT_TOKEN  opcional: token público de Storefront API para precios por
+                         país (clientes fuera de RD). Sin él, el bot manda el link.
      WA_PAUSA_HORAS      opcional: horas de pausa cuando José toma el chat (360 = 15 días;
                          son ventas que toman tiempo). "#bot" en el chat reactiva antes.
      DEEPGRAM_API_KEY    para TRANSCRIBIR LAS NOTAS DE VOZ (Deepgram nova-3, español) y que
@@ -31,12 +33,9 @@
      WA_AVISO_NUMERO     número personal de José (E.164) para avisarle por WhatsApp cuando el
                          bot escala; WA_AVISO_PLANTILLA = nombre de la plantilla aprobada
                          (p. ej. aviso_lead, 3 parámetros: quién, pieza/material, motivo).
-     ANTHROPIC_API_KEY   para DESCRIBIR LAS FOTOS que mandan los clientes: el
-                         agente de Voiceflow no ve imágenes, así que Claude
-                         (visión) las convierte en texto — tipo de pieza, metal,
-                         piedra, estilo y a qué diseño del catálogo se parece —
-                         y eso es lo que recibe el agente. Sin la clave, el
-                         agente solo sabe que "llegó una foto".
+     Las fotos que mandan los clientes se describen con Claude (visión) — tipo
+     de pieza, metal, piedra, estilo, nombre visible o pista de parecido — y eso
+     es lo que recibe el agente como texto.
 
    Desplegar: supabase functions deploy wa-webhook --no-verify-jwt
    (Meta no manda JWT; la verificación es el verify token + la firma HMAC)
@@ -44,18 +43,17 @@
 
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { encodeBase64 } from "jsr:@std/encoding/base64";
+import { responderConClaude, type MensajeSalida } from "./agente.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY");
+const SHOPIFY_STOREFRONT_TOKEN = env("SHOPIFY_STOREFRONT_TOKEN");
 const SUPABASE_URL = env("SUPABASE_URL");
 const SERVICE_KEY = env("SUPABASE_SERVICE_ROLE_KEY");
 const WA_VERIFY_TOKEN = env("WA_VERIFY_TOKEN") || "silvershine";
 const WA_ACCESS_TOKEN = env("WA_ACCESS_TOKEN");
 const WA_APP_SECRET = env("WA_APP_SECRET");
 const GRAPH = env("META_GRAPH_VERSION") || "v25.0";
-const VF_API_KEY = env("VF_API_KEY");
-const VF_VERSION_ID = env("VF_VERSION_ID") || "production";
-const VF_DM_URL = (env("VF_DM_URL") || "https://general-runtime.voiceflow.com").replace(/\/$/, "");
 const PAUSA_MS = (Number(env("WA_PAUSA_HORAS")) || 360) * 3600 * 1000;   // 15 días por defecto
 const DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY");
 const WA_AVISO_NUMERO = env("WA_AVISO_NUMERO").replace(/\D/g, "");
@@ -70,7 +68,8 @@ type Dict = Record<string, unknown>;
 type Lead = { id: string; telefono: string; nombre: string | null; origen: string | null; ctwa_clid: string | null; escalado: boolean; factura_id: string | null; created_at: string; ocasion?: string | null; material?: string | null; cliente_id?: string | null };
 type Chat = {
   telefono: string; nombre: string | null; lead_id: string | null; ctwa_clid: string | null;
-  agente_pausado: boolean; pausado_hasta: string | null; vf_iniciado: boolean;
+  agente_pausado: boolean; pausado_hasta: string | null; historial: unknown[] | null;
+  ad_headline?: string | null; ad_descripcion?: string | null;
 };
 
 const json = (b: unknown, status = 200) =>
@@ -220,7 +219,7 @@ function extraerTexto(m: Dict): string {
 }
 
 /* ── Fotos: WhatsApp → Claude (visión) → descripción en texto para el agente ──
-   El agente de Voiceflow no ve imágenes. Aquí se descarga la foto de la Cloud
+   El agente recibe texto, no imágenes. Aquí se descarga la foto de la Cloud
    API y Claude la describe como lo haría un vendedor: tipo de pieza, metal y
    color aparente, piedra (forma, tamaño), banda, estilo, y si se parece a un
    diseño del catálogo (se le pasa la lista de nombres de la tienda). */
@@ -332,61 +331,24 @@ async function describirAnuncio(ref: Referral): Promise<string | null> {
   }
 }
 
-/* ── Voiceflow Dialog Manager API ── */
-async function vf(metodo: string, ruta: string, body?: unknown) {
-  const r = await fetch(`${VF_DM_URL}${ruta}`, {
-    method: metodo,
-    headers: { Authorization: VF_API_KEY, versionID: VF_VERSION_ID, "Content-Type": "application/json", accept: "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const txt = await r.text();
-  if (!r.ok) throw new Error(`Voiceflow ${r.status}: ${txt.slice(0, 200)}`);
-  return txt ? JSON.parse(txt) : null;
-}
-const interact = (uid: string, action: Dict) =>
-  vf("POST", `/state/user/${q(uid)}/interact`, { action, config: { tts: false, stripSSML: true, stopAll: true, excludeTypes: ["block", "debug", "flow", "log"] } }) as Promise<Dict[]>;
-
-/* Traces del agente → mensajes de WhatsApp (en orden) */
-function tracesAMensajes(to: string, traces: Dict[]): { mensajes: Dict[]; escalar: string | null } {
+/* Salida del agente (agente.ts) → payloads de la Cloud API */
+function aPayloadsWA(to: string, salida: MensajeSalida[]): Dict[] {
   const out: Dict[] = [];
-  let escalarMotivo: string | null = null;
-  const p = (t: Dict) => (t.payload ?? {}) as Dict;
-  for (const t of traces) {
-    const tipo = t.type as string;
-    if (tipo === "text" || tipo === "speak") {
-      const msg = String(p(t).message ?? "").replace(/<[^>]+>/g, "").trim();
-      const v = msg ? soloUrlVideo(msg) : null;
-      if (v) out.push(video(to, v.link, v.caption));
-      else if (msg) out.push(texto(to, msg));
-    } else if (tipo === "visual") {
-      const img = p(t).image as string | undefined;
-      if (img) out.push(esVideo(img) ? video(to, img) : imagen(to, img));
-    } else if (tipo === "choice") {
-      const nombres = ((p(t).buttons ?? []) as Dict[]).map((b) => String(b.name ?? "")).filter(Boolean);
-      if (!nombres.length) continue;
-      // Los botones de WhatsApp necesitan un texto: se cuelgan del último mensaje de texto
-      const ult = out.length && out[out.length - 1].type === "text" ? out.pop() as Dict : null;
-      const body = ult ? String((ult.text as Dict).body) : "Elige una opción:";
-      if (nombres.length <= 3) out.push(botones(to, body, nombres));
-      else out.push(texto(to, `${body}\n\n${nombres.map((n, i) => `${i + 1}. ${n}`).join("\n")}`));
-    } else if (tipo === "cardV2") {
-      const c = p(t);
-      const img = (c.imageUrl as string) || "";
-      const txt = [c.title, c.description && (c.description as Dict).text].filter(Boolean).join("\n");
-      if (img) out.push(imagen(to, img, txt)); else if (txt) out.push(texto(to, txt));
-    } else if (tipo === "carousel") {
-      // Hasta 5 fotos por carrusel: cuando piden "fotos de los anillos" se mandan de verdad
-      for (const c of ((p(t).cards ?? []) as Dict[]).slice(0, 5)) {
-        const img = (c.imageUrl as string) || "";
-        const txt = [c.title, c.description && (c.description as Dict).text].filter(Boolean).join("\n");
-        if (img) out.push(imagen(to, img, txt)); else if (txt) out.push(texto(to, txt));
-      }
-    } else if (tipo === "escalar" || tipo === "handoff") {
-      escalarMotivo = String(p(t).motivo ?? p(t).message ?? "el agente pidió pasar con José");
+  let fotos = 0;
+  for (const m of salida) {
+    if (m.type === "text") {
+      const v = soloUrlVideo(m.body);
+      out.push(v ? video(to, v.link, v.caption) : texto(to, m.body));
+    } else if (m.type === "image") {
+      if (fotos++ >= 5) continue;                       // máximo 5 fotos por turno
+      out.push(esVideo(m.link) ? video(to, m.link, m.caption) : imagen(to, m.link, m.caption));
+    } else if (m.type === "video") {
+      out.push(video(to, m.link, m.caption));
+    } else if (m.type === "buttons") {
+      out.push(botones(to, m.body, m.opciones));
     }
-    // 'end', 'path', 'no-reply', etc.: nada que enviar
   }
-  return { mensajes: out, escalar: escalarMotivo };
+  return out;
 }
 
 /* ── Mensaje entrante ── */
@@ -453,7 +415,7 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
   const adDescripcion = String((chatAct as unknown as Dict).ad_descripcion ?? "");
 
   if (pausado(chatAct)) { console.log("agente en pausa para", tel); return; }   // José está atendiendo
-  if (!VF_API_KEY) { console.warn("Sin VF_API_KEY: el mensaje quedó registrado, sin respuesta"); return; }
+  if (!ANTHROPIC_API_KEY) { console.warn("Sin ANTHROPIC_API_KEY: el mensaje quedó registrado, sin respuesta"); return; }
 
   // Visto ✓✓ (no bloquea si falla)
   enviarWA(pnid, { status: "read", message_id: wamid }).catch(() => {});
@@ -468,48 +430,44 @@ async function manejarMensaje(m: Dict, contactos: Dict[], pnid: string) {
   const pendientes = (await db("GET", `wa_eventos?telefono=eq.${q(tel)}&tipo=eq.in&created_at=gt.${q(desde)}&select=contenido&order=created_at.asc&limit=20`)) as { contenido: string | null }[];
   const textoAgente = pendientes.map((p) => (p.contenido ?? "").trim()).filter(Boolean).join("\n") || contenido;
 
-  const uid = tel.replace(/\D/g, "");
-  // Contexto para el agente: quién es, de qué anuncio viene y su lead_id (para el PATCH de calificado)
-  await vf("PATCH", `/state/user/${q(uid)}/variables`, {
-    telefono: tel, nombre_wa: nombre ?? "", lead_id: lead.id,
-    origen: lead.origen ?? "organico", ad_headline: (chatAct as unknown as Dict).ad_headline ?? "",
-    ad_descripcion: adDescripcion,
-    desde_anuncio: lead.origen === "ad" ? "si" : "no", canal: "whatsapp", escalado: false,
-  }).catch((e) => console.warn("variables:", e.message));
-
-  let traces: Dict[] = [];
+  /* Claude: prompt + herramientas + memoria del chat (agente.ts) */
+  let salida;
   try {
-    if (!chatAct.vf_iniciado) {
-      traces = traces.concat(await interact(uid, { type: "launch" }));
-      await guardarChat(tel, { vf_iniciado: true });
-    }
-    traces = traces.concat(await interact(uid, { type: "text", payload: textoAgente }));
+    salida = await responderConClaude({
+      apiKey: ANTHROPIC_API_KEY,
+      ctx: {
+        telefono: tel, nombre_wa: nombre ?? chatAct.nombre ?? null, lead_id: lead.id,
+        origen: lead.origen ?? "organico",
+        ad_headline: String(chatAct.ad_headline ?? ""), ad_descripcion: adDescripcion,
+        cliente_existente: false, db, storefrontToken: SHOPIFY_STOREFRONT_TOKEN || undefined,
+      },
+      historial: (Array.isArray(chatAct.historial) ? chatAct.historial : []) as Parameters<typeof responderConClaude>[0]["historial"],
+      textoUsuario: textoAgente,
+    });
   } catch (e) {
-    await registrar({ telefono: tel, tipo: "error", contenido: (e as Error).message });
+    await registrar({ telefono: tel, tipo: "error", contenido: `claude: ${(e as Error).message}` });
     throw e;
   }
+  await guardarChat(tel, { historial: salida.historial });
 
-  const { mensajes, escalar: motivoTrace } = tracesAMensajes(tel.replace(/\D/g, ""), traces);
-  for (const msg of mensajes) {
+  const payloads = aPayloadsWA(tel.replace(/\D/g, ""), salida.mensajes);
+  if (!payloads.length && salida.textoCrudo) payloads.push(texto(tel.replace(/\D/g, ""), salida.textoCrudo));
+  for (const msg of payloads) {
     try {
       const r = await enviarWA(pnid, msg);
       await registrar({ wamid: (r.messages?.[0]?.id as string) ?? undefined, telefono: tel, tipo: "out",
-        contenido: msg.type === "text" ? String((msg.text as Dict).body) : msg.type === "interactive" ? String(((msg.interactive as Dict).body as Dict).text) : `[${msg.type}]` });
+        contenido: msg.type === "text" ? String((msg.text as Dict).body)
+          : msg.type === "interactive" ? String(((msg.interactive as Dict).body as Dict).text)
+          : `[${msg.type}] ${String(((msg[msg.type as string] as Dict) ?? {}).caption ?? "")}`.trim() });
     } catch (e) {
       await registrar({ telefono: tel, tipo: "error", contenido: (e as Error).message, detalle: msg });
     }
   }
 
-  // ¿El agente escaló? (trace propio o variable `escalado` = true)
-  let motivo = motivoTrace;
-  if (!motivo) {
-    try {
-      const st = (await vf("GET", `/state/user/${q(uid)}`)) as Dict;
-      const v = (st?.variables ?? {}) as Dict;
-      if (v.escalado === true || v.escalado === "true" || v.escalado === 1) motivo = String(v.motivo_escalado ?? "el agente pidió pasar con José");
-    } catch { /* sin estado: nada */ }
+  if (salida.escalar && !lead.escalado) {
+    const leadAct = (await db("GET", `leads?id=eq.${q(lead.id)}&select=*&limit=1`) as Lead[])[0] ?? lead;
+    await escalar(leadAct, tel, salida.escalar, pnid);
   }
-  if (motivo && !lead.escalado) await escalar(lead, tel, motivo, pnid);
 }
 
 /* ── Eco: José escribió desde su celular (coexistencia) ── */

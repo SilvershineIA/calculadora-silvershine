@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
    leads.js — Leads de WhatsApp (Fase 2: Meta Conversions API).
-   Los leads los escribe el agente de WhatsApp (Voiceflow + Claude) en
-   la tabla `leads` de Supabase, con el ctwa_clid del clic del anuncio.
+   Los leads los escribe el puente wa-webhook (el agente de WhatsApp con
+   Claude) en la tabla `leads` de Supabase, con el ctwa_clid del anuncio.
    Aquí el CRM los muestra (Mi Día, Clientes), los vincula a un cliente
    por teléfono normalizado y los pasa a cotización / factura llevando el
    `leadId`. Los eventos a Meta (Lead al calificar, Purchase al pagarse la
@@ -290,8 +290,13 @@ const Leads = (() => {
         ? '<button class="btn-ghost btn-block" id="lReLead" style="margin-top:10px">🔁 Reenviar Lead a Meta ahora</button>' : ''}
       ${l.ctwa_clid && pagada && !l.evento_compra_enviado_at
         ? '<button class="btn-ghost btn-block" id="lReCompra" style="margin-top:10px">🔁 Reenviar Purchase a Meta ahora</button>' : ''}
+      <h3 class="sub-h" style="display:flex;align-items:center;gap:8px">💬 Conversación con el bot
+        <span id="lBotEstado" class="muted" style="text-transform:none;letter-spacing:0;font-weight:400;flex:1"></span>
+        <button type="button" class="btn-ghost btn-sm" id="lBotToggle" hidden></button></h3>
+      <div id="lChat" class="lead-chat"><p class="muted">Cargando…</p></div>
       <button class="btn-danger btn-block" id="lEliminar" style="margin-top:14px">Eliminar lead</button>
     `);
+    pintarConversacion(l);
     UI.navWire(nav);
     const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', async () => { try { await fn(); } catch (e) { toast('⚠ ' + e.message); } }); };
     const refrescar = () => { invalidar(); repintarTodo(); };
@@ -316,6 +321,47 @@ const Leads = (() => {
       toast('Lead eliminado');
       refrescar();
     });
+  }
+
+  /* ── Conversación del bot con ese teléfono (bitácora wa_eventos) + pausar/reactivar ── */
+  async function pintarConversacion(l) {
+    const cont = $('#lChat'), est = $('#lBotEstado'), btn = $('#lBotToggle');
+    if (!cont) return;
+    const tel = encodeURIComponent(l.telefono);
+    try {
+      const [evs, chats] = await Promise.all([
+        Sync.api('GET', `wa_eventos?telefono=eq.${tel}&tipo=in.(in,out,echo,pausa)&select=tipo,contenido,created_at&order=created_at.desc&limit=40`),
+        Sync.api('GET', `wa_chats?telefono=eq.${tel}&select=agente_pausado,pausado_hasta,motivo_pausa&limit=1`),
+      ]);
+      const chat = chats && chats[0];
+      const enPausa = !!(chat && chat.agente_pausado && chat.pausado_hasta && new Date(chat.pausado_hasta) > new Date());
+      est.textContent = !chat ? 'sin conversación todavía'
+        : enPausa ? `⏸ bot en pausa hasta ${fmtHora(chat.pausado_hasta)}${chat.motivo_pausa ? ' · ' + chat.motivo_pausa : ''}`
+        : '🤖 bot activo en este chat';
+      if (chat) {
+        btn.hidden = false;
+        btn.textContent = enPausa ? '▶ Reactivar bot' : '⏸ Pausar bot';
+        btn.onclick = async () => {
+          try {
+            await Sync.api('PATCH', `wa_chats?telefono=eq.${tel}`, enPausa
+              ? { agente_pausado: false, pausado_hasta: null, motivo_pausa: null }
+              : { agente_pausado: true, pausado_hasta: new Date(Date.now() + 15 * 864e5).toISOString(), motivo_pausa: 'pausado desde el CRM' },
+              'return=minimal');
+            toast(enPausa ? '▶ Bot reactivado en este chat' : '⏸ Bot en pausa 15 días en este chat');
+            pintarConversacion(l);
+          } catch (e) { toast('⚠ ' + e.message); }
+        };
+      }
+      if (!evs || !evs.length) { cont.innerHTML = '<p class="muted">Todavía no hay mensajes.</p>'; return; }
+      cont.innerHTML = evs.reverse().map(e => {
+        const cls = e.tipo === 'in' ? 'cli' : e.tipo === 'out' ? 'bot' : 'sys';
+        const quien = e.tipo === 'in' ? '' : e.tipo === 'out' ? '🤖 ' : e.tipo === 'echo' ? '👤 José: ' : '⏸ ';
+        return `<div class="lead-msg ${cls}"><span>${quien}${esc(e.contenido || '')}</span><small>${fmtHora(e.created_at)}</small></div>`;
+      }).join('');
+      cont.scrollTop = cont.scrollHeight;
+    } catch (e) {
+      cont.innerHTML = `<p class="muted">⚠ ${esc(SIN_TABLA.test(e.message) ? 'Falta correr el SQL del puente (wa_eventos)' : e.message)}</p>`;
+    }
   }
 
   function repintarTodo() {

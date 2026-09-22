@@ -2,7 +2,7 @@
 
 **Decisión tomada (9 sep 2026):** todo sigue en el celular de José con el número de siempre.
 Se activa la **coexistencia** de Meta: la app WhatsApp Business del celular y la Cloud API
-comparten el 829-956-6588. El agente (Voiceflow + Claude) responde por la API; José responde a
+comparten el 829-956-6588. El agente (Claude, dentro del puente `wa-webhook`) responde por la API; José responde a
 mano desde el celular o WhatsApp Web como hoy; los chats se ven en ambos lados.
 
 ```
@@ -11,15 +11,15 @@ Cliente ──WhatsApp──▶ 829-956-6588 ──┬─▶ app del celular (Jo
                                                                   │  · guarda referral (ctwa_clid) → leads
                                                                   │  · pausa el bot si José ya respondió (eco)
                                                                   ▼
-                                                        Voiceflow (agente Claude) ──▶ respuesta ──▶ Cloud API ──▶ cliente
+                                                        Claude (agente.ts: prompt + herramientas) ──▶ respuesta ──▶ Cloud API ──▶ cliente
 ```
 
 Tres hechos que definen este camino:
 
-1. **Voiceflow no tiene canal nativo de WhatsApp.** Su método oficial es un puente (un
-   servidor que recibe los webhooks de Meta, llama al agente y devuelve la respuesta). Ese
-   puente es la Edge Function **`wa-webhook`** de este repo, que además captura el clic del
-   anuncio para la Fase 2.
+1. **El agente es Claude llamado directo** (decisión del 22 sep 2026: se descartó Voiceflow).
+   La Edge Function **`wa-webhook`** recibe los webhooks de Meta, arma el contexto, llama a
+   Claude con el prompt del brief y sus herramientas (`agente.ts`), y devuelve la respuesta.
+   Además captura el clic del anuncio para la Fase 2.
 2. **La coexistencia solo la activa un proveedor autorizado por Meta** (Tech Provider /
    Solution Partner) mediante su "registro incrustado" (Embedded Signup). No se puede hacer
    desde la app propia del panel de desarrolladores. Twilio no la soporta.
@@ -31,7 +31,8 @@ Archivos de esta fase:
 
 | Archivo | Para qué |
 |---|---|
-| `supabase/functions/wa-webhook/index.ts` | El puente WhatsApp ↔ Voiceflow (referral, leads, pausa por eco, escalación) |
+| `supabase/functions/wa-webhook/index.ts` | El puente: webhooks, fotos, audios, ráfagas, pausa por eco, escalación |
+| `supabase/functions/wa-webhook/agente.ts` | El agente: prompt (brief), herramientas (precio, calificar, escalar), memoria, formato |
 | `supabase/meta-capi-schema.sql` | Incluye las tablas `wa_chats` y `wa_eventos` y la columna `leads.escalado` |
 | `supabase/config.toml` | `verify_jwt = false` para ambas funciones |
 
@@ -101,20 +102,22 @@ teléfono a nombre de la empresa. Tarda de horas a días. Puede correr en parale
 5. Anota también el **App secret** de la app: panel de desarrolladores → App settings → Basic
    → *App secret* (Show). Sirve para que `wa-webhook` verifique que los webhooks vienen de Meta.
 
-## 5. Voiceflow: API key y variables
+## 5. Claude: la clave de Anthropic
 
-1. Voiceflow → tu agente → **Settings → API keys** → crear una **Dialog Manager API key**.
-   Guárdala como el token.
-2. El puente le pasa al agente estas **variables** antes de cada turno (créalas en el agente
-   con esos nombres exactos): `telefono`, `nombre_wa`, `lead_id`, `origen` (`ad`/`organico`),
-   `desde_anuncio` (`si`/`no`), `ad_headline`, `ad_descripcion`, `canal`, `escalado`, `motivo_escalado`.
-3. Para **escalar a José**, el agente pone `escalado = true` (y opcionalmente
-   `motivo_escalado`). El puente marca el lead como "🔥 Te toca" en Mi Día, te avisa por WhatsApp (plantilla `aviso_lead`) y deja de
-   responder ese chat 15 días (José: son ventas que toman tiempo).
-4. Para **calificar**, el agente hace un paso API: `PATCH {SUPABASE_URL}/rest/v1/leads?id=eq.{lead_id}`
-   con `{ "calificado": true, "nombre": …, "ocasion": …, "material": …, "resumen": … }`
-   (detalle en `SETUP-META-CAPI.md`). Ya **no** hace falta que el agente cree el lead: lo crea
-   `wa-webhook` al primer mensaje, con el referral del anuncio.
+El agente corre con **Claude Opus 5** llamado desde el puente. Solo hace falta la clave de
+console.anthropic.com (la misma que usa "Foto a gasto" en el CRM), como secreto
+`ANTHROPIC_API_KEY`. Con ella el puente hace tres cosas: razona y responde como el agente,
+describe las fotos que mandan los clientes y describe la imagen del anuncio que tocaron.
+
+- El comportamiento está en `supabase/functions/wa-webhook/agente.ts` (el brief condensado).
+  Para cambiarlo, se edita ese archivo y se vuelve a desplegar; no hay panel externo.
+- Las conversaciones se ven en el CRM: abre el lead (⋯) → sección "Conversación con el bot",
+  con botón para pausar/reactivar el bot en ese chat.
+- **Precios para clientes fuera de RD** (`precio_internacional`): requiere un token público de
+  Storefront API. Shopify → Configuración → Apps y canales de venta → Desarrollar apps → Crear
+  app "Agente WhatsApp" → Configuración → *Storefront API* → marcar lectura de productos →
+  Instalar → copiar el **token de acceso de Storefront API** → secreto `SHOPIFY_STOREFRONT_TOKEN`.
+  Sin él, el bot manda el link y no da cifra a clientes del exterior.
 
 ## 6. Desplegar el puente en Supabase
 
@@ -122,7 +125,7 @@ Primero el SQL (`supabase/meta-capi-schema.sql`, ver `SETUP-META-CAPI.md` paso 1
 tablas del puente). Luego, en esta PC:
 
 ```bash
-cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase secrets set WA_VERIFY_TOKEN=inventa-una-palabra WA_ACCESS_TOKEN=EAAB... WA_APP_SECRET=el-app-secret VF_API_KEY=VF.DM.... VF_VERSION_ID=production META_GRAPH_VERSION=v25.0 ANTHROPIC_API_KEY=sk-ant-... DEEPGRAM_API_KEY=... WA_AVISO_NUMERO=+1829XXXXXXX WA_AVISO_PLANTILLA=aviso_lead
+cd "C:\Users\HP\Desktop\Calculadora de oro\CRM-SilverShine" && npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-... WA_VERIFY_TOKEN=inventa-una-palabra WA_ACCESS_TOKEN=EAAB... WA_APP_SECRET=el-app-secret META_GRAPH_VERSION=v25.0 DEEPGRAM_API_KEY=... WA_AVISO_NUMERO=+1829XXXXXXX WA_AVISO_PLANTILLA=aviso_lead SHOPIFY_STOREFRONT_TOKEN=...
 ```
 
 ```bash
@@ -156,7 +159,7 @@ llegan con la app **publicada** (interruptor *Publish* del panel).
 ## 7b. Apagar la "IA" de la app de WhatsApp Business
 
 La app del celular trae respuestas automáticas con IA (los mensajes marcados "✦ IA" en los
-chats). En coexistencia responderían **las dos**: la IA de Meta y el agente de Voiceflow.
+chats). En coexistencia responderían **las dos**: la IA de Meta y nuestro agente.
 Antes de conectar el webhook: WhatsApp Business → Ajustes → Herramientas para la empresa →
 desactivar las respuestas con IA / mensaje de ausencia / saludo automático que estén activos.
 Solo debe quedar respondiendo el agente.
@@ -184,5 +187,4 @@ Solo debe quedar respondiendo el agente.
   ubicación en vivo, catálogo, listas de difusión (quedan solo lectura).
 - Fuentes: [Meta: onboarding de usuarios de la app WhatsApp Business](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users) ·
   [360dialog: coexistencia](https://docs.360dialog.com/docs/hub/embedded-signup/coexistence-onboarding) ·
-  [Voiceflow: integración de ejemplo con WhatsApp Cloud API](https://github.com/voiceflow-community/example-integration-whatsapp) ·
   [Comparativa de proveedores de coexistencia](https://dualhook.com/best-whatsapp-coexistence-providers).

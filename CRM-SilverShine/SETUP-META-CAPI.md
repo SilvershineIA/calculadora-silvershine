@@ -8,7 +8,7 @@ Edge Function): no depende de que el CRM esté abierto y **ningún token de Meta
 navegador ni el repositorio**.
 
 ```
-Anuncio → WhatsApp → Voiceflow/Claude ──POST──▶ leads (Supabase)
+Anuncio → WhatsApp → wa-webhook (Claude) ──▶ leads (Supabase)
                                                    │ calificado = true
                                                    ▼ trigger
 CRM ── factura leadId → pagada ──▶ facturas ──▶ Edge Function meta-capi ──▶ Meta CAPI
@@ -58,9 +58,8 @@ Qué acabas de crear:
 - `facturas.lead_id` — columna derivada del `leadId` que el CRM guarda en el documento.
 - Triggers: *lead calificado → Lead*, *factura pagada con lead → Purchase*. Llaman a la
   función con `Authorization: Bearer <tu secreto>`; nadie externo puede disparar eventos.
-- Seguridad: la clave *anon* (la que usa Voiceflow) **solo puede insertar** leads, leer el
-  `id` que le devuelve el insert y actualizar por `id` cinco campos. No lee teléfonos ni
-  nada del CRM. El usuario del taller (Tonglin) no ve leads.
+- Seguridad: los leads los escribe solo el puente (service role); la clave *anon* no toca
+  `leads`. El usuario del taller (Tonglin) no ve leads.
 
 ## 2. Instalar el CLI de Supabase (una vez, en esta PC)
 
@@ -118,7 +117,7 @@ Abre el CRM (versión 135 o superior) → **Ajustes** → tarjeta **📣 Meta ·
 ## 6. Prueba de punta a punta (criterio de "terminado")
 
 1. **Inserta un lead de prueba** con un `ctwa_clid` real (de un mensaje que de verdad haya
-   entrado desde un anuncio; se ve en el webhook de WhatsApp o en Voiceflow). SQL Editor:
+   entrado desde un anuncio; se ve en la bitácora `wa_eventos`). SQL Editor:
 
    ```sql
    insert into leads (telefono, nombre, origen, ad_headline, ctwa_clid, ocasion, material)
@@ -141,74 +140,14 @@ Abre el CRM (versión 135 o superior) → **Ajustes** → tarjeta **📣 Meta ·
 Si un evento falló (❌ en la bitácora, o ⚠ en la fila), abre el lead (⋯) y usa
 **🔁 Reenviar … a Meta ahora**: la función reintenta con la configuración actual.
 
-## Lado Voiceflow (qué debe mandar el agente)
+## Lado del agente (qué hace el puente)
 
-> **Actualización 9 sep 2026:** con el puente `wa-webhook` (ver `SETUP-WHATSAPP-API.md`) el
-> lead lo crea el puente al primer mensaje, con el `ctwa_clid` del anuncio, y le pasa al
-> agente la variable `lead_id`. El agente entonces **solo hace el PATCH** de abajo cuando
-> califica. El POST de crear lead queda documentado por si algún día el agente corre sin puente.
+> **Actualización 22 sep 2026:** el agente es Claude dentro de `wa-webhook` (se descartó
+> Voiceflow). El puente crea el lead al primer mensaje con el `ctwa_clid` del anuncio, y la
+> herramienta `calificar_lead` del agente hace el `PATCH` a `leads` (service role) que dispara
+> el evento Lead. No hay ningún paso externo que configurar.
 
-Paso *API* tras la calificación. Crear el lead (solo sin puente):
-
-```
-POST {SUPABASE_URL}/rest/v1/leads?select=id
-Headers:
-  apikey: <anon key>
-  Authorization: Bearer <anon key>
-  Content-Type: application/json
-  Prefer: return=representation
-Body:
-{
-  "telefono": "{phone}",              // como venga; la base lo normaliza a +1809…
-  "nombre": "{nombre}",
-  "origen": "ad",                     // ad | organico | instagram | web
-  "ad_id": "{referral.source_id}",
-  "ad_headline": "{referral.headline}",
-  "ctwa_clid": "{referral.ctwa_clid}", // SIN esto Meta no atribuye nada
-  "ocasion": "compromiso",            // compromiso | trio | duo | aros | regalo | confeccion
-  "material": "oro",                  // plata | vermeil | oro
-  "calificado": false,
-  "resumen": "{sintesis}"
-}
-Respuesta: [{"id":"uuid…"}]  → guarda ese id en una variable (lead_id)
-```
-
-Cuando el agente decida que el lead está calificado:
-
-```
-PATCH {SUPABASE_URL}/rest/v1/leads?id=eq.{lead_id}
-Headers: los mismos (Prefer: return=minimal)
-Body: { "calificado": true, "resumen": "{sintesis actualizada}" }
-```
-
-Ese PATCH es lo que dispara el evento **Lead** a Meta. (La clave anon solo puede tocar
-`nombre, ocasion, material, calificado, resumen` y solo filtrando por `id`.)
-
-### Riesgo abierto: ¿Voiceflow expone `referral`?
-
-Se prueba en la Fase 1 con un mensaje real desde un anuncio. Si el conector de WhatsApp de
-Voiceflow **no** entrega `messages[0].referral` (`ctwa_clid`, `source_id`, `headline`), el plan B
-es una Edge Function `wa-webhook` en este mismo Supabase:
-
-1. Meta manda el webhook de WhatsApp Cloud API a `…/functions/v1/wa-webhook`.
-2. La función guarda `referral` por teléfono (tabla `wa_referrals`: `telefono`, `ctwa_clid`,
-   `ad_id`, `headline`, `visto_at`) y reenvía el mensaje a Voiceflow por el *Dialog Manager API*.
-3. El trigger `leads_antes_de_guardar` se amplía: si el lead llega sin `ctwa_clid`, lo toma
-   del último `wa_referrals` del mismo teléfono (ventana de 7 días).
-
-El diseño de tablas y la función `meta-capi` ya no cambiarían: solo se rellena `ctwa_clid`
-por otra vía. **No se implementa hasta confirmar** que hace falta.
-
-## Notas
-
-- Versión del Graph API: **v25.0** (la v23.0 que decía el brief expiró en junio de 2026).
-  Se cambia con el secreto `META_GRAPH_VERSION` sin tocar código.
-- Para WhatsApp, Meta exige en `user_data` **`ctwa_clid` y `whatsapp_business_account_id`**;
-  por eso `META_WABA_ID` es obligatorio (no solo para logs). El teléfono va además como `ph`
-  (SHA-256 del número sin `+`).
-- Idempotencia: `event_id` = `<lead>-lead` y `<factura>-purchase`. Un lead no se reporta dos
-  veces; una factura tampoco. Si el mismo lead compra dos facturas, cada una es un Purchase.
-- Ventana de atribución: los eventos se mandan al momento; Meta atribuye mejor dentro de
-  los 7 días del clic, pero después igual se envían.
-- Si Supabase pausa el proyecto (7 días sin uso en plan gratis), los triggers no corren
-  hasta reactivarlo; los pendientes se pueden reenviar desde el detalle del lead.
+### Riesgo cerrado: el `referral` lo recibe el puente
+Como el webhook de WhatsApp llega directo a `wa-webhook`, `messages[0].referral` (`ctwa_clid`,
+`source_id`, `headline`, imagen) se captura siempre que Meta lo mande. En coexistencia se
+confirma en la prueba real del paso 6; la bitácora `wa_eventos` guarda el webhook completo.
