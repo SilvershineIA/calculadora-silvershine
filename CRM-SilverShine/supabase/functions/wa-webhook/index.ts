@@ -54,6 +54,13 @@ const WA_VERIFY_TOKEN = env("WA_VERIFY_TOKEN") || "silvershine";
 const WA_ACCESS_TOKEN = env("WA_ACCESS_TOKEN");
 const WA_APP_SECRET = env("WA_APP_SECRET");
 const GRAPH = env("META_GRAPH_VERSION") || "v25.0";
+/* Base de la API de WhatsApp. Con Dualhook (coexistencia) los envíos van por su runtime
+   compatible con Graph: WA_API_BASE=https://api.dualhook.com y WA_ACCESS_TOKEN=dh_live_…
+   Sin esa variable, directo a Meta. */
+const WA_API_BASE = (env("WA_API_BASE") || "https://graph.facebook.com").replace(/\/$/, "");
+/* Cuando los webhooks llegan sin firma verificable (Dualhook reenvía los de Meta, cuyo app
+   secret no tenemos), el POST debe traer ?k=<WA_WEBHOOK_KEY> en la URL configurada. */
+const WA_WEBHOOK_KEY = env("WA_WEBHOOK_KEY");
 const PAUSA_MS = (Number(env("WA_PAUSA_HORAS")) || 360) * 3600 * 1000;   // 15 días por defecto
 const DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY");
 const WA_AVISO_NUMERO = env("WA_AVISO_NUMERO").replace(/\D/g, "");
@@ -170,7 +177,7 @@ async function escalar(lead: Lead, tel: string, motivo: string, pnid?: string) {
 
 /* ── WhatsApp Cloud API ── */
 async function enviarWA(pnid: string, payload: Dict) {
-  const r = await fetch(`https://graph.facebook.com/${GRAPH}/${pnid}/messages`, {
+  const r = await fetch(`${WA_API_BASE}/${GRAPH}/${pnid}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${WA_ACCESS_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
@@ -246,7 +253,7 @@ async function nombresCatalogo(): Promise<string[]> {
 }
 
 async function descargarMedia(mediaId: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
-  const meta = await fetch(`https://graph.facebook.com/${GRAPH}/${mediaId}`, { headers: { Authorization: `Bearer ${WA_ACCESS_TOKEN}` } });
+  const meta = await fetch(`${WA_API_BASE}/${GRAPH}/${mediaId}`, { headers: { Authorization: `Bearer ${WA_ACCESS_TOKEN}` } });
   const info = await meta.json().catch(() => ({}));
   if (!meta.ok || !info.url) { console.warn("media:", info.error?.message ?? meta.status); return null; }
   const bin = await fetch(info.url, { headers: { Authorization: `Bearer ${WA_ACCESS_TOKEN}` } });
@@ -534,7 +541,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Solo GET/POST" }, 405);
 
   const raw = await req.text();
-  if (!await firmaValida(raw, req.headers.get("x-hub-signature-256"))) return json({ error: "firma inválida" }, 401);
+  if (WA_APP_SECRET) {
+    if (!await firmaValida(raw, req.headers.get("x-hub-signature-256"))) return json({ error: "firma inválida" }, 401);
+  } else if (WA_WEBHOOK_KEY) {
+    if (url.searchParams.get("k") !== WA_WEBHOOK_KEY) return json({ error: "clave del webhook inválida" }, 401);
+  }
   let body: Dict;
   try { body = JSON.parse(raw); } catch { return json({ error: "JSON inválido" }, 400); }
   if (body.object && body.object !== "whatsapp_business_account") return json({ ok: true, ignorado: body.object });
