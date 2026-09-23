@@ -148,10 +148,12 @@ const TallerRD = (() => {
   }
   const abrir = render;   // compat con quien llame abrir()
 
-  /* días que la pieza lleva EN EL TALLER (desde que Rubén la recibió);
-     tope de alarma: 5 días — las confecciones, 15 */
-  const diasEnTaller = t => (t.recibido && !t.enviado)
-    ? Math.max(0, Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(t.recibido + 'T00:00:00')) / 864e5))
+  /* días que la pieza lleva con Rubén — DESDE QUE SALIÓ de aquí (📤):
+     Rubén marca "recibido" cuando EMPIEZA a trabajar, no cuando le llega,
+     y la entrega tarda horas o un día — así el reloj no arranca tarde.
+     Tope de alarma: 5 días — las confecciones, 15 */
+  const diasEnTaller = t => (t.salio && !t.enviado)
+    ? Math.max(0, Math.round((new Date(hoyISO() + 'T00:00:00') - new Date(t.salio + 'T00:00:00')) / 864e5))
     : null;
   const topeDias = t => t.tipoTrabajo === 'confeccion' ? 15 : 5;
   const atrasadoTrd = t => { const d = diasEnTaller(t); return d !== null && d > topeDias(t); };
@@ -186,7 +188,7 @@ const TallerRD = (() => {
             <span class="badge ${bcl}">${btx}</span></div>
           <div class="item-sub"><b>${TIPOS[t.tipoTrabajo] || ''}</b>${t.facturaCRM ? ` · ${esc(t.facturaCRM.cliente || '')}` : ''} · ${esc(String(t.desc || '').split('\n')[0].slice(0, 60))}</div>
           <div class="item-sub">${[t.entrega ? `🎯 ${fmtFecha(t.entrega)}` : '', t.salio ? `📤 salió el ${fmtFecha(t.salio)}` : '', t.llegoDeVuelta ? '📦 de vuelta ✓' : ''].filter(Boolean).join(' · ')}</div>
-          ${tarde ? `<div class="item-sub rojo"><b>⏰ Lleva ${dias} días en el taller (tope ${topeDias(t)})</b></div>` : ''}
+          ${tarde ? `<div class="item-sub rojo"><b>⏰ Lleva ${dias} días desde que salió (tope ${topeDias(t)})</b></div>` : ''}
           ${!t.salio && !t.recibido ? `<label class="item-sub" data-nodetalle style="display:flex;align-items:center;gap:7px;margin-top:4px;cursor:pointer;color:var(--red)">
             <input type="checkbox" class="trdSalio" data-id="${t.id}" style="width:17px;height:17px;flex:0 0 auto">
             <b>📤 Marcar: ya se lo envié (salió de aquí)</b></label>` : ''}
