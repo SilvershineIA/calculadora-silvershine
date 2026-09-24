@@ -864,7 +864,10 @@ const App = (() => {
           <div class="crece"><div class="nombre" style="font-size:13.5px">${T('l_comprobanteOk')}</div>
           <div class="sub">${fmtFecha(l.comprobante.fecha)} · ${T('l_reloj')} → <b>${T('l_entregaEst')} ${fmtFecha(l.entregaEst)}</b></div></div>
           <button class="btn-sm" data-ver="${l.comprobante.path}">📷</button></div>`;
-      } else if (!karen && l.linkPago) {
+      } else if (!karen) {
+        /* SIN candado: aunque Tonglin no haya pegado el link, si José ya
+           pagó por otra vía puede subir el comprobante igual */
+        if (!l.linkPago) html += `<div class="sub" style="margin-top:6px">💡 Tonglin no ha puesto el link de pago — si ya pagaste por otra vía, sube el comprobante igual.</div>`;
         html += `<button class="btn rosa" id="btnComprobante">${T('l_comprobante')}</button>`;
       }
     }
@@ -919,7 +922,11 @@ const App = (() => {
             <div class="crece"><div class="nombre" style="font-size:13.5px">📎 ${karen ? 'Final payment receipt' : 'Comprobante final subido'}</div>
             <div class="sub">${fmtFecha(l.comprobanteFinal.fecha)}</div></div>
             <button class="btn-sm" data-ver="${l.comprobanteFinal.path}">📷</button></div>`;
-        } else if (!karen && l.linkPagoFinal) {
+        } else if (!karen) {
+          /* SIN candado: por lo general se paga ANTES del envío, pero si
+             Tonglin despacha primero (o no pegó el link) el comprobante
+             se puede subir igual — la app no estorba el orden del pago */
+          if (!l.linkPagoFinal) html += `<div class="sub" style="margin-top:6px">💡 Tonglin no ha puesto el link del balance — si ya pagaste por otra vía, sube el comprobante igual.</div>`;
           html += `<button class="btn rosa" id="btnComprobanteFinal">${T('l_comprobFinal')}</button>`;
         }
       } else if (karen) {
