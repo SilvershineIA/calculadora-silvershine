@@ -163,6 +163,8 @@ const TallerRD = (() => {
   }
   const abrir = render;   // compat con quien llame abrir()
 
+  let novTodas = false;   // 🔔 ver las novedades más allá de las 5 primeras
+
   /* días que la pieza lleva con Rubén — DESDE QUE SALIÓ de aquí (📤):
      Rubén marca "recibido" cuando EMPIEZA a trabajar, no cuando le llega,
      y la entrega tarda horas o un día — así el reloj no arranca tarde.
@@ -225,8 +227,10 @@ const TallerRD = (() => {
     const hist = pagosRD();
     const totalPagado = hist.reduce((s, p) => s + (Number(p.monto) || 0), 0);
 
+    /* 🔔 novedades: se ven 5 — el resto queda plegado tras un botón */
+    const novVis = novTodas ? nov : nov.slice(0, 5);
     cont.innerHTML = `
-      ${nov.length ? `<h3 class="sub-h">🔔 Novedades de Rubén (${nov.length})</h3>` + nov.map(e => `
+      ${nov.length ? `<h3 class="sub-h">🔔 Novedades de Rubén (${nov.length})</h3>` + novVis.map(e => `
         <div class="item" data-ev="${e.id}">
           <div class="item-info">
             <div class="item-name" style="font-size:.9rem">${e.clave === 'rdEnviado' ? '🔨 Rubén terminó y ENVIÓ un trabajo — ya puso su valor'
@@ -234,7 +238,8 @@ const TallerRD = (() => {
               : '📥 Rubén recibió un trabajo'}</div>
             <div class="item-sub">${esc(e.ctx || '')} · ${fmtFecha(e.fecha)}</div>
           </div><span class="item-arrow">›</span>
-        </div>`).join('') : ''}
+        </div>`).join('') +
+        (nov.length > 5 ? `<button type="button" class="btn-ghost btn-sm" id="trdNovMas" style="margin:2px 0 6px">${novTodas ? '▲ Ocultar las viejas — dejar solo 5' : `▼ Ver las ${nov.length - 5} restantes`}</button>` : '') : ''}
       <div class="stat-grid">
         ${UI.statTile(RD(totalDeuda), 'Le debes a Rubén', totalDeuda ? 'rojo' : 'verde')}
         ${UI.statTile(activos.length, 'En el taller')}
@@ -279,6 +284,8 @@ const TallerRD = (() => {
       if (e) { e.visto = true; guardar(e); }
       if (e && doc(e.trdId)) detalle(e.trdId); else pintarTablero();
     }));
+    const bNov = document.getElementById('trdNovMas');
+    if (bNov) bNov.addEventListener('click', () => { novTodas = !novTodas; pintarTablero(); });
     $('#trdNueva').addEventListener('click', () => nueva());
     $('#trdPagar').addEventListener('click', pagar);
     $('#trdLink').addEventListener('click', modalLink);
