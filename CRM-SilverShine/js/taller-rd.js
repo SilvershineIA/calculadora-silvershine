@@ -31,6 +31,21 @@ const TallerRD = (() => {
       if (filas.length < PAG) break;
     }
     docs = out;
+    /* auto-reparador: secuenciales DUPLICADOS (órdenes creadas cuando el
+       caché estaba vacío tomaban todas el 384) — el más viejo conserva
+       su número y los demás se renumeran al siguiente libre */
+    const vistos = new Set();
+    const dups = [];
+    for (const t of trabajos().slice().sort((a, b) => (a.creado || '').localeCompare(b.creado || ''))) {
+      const s = Number(t.sec) || 0;
+      if (vistos.has(s)) dups.push(t); else vistos.add(s);
+    }
+    for (const t of dups) {
+      const viejo = numTrd(t);
+      t.sec = secSiguiente();
+      guardar(t);
+      console.warn(`TallerRD: secuencial duplicado reparado ${viejo} → ${numTrd(t)}`);
+    }
   }
   /* write-through por la cola del sync: si no hay internet, sube al volver */
   function guardar(d) {
@@ -270,8 +285,14 @@ const TallerRD = (() => {
   }
 
   /* ═══ NUEVA ORDEN — plantillas vivas que arman la descripción ═══ */
-  function nueva(fPre) {
+  async function nueva(fPre) {
     if (sinNube()) return;
+    /* CLAVE: cargar la nube ANTES de asignar el número — entrando por
+       Facturas (sin pasar por la vista Confecciones) el caché estaba
+       vacío y TODAS las órdenes salían con el 384 */
+    abrirModal('＋ Nueva orden para Rubén', '<p class="muted">Cargando el taller…</p>');
+    try { await bajar(); }
+    catch (e) { $('#modalBody').innerHTML = `<p class="muted rojo">⚠ ${esc(e.message)} — revisa la conexión y reintenta.</p>`; return; }
     const b = {
       factura: fPre ? { id: fPre.id, orden: fPre.orden || '', rotulo: fPre.orden ? '#' + fPre.orden : (fPre.numero || 's/n'), cliente: fPre.clienteNombre || '' } : null,
       tipo: 'confeccion',
