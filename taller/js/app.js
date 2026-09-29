@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-09-29', en: 'Fty Batch # row on every piece (you asked for it ✅): opening an item now shows YOUR batch number as the first row — the piece\'s own batch, or the batch of its lot if the piece doesn\'t have one.' },
     { f: '2026-09-21', en: 'Production day counter: once the deposit is in, each batch shows how many days it has been in production. After 10 days the batch card turns ORANGE, after 15 days RED ("please ship the pieces!") — so both sides see what needs to move.' },
     { f: '2026-09-15', en: 'Split shipments! Mark SOME pieces as shipment #1 with its tracking, ship the rest later with another tracking — and when everything is on its way, upload the balance invoice (the app asks for it right there). Each shipment shows which pieces it carries.' },
     { f: '2026-08-27', en: 'Design files section on each piece: when the design is finished, attach the 3 files — .3DM, .STL and CAD — each in its own slot (drag & drop works). The app reminds you until all 3 are in, and José gets notified when the set is complete.' },
@@ -1500,9 +1501,14 @@ Si no es legible responde {"error": "motivo corto"}.`;
     if (!karen && o.destino) html += `<div class="card"><span class="badge ${o.destino === 'etsy' ? 'b-rojo' : 'b-gris'}">${T('o_' + o.destino)}</span>${o.destino === 'etsy' ? ` <span class="sub">· ${T('l_shipDirect')}</span>` : ''}</div>`;
 
     /* la orden — formato Tonglin */
+    /* 🏷 el batch de TONGLIN de primero (pedido de Karen): el propio de
+       la pieza, o el heredado del lote si la pieza no tiene uno */
+    const ftyBatch = o.batchTonglin
+      ? esc(o.batchTonglin)
+      : (l && l.refTonglin ? `${esc(l.refTonglin)} <span style="opacity:.6">${karen ? '(batch of this lot)' : '(heredado del lote)'}</span>` : '');
     html += `<div class="card"><div class="spec">
+      ${filaSpec('🏷 Fty Batch #', ftyBatch)}
       ${filaSpec(T('o_numero'), o.numero ? '#' + esc(o.numero) : '')}
-      ${filaSpec('🏷 Batch', esc(o.batchTonglin || ''))}
       ${filaSpec(T('o_material'), esc(o.material))}
       ${filaSpec(T('o_size'), esc(o.size))}
       ${filaSpec(T('o_engraving'), esc(o.engraving))}
