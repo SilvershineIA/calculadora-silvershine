@@ -611,6 +611,21 @@ const App = (() => {
       : `Lleva ${d} días en producción${rojo ? ' — hay que apurar a Tonglin' : ''}`}</b></div>`;
   }
 
+  /* 💵 lo que se le DEBE a Tonglin por el lote, según la etapa:
+     sin pagar nada → el total; depósito pagado → balance estimado;
+     cotización final leída → balance real; comprobante final → 0 */
+  function deudaLote(l) {
+    const le = l.cot && l.cot.leida;
+    if (!le) return null;
+    const tot = Number(le.total) || 0;
+    const dep = Number(le.deposit) || tot / 2;
+    if (l.comprobanteFinal) return 0;
+    const lf = l.cotFinal && l.cotFinal.leida;
+    if (lf) return Number(lf.balance_due) || Math.max((Number(lf.total_final) || tot) + (Number(lf.shipping) || 0) - dep, 0);
+    if (l.comprobante) return Math.max(tot - dep, 0);
+    return tot;
+  }
+
   /* 📅 aviso SUAVE (sin drama): la entrega estimada ya pasó y aún hay
      piezas sin despachar */
   const fueraDeFecha = l => !!(l.comprobante && l.entregaEst && !todoEnviado(l) && hoyISO() > l.entregaEst);
@@ -619,15 +634,20 @@ const App = (() => {
   function filaLote(l) {
     const est = estadoLote(l);
     const n = piezasDe(l.id).length;
-    const tot = totalCot(l);
+    const tot = totalFinal(l) || totalCot(l);
     const meToca = LE_TOCA[est] === (I18N.esKaren() ? 'karen' : 'jose');
     const pasada = fueraDeFecha(l);
+    /* total del lote + cuánto se le debe (solo lo ve José) */
+    const deu = !I18N.esKaren() ? deudaLote(l) : null;
+    const txtDeuda = deu === null || !tot ? ''
+      : deu > 0.005 ? ` · <span class="money rojo">debe ${fmtUSD(deu)}</span>`
+      : ` · <span class="verde"><b>✓ pagado</b></span>`;
     return `
       <div class="card click ${nivelProduccion(l)}" data-lote="${l.id}">
         <div class="fila">${meToca ? '<span class="punto-rojo"></span>' : ''}
           <div class="crece">
             <div class="nombre">🗂 ${esc(l.nombre)}${l.refTonglin ? ` <span class="badge b-jade">🏷 ${esc(l.refTonglin)}</span>` : ''}</div>
-            <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${l.comprobante && !todoEnviado(l) ? ` · ${T('l_entregaEst')} <b class="${pasada ? 'naranja' : ''}">${fmtFecha(l.entregaEst)}</b>` : ''}${pasada ? ' · ' + txtFueraDeFecha() : ''}</div>
+            <div class="sub">${n} ${n === 1 ? T('pieza') : T('piezas')}${tot ? ` · <span class="money">${fmtUSD(tot)}</span>` : ''}${txtDeuda}${l.comprobante && !todoEnviado(l) ? ` · ${T('l_entregaEst')} <b class="${pasada ? 'naranja' : ''}">${fmtFecha(l.entregaEst)}</b>` : ''}${pasada ? ' · ' + txtFueraDeFecha() : ''}</div>
             ${lineaProduccion(l)}
           </div>
           <span class="badge ${BADGE_ESTADO[est]}">${T('e_' + est)}</span>
