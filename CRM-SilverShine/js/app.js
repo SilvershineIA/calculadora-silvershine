@@ -612,11 +612,18 @@
     } else {
       $('#zonaReparar').hidden = true;
       el.innerHTML = info
-        ? '🟠 Sesión cerrada — vuelve a poner tu clave y presiona Conectar.'
+        ? '🟠 Sesión cerrada — solo pon tu clave de usuario y presiona Conectar.'
         : '⚪ Sin conectar. Los datos solo viven en este dispositivo.';
       $('#btnDesconectar').hidden = !info;
       $('#formNube').querySelectorAll('input').forEach(i => i.disabled = false);
-      if (info) { $('#formNube').url.value = info.url; $('#formNube').email.value = info.email; }
+      /* Reconexión sin fricción: la URL y la clave anon ya están
+         guardadas — se rellenan solas y solo falta la contraseña */
+      const pub = Sync.cfgPublica();
+      if (pub) {
+        $('#formNube').url.value = pub.url;
+        $('#formNube').email.value = pub.email || '';
+        if (pub.anonKey) $('#formNube').anonKey.value = pub.anonKey;
+      }
     }
   }
   Sync.setEstadoUI(pintarEstadoNube);
@@ -624,11 +631,12 @@
   $('#formNube').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const url = fd.get('url').trim().replace(/\/+$/, '');
-    const anonKey = fd.get('anonKey').trim();
-    const email = fd.get('email').trim();
+    const pub = Sync.cfgPublica() || {};
+    const url = (fd.get('url').trim() || pub.url || '').replace(/\/+$/, '');
+    const anonKey = fd.get('anonKey').trim() || pub.anonKey || '';
+    const email = fd.get('email').trim() || pub.email || '';
     const password = fd.get('password');
-    if (!url || !anonKey || !email || !password) { toast('Completa los cuatro campos'); return; }
+    if (!url || !anonKey || !email || !password) { toast('Completa los campos que falten'); return; }
     try {
       pintarEstadoNube('Conectando…');
       await Sync.login(url, anonKey, email, password);
