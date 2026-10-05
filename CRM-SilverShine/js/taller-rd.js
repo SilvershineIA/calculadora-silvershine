@@ -82,6 +82,15 @@ const TallerRD = (() => {
   };
   const deuda = () => trabajos().filter(t => t.enviado && !t.pagado);
 
+  /* ── 💳 adelantos: plata dada a Rubén por trabajos AÚN no hechos.
+     Viven aparte (no tocan la deuda por trabajo) y se consumen al pagar,
+     del más viejo al más nuevo ── */
+  const abonosRD = () => docs.filter(d => d.tipo === 'abonoRD')
+    .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  const usadoDe = a => (a.usos || []).reduce((s, u) => s + (Number(u.monto) || 0), 0);
+  const saldoAbono = a => Math.max(0, (Number(a.monto) || 0) - usadoDe(a));
+  const creditoRD = () => abonosRD().reduce((s, a) => s + saldoAbono(a), 0);
+
   /* ── fotos: bucket `taller` con la sesión del CRM ── */
   function comprimir(file, maxPx = 1400, calidad = 0.85) {
     return new Promise((res, rej) => {
@@ -242,6 +251,7 @@ const TallerRD = (() => {
         (nov.length > 5 ? `<button type="button" class="btn-ghost btn-sm" id="trdNovMas" style="margin:2px 0 6px">${novTodas ? '▲ Ocultar las viejas — dejar solo 5' : `▼ Ver las ${nov.length - 5} restantes`}</button>` : '') : ''}
       <div class="stat-grid">
         ${UI.statTile(RD(totalDeuda), 'Le debes a Rubén', totalDeuda ? 'rojo' : 'verde')}
+        ${creditoRD() > 0 ? UI.statTile(RD(creditoRD()), '💳 Adelanto a favor', 'verde') : ''}
         ${UI.statTile(activos.length, 'En el taller')}
         ${UI.statTile(RD(totalPagado), 'Pagado histórico')}
       </div>
@@ -249,6 +259,7 @@ const TallerRD = (() => {
         <button type="button" class="btn-gold btn-block" id="trdNueva">＋ Nueva orden</button>
         <button type="button" class="btn-ghost btn-block" id="trdPagar" ${pend.length ? '' : 'disabled'}>💵 Pagar a Rubén${pend.length ? ` (${RD(totalDeuda)})` : ''}</button>
       </div>
+      <button type="button" class="btn-ghost btn-sm" id="trdAdelanto" style="margin-bottom:4px">💳 Dar un adelanto (trabajos aún no hechos)</button>
       <h3 class="sub-h">En el taller (${activos.length})</h3>
       ${activos.map(fila).join('') || '<div class="empty"><span>🔨</span>Sin trabajos — crea el primero con ＋.</div>'}
       ${porPagar.length ? `<h3 class="sub-h">📦 Recibidas — por pagar (${porPagar.length} · ${RD(porPagar.reduce((s, t) => s + (Number(t.valor) || 0), 0))})</h3>
@@ -258,9 +269,13 @@ const TallerRD = (() => {
       ${[...porMes.entries()].map(([k, arr]) => `
         <p class="muted" style="margin:8px 2px 4px"><b>${mesTxt(k)}</b> · ${arr.length} trabajo${arr.length === 1 ? '' : 's'} · ${RD(arr.reduce((s, t) => s + (Number(t.valor) || 0), 0))}</p>
         ${arr.map(fila).join('')}`).join('') || '<div class="empty"><span>📚</span>Aún sin trabajos terminados (pagados y de vuelta).</div>'}
+      ${abonosRD().length ? `<h3 class="sub-h">💳 Adelantos (${abonosRD().length} · a favor ${RD(creditoRD())})</h3>` + abonosRD().slice().reverse().map(a => `
+        <div class="abono-row"><span>${fmtFecha(a.fecha)}${a.nota ? ` · ${esc(a.nota)}` : ''}<br>
+          <span class="muted" style="font-size:.78rem">${saldoAbono(a) <= 0 ? '✓ consumido completo' : usadoDe(a) > 0 ? `usado ${RD(usadoDe(a))} · quedan ${RD(saldoAbono(a))}` : 'sin usar todavía'}</span></span>
+          <span style="display:flex;align-items:center;gap:8px"><b class="${saldoAbono(a) > 0 ? 'verde' : ''}">${RD(a.monto)}</b>${!usadoDe(a) ? `<button type="button" class="btn-x" data-abx="${a.id}">✕</button>` : ''}</span></div>`).join('') : ''}
       ${hist.length ? `<h3 class="sub-h">💵 Pagos a Rubén (${hist.length})</h3>` + hist.map(p => `
         <div class="abono-row"><span>${fmtFecha(p.fecha)} · ${(p.trabajos || []).length} trabajo${(p.trabajos || []).length === 1 ? '' : 's'}<br>
-          <span class="muted" style="font-size:.78rem">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}</span></span>
+          <span class="muted" style="font-size:.78rem">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}${p.adelantoUsado > 0 ? ` · 💳 ${RD(p.adelantoUsado)} de adelanto + ${RD(p.efectivo)} en efectivo` : ''}</span></span>
           <b>${RD(p.monto)}</b></div>`).join('') : ''}
       <p class="muted" style="margin-top:12px;font-size:.78rem">Rubén ve cada trabajo en SU app (sin nombres de clientes) SOLO cuando marcas 📤 "ya se lo envié" — antes de eso no le aparece y no se confunde.</p>
       <button type="button" class="btn-ghost btn-block" id="trdLink" style="margin-top:6px">🔗 Generar el link de Rubén</button>`;
@@ -286,6 +301,36 @@ const TallerRD = (() => {
     }));
     const bNov = document.getElementById('trdNovMas');
     if (bNov) bNov.addEventListener('click', () => { novTodas = !novTodas; pintarTablero(); });
+    /* 💳 dar un adelanto */
+    $('#trdAdelanto').addEventListener('click', () => {
+      abrirModal('💳 Dar un adelanto a Rubén', `
+        <p class="muted" style="margin-bottom:10px">Plata adelantada por trabajos que AÚN no ha hecho. No toca la deuda por trabajo — al pagar, un checkbox lo descuenta del total.</p>
+        <div class="row">
+          <div><label>Monto (RD$) *</label><input type="number" id="adMonto" min="0" step="1" inputmode="numeric" placeholder="2000"></div>
+          <div><label>Nota (opcional)</label><input id="adNota" placeholder="Ej: para el trio de diciembre" autocomplete="off"></div>
+        </div>
+        <button type="button" class="btn-gold btn-block" id="adOk" style="margin-top:12px">💳 Registrar el adelanto</button>
+        <button type="button" class="btn-ghost btn-block" id="trdVolver" style="margin-top:8px">‹ Volver al tablero</button>`);
+      $('#trdVolver').addEventListener('click', () => { cerrarModal(); pintarTablero(); });
+      $('#adOk').addEventListener('click', () => {
+        const v = Number($('#adMonto').value);
+        if (!(v > 0)) { toast('Pon el monto del adelanto'); return; }
+        guardar({ id: uid('abonoRD'), tipo: 'abonoRD', fecha: hoyISO(), monto: v, nota: $('#adNota').value.trim(), usos: [] });
+        toast(`💳 Adelanto de ${RD(v)} registrado — Rubén lo ve en sus cuentas`);
+        cerrarModal();
+        pintarTablero();
+      });
+    });
+    /* ✕ borrar un adelanto SIN USAR (error de dedo) */
+    $$('#tallerRDvista [data-abx]').forEach(x => x.addEventListener('click', e => {
+      e.stopPropagation();
+      const a = doc(x.dataset.abx);
+      if (!a || usadoDe(a) > 0) return;
+      if (!confirm(`¿Eliminar el adelanto de ${RD(a.monto)}? (aún sin usar)`)) return;
+      borrar(a.id);
+      toast('🗑 ✓');
+      pintarTablero();
+    }));
     $('#trdNueva').addEventListener('click', () => nueva());
     $('#trdPagar').addEventListener('click', pagar);
     $('#trdLink').addEventListener('click', modalLink);
@@ -690,6 +735,12 @@ const TallerRD = (() => {
             <span class="muted" style="font-size:.78rem">enviado ${fmtFecha(t.enviado)}${t.llegoDeVuelta ? ' · 📦 de vuelta ✓' : ''}${t.tipoTrabajo === 'garantia' ? ' · 🛡️ garantía (no toca la factura)' : t.facturaCRM ? ' · se suma al costo de su factura' : ''}</span></span>
           <b>${RD(t.valor)}</b>
         </label>`).join('') || '<div class="empty"><span>✓</span>Nada pendiente de pago.</div>'}
+      ${pend.length && creditoRD() > 0 ? `
+        <label style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="trdUsarAdelanto" checked style="width:20px;height:20px;flex:0 0 auto">
+          <span style="flex:1">💳 <b>Aplicar el adelanto disponible</b> (${RD(creditoRD())}) — se descuenta de este pago</span>
+        </label>
+        <p class="muted" id="trdDesglose" style="margin:0 0 8px"></p>` : ''}
       ${pend.length ? `<p class="muted" style="margin:4px 0 10px">Al registrar el pago, el «me deben» de Rubén baja al instante en su app.</p>
         <button type="button" class="btn-gold btn-block" id="trdPagarOk">💵 Registrar pago: <span id="trdPagoTotal"></span> (<span id="trdPagoN"></span>)</button>` : ''}
       ${hist.length ? `<h3 class="sub-h">Pagos hechos (${hist.length})</h3>` + hist.slice(0, 10).map(p => `
@@ -700,28 +751,51 @@ const TallerRD = (() => {
 
     $('#trdVolver').addEventListener('click', () => { cerrarModal(); pintarTablero(); });
     const chks = $$('#modalBody .trdChk');
+    const chkAdel = document.getElementById('trdUsarAdelanto');
+    /* con el checkbox, el adelanto se aplica COMPLETO de un golpe
+       (hasta cubrir el total) y el botón muestra lo que pagas AHORA */
+    const aplicadoDe = tot => (chkAdel && chkAdel.checked) ? Math.min(creditoRD(), tot) : 0;
     const sumar = () => {
       let tot = 0, n = 0;
       chks.forEach(x => { if (x.checked) { tot += Number(x.dataset.m); n++; } });
       const bt = $('#trdPagarOk');
       if (bt) {
-        $('#trdPagoTotal').textContent = RD(tot);
+        const apl = aplicadoDe(tot);
+        $('#trdPagoTotal').textContent = apl > 0 ? `${RD(tot - apl)} ahora` : RD(tot);
         $('#trdPagoN').textContent = n + (n === 1 ? ' trabajo' : ' trabajos');
+        const dg = document.getElementById('trdDesglose');
+        if (dg) dg.innerHTML = apl > 0
+          ? `Trabajos ${RD(tot)} − adelanto ${RD(apl)} = <b>pagas ahora ${RD(tot - apl)}</b>${apl < creditoRD() ? ` (quedan ${RD(creditoRD() - apl)} de adelanto a favor)` : ''}`
+          : '';
         bt.disabled = !n;
       }
     };
     chks.forEach(x => x.addEventListener('change', sumar));
+    if (chkAdel) chkAdel.addEventListener('change', sumar);
     sumar();
     const bt = $('#trdPagarOk');
     if (bt) bt.addEventListener('click', async () => {
       const marcados = chks.filter(x => x.checked).map(x => doc(x.dataset.id)).filter(Boolean);
       if (!marcados.length) return;
       const monto = marcados.reduce((s, t) => s + (Number(t.valor) || 0), 0);
-      if (!confirm(`¿Registrar el pago de ${RD(monto)} a Rubén (${marcados.length} trabajo${marcados.length === 1 ? '' : 's'})?`)) return;
+      const aplicado = aplicadoDe(monto);
+      const efectivo = Math.round((monto - aplicado) * 100) / 100;
+      if (!confirm(`¿Registrar el pago de ${RD(monto)} a Rubén (${marcados.length} trabajo${marcados.length === 1 ? '' : 's'})${aplicado > 0 ? ` usando ${RD(aplicado)} del adelanto — pagas ahora ${RD(efectivo)}` : ''}?`)) return;
       bt.disabled = true;
       const pago = { id: uid('pagoRD'), tipo: 'pagoRD', fecha: hoyISO(), monto,
+        adelantoUsado: aplicado, efectivo,
         trabajos: marcados.map(t => ({ id: t.id, num: numTrd(t), valor: Number(t.valor) || 0 })) };
       guardar(pago);
+      /* consumir los adelantos del más viejo al más nuevo */
+      let porUsar = aplicado;
+      for (const a of abonosRD()) {
+        if (porUsar <= 0) break;
+        const usa = Math.min(saldoAbono(a), porUsar);
+        if (usa <= 0) continue;
+        a.usos = [...(a.usos || []), { pagoId: pago.id, monto: usa, fecha: hoyISO() }];
+        guardar(a);
+        porUsar = Math.round((porUsar - usa) * 100) / 100;
+      }
       /* el valor se SUMA al costo de la factura (material + taller);
          🛡️ Garantía queda solo en la cuenta con Rubén */
       let factos = 0;
@@ -739,7 +813,7 @@ const TallerRD = (() => {
         }
         guardar(t);
       }
-      toast(`💵 ${RD(monto)} pagado ✓${factos ? ` · ${factos} factura${factos === 1 ? '' : 's'} con el costo sumado` : ''}`);
+      toast(`💵 ${RD(monto)} pagado ✓${aplicado > 0 ? ` (${RD(aplicado)} de adelanto + ${RD(efectivo)} en efectivo)` : ''}${factos ? ` · ${factos} factura${factos === 1 ? '' : 's'} con el costo sumado` : ''}`);
       cerrarModal();
       pintarTablero();
     });

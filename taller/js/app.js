@@ -3542,7 +3542,15 @@ Si no es legible responde {"error": "motivo corto"}.`;
     const deben = deudaRD().sort((a, b) => (a.enviado || '').localeCompare(b.enviado || ''));
     const totalDeben = deben.reduce((s, t) => s + (Number(t.valor) || 0), 0);
     const pagos = pagosRD();
-    const totalPagado = pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+    /* 💳 adelantos que José le dio por trabajos aún no hechos */
+    const abonos = docs.filter(d => d.tipo === 'abonoRD')
+      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    const usadoDe = a => (a.usos || []).reduce((s, u) => s + (Number(u.monto) || 0), 0);
+    const credito = abonos.reduce((s, a) => s + Math.max(0, (Number(a.monto) || 0) - usadoDe(a)), 0);
+    /* total cobrado = efectivo REAL: adelantos + la parte en efectivo de
+       cada pago (los pagos viejos sin desglose cuentan completos) */
+    const totalPagado = abonos.reduce((s, a) => s + (Number(a.monto) || 0), 0) +
+      pagos.reduce((s, p) => s + (p.efectivo != null ? Number(p.efectivo) : Number(p.monto) || 0), 0);
     c.innerHTML = `
       <div class="h-sec">💵 Mis cuentas</div>
       <div class="card"><div class="fila"><div class="crece">
@@ -3550,14 +3558,21 @@ Si no es legible responde {"error": "motivo corto"}.`;
         <div class="sub">${deben.length ? `${deben.length} trabajo${deben.length === 1 ? '' : 's'} enviado${deben.length === 1 ? '' : 's'}` : 'Nada pendiente ✓'}</div>
       </div><span class="money ${totalDeben ? 'rojo' : 'verde'}" style="font-size:18px">${fmtRD(totalDeben)}</span></div>
       ${deben.map(t => `<div class="sub" style="margin-top:5px">· ${numTrd(t)} — ${TIPOS_RD[t.tipoTrabajo] || ''} · enviado ${fmtFecha(t.enviado)} — <b class="money">${fmtRD(t.valor)}</b></div>`).join('')}
+      ${credito > 0 ? `<div class="sub" style="margin-top:8px">💳 <b>Adelantos recibidos: <span class="money">${fmtRD(credito)}</span></b> — se descuentan de los próximos pagos</div>` : ''}
       </div>
-      <div class="h-sec">Pagos recibidos${pagos.length ? ` (${pagos.length})` : ''}</div>
-      ${pagos.map(p => `
+      <div class="h-sec">Pagos recibidos${(pagos.length + abonos.length) ? ` (${pagos.length + abonos.length})` : ''}</div>
+      ${[...pagos.map(p => ({ f: p.fecha, html: `
         <div class="card"><div class="fila"><div class="crece">
           <div class="nombre" style="font-size:13.5px">${fmtFecha(p.fecha)} · ${(p.trabajos || []).length} trabajo${(p.trabajos || []).length === 1 ? '' : 's'}</div>
-          <div class="sub">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}</div>
-        </div><span class="money verde">${fmtRD(p.monto)}</span></div></div>`).join('') || '<div class="card"><div class="sub">Aún sin pagos.</div></div>'}
-      ${pagos.length ? `<div class="card"><table class="qt"><tr class="total"><td>Total cobrado</td><td class="money verde">${fmtRD(totalPagado)}</td></tr></table></div>` : ''}`;
+          <div class="sub">${(p.trabajos || []).map(x => esc(x.num)).join(' · ')}${p.adelantoUsado > 0 ? `<br>💳 ${fmtRD(p.adelantoUsado)} de tu adelanto + ${fmtRD(p.efectivo)} en efectivo` : ''}</div>
+        </div><span class="money verde">${fmtRD(p.monto)}</span></div></div>` })),
+      ...abonos.map(a => ({ f: a.fecha, html: `
+        <div class="card"><div class="fila"><div class="crece">
+          <div class="nombre" style="font-size:13.5px">💳 Adelanto · ${fmtFecha(a.fecha)}</div>
+          <div class="sub">${a.nota ? esc(a.nota) + ' · ' : ''}por trabajos por hacer${usadoDe(a) > 0 ? ` · ya aplicado ${fmtRD(usadoDe(a))}` : ''}</div>
+        </div><span class="money verde">${fmtRD(a.monto)}</span></div></div>` }))]
+        .sort((x, y) => (y.f || '').localeCompare(x.f || '')).map(x => x.html).join('') || '<div class="card"><div class="sub">Aún sin pagos.</div></div>'}
+      ${(pagos.length + abonos.length) ? `<div class="card"><table class="qt"><tr class="total"><td>Total cobrado (efectivo real)</td><td class="money verde">${fmtRD(totalPagado)}</td></tr></table></div>` : ''}`;
   }
 
   /* ═══ arranque ═══ */
