@@ -552,8 +552,17 @@ Si la imagen no es una factura legible responde {"error": "motivo corto"}.` },
       const a = apertura[c.id], z = cierre[c.id], delta = r2(z - a);
       return `<div class="abono-row">
         <span>${esc(c.nombre)}<br><span class="muted" style="font-size:.76rem">inicio ${fmt(a, c.moneda)}${delta ? ` · <b class="${delta > 0 ? 'verde' : 'rojo'}">${delta > 0 ? '+' : '−'}${fmt(Math.abs(delta), c.moneda)}</b> en el mes` : ' · sin movimiento'}</span></span>
-        <b>${fmt(z, c.moneda)}</b>
+        <b>${fmt(z, c.moneda)}${c.moneda === 'USD' ? ` <span class="muted" style="font-weight:400">≈ ${UI.fmtDinero(enRD(c, z))}</span>` : ''}</b>
       </div>`;
+    };
+    /* Mismo esquema visual del panel: cada grupo con su total A ESA FECHA */
+    const grupoCierre = (titulo, gid, lblTotal) => {
+      const ctas = base.cuentas.filter(c => c.grupo === gid);
+      if (!ctas.length) return '';
+      const tot = r2(ctas.reduce((s, c) => s + enRD(c, cierre[c.id]), 0));
+      return `<h3 class="sub-h" style="margin-top:14px">${titulo}</h3>
+        ${ctas.map(filaCta).join('')}
+        <div class="abono-row"><span><b>${lblTotal} al ${fmtFecha(dF)}</b></span><b class="dorado">${UI.fmtDinero(tot)}</b></div>`;
     };
 
     abrirModal(`📅 Cuadre de ${mesTxt}`, `
@@ -571,8 +580,9 @@ Si la imagen no es una factura legible responde {"error": "motivo corto"}.` },
       </div>
       <p class="muted" style="margin:0 0 12px;font-size:.78rem">Los US$ se convierten a la tasa de hoy (${tasa}) para los totales; cada cuenta abajo va en su moneda. Saldo al cierre del ${fmtFecha(dF)}.</p>
 
-      <h3 class="sub-h">🏦 Cuentas — cierre del mes</h3>
-      ${base.cuentas.map(filaCta).join('')}
+      ${grupoCierre('🏦 Efectivo, caja y bancos', 'banco', 'Total')}
+      ${grupoCierre('💵 Dólares (Shopify, PayPal, Relay)', 'usd', 'Total en pesos')}
+      ${grupoCierre('💳 Tarjetas de crédito (disponible)', 'tarjeta', 'Disponible total')}
 
       <h3 class="sub-h" style="margin-top:14px">📒 Movimientos del mes (${delMes.length})</h3>
       ${delMes.map(m => `
