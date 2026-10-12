@@ -140,18 +140,25 @@ const Caja = (() => {
       render();
     }));
 
+    const mesPasado = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return UI.fechaISO(d).slice(0, 7); })();
     $('#cuadreReportes').innerHTML = `
       <div class="card">
         <h2>📤 Reporte para el contador</h2>
         <div class="row" style="align-items:center">
-          <span style="flex:1">🏦 Balances y movimientos</span>
+          <span style="flex:1">🏦 Balances y movimientos (hoy)</span>
           <button class="btn-ghost btn-sm" data-crep="imp">🖨 Imprimir</button>
           <button class="btn-ghost btn-sm" data-crep="pdf">📄 PDF</button>
           <button class="btn-ghost btn-sm" data-crep="csv">📥 Excel</button>
         </div>
+        <div class="row" style="align-items:center;margin-top:10px;border-top:1px dashed var(--border);padding-top:12px">
+          <span style="flex:1">📅 Cuadre de un mes — apertura, movimientos y cierre</span>
+          <input type="month" id="cuadreMesInp" value="${mesPasado}" max="${hoyISO().slice(0, 7)}" style="width:auto;min-width:150px">
+          <button class="btn-gold btn-sm" id="btnCuadreMes">Ver cuadre</button>
+        </div>
       </div>`;
     UI.$$('#cuadreReportes [data-crep]').forEach(b =>
       b.addEventListener('click', () => reporteCuadre(b.dataset.crep)));
+    $('#btnCuadreMes').addEventListener('click', () => cuadreMes($('#cuadreMesInp').value || undefined));
 
     UI.$$('.cta-row').forEach(el => el.addEventListener('click', () => detalleCuenta(el.dataset.id)));
     $('#btnGasto').addEventListener('click', () => formGasto());
@@ -494,6 +501,146 @@ Si la imagen no es una factura legible responde {"error": "motivo corto"}.` },
     if (salida === 'csv') Reportes.descargarXLSX(archivo + '.xlsx', secciones);
     else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', 'Cuadre de caja y bancos', `Saldos al ${hoyTxt}`, secciones);
     else await Reportes.imprimir('Cuadre de caja y bancos', `Saldos al ${hoyTxt}`, secciones);
+  }
+
+  /* ── 📅 Cuadre de un MES específico ──
+     El modelo por eventos (base fija + un doc por movimiento con su
+     fecha) permite reconstruir el saldo de cada cuenta en cualquier
+     fecha: inicial + Σ deltas hasta ese día. Apertura del mes =
+     saldos antes del día 1; cierre = saldos al último día. Los
+     movimientos históricos pre-v83 no traen deltas por cuenta, así
+     que se listan como referencia pero NO entran en los saldos. */
+  async function cuadreMes(mes) {
+    const { base, movs } = await getEstado();
+    if (!mes || !/^\d{4}-\d{2}$/.test(mes)) mes = hoyISO().slice(0, 7);
+    const d1 = mes + '-01';
+    const dF = UI.fechaISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0));
+    const tasa = tasaVigente();
+    const mesTxt = new Date(d1 + 'T00:00:00').toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
+
+    const saldosHasta = corte => {
+      const s = {};
+      for (const c of base.cuentas) s[c.id] = c.saldoInicial || 0;
+      for (const m of movs) {
+        if (!corte((m.fecha || ''))) continue;
+        for (const cb of (m.cambios || [])) {
+          if (s[cb.cuenta] !== undefined) s[cb.cuenta] = r2(s[cb.cuenta] + cb.delta);
+        }
+      }
+      return s;
+    };
+    const apertura = saldosHasta(f => f < d1);
+    const cierre = saldosHasta(f => f <= dF);
+    const delMes = movs.filter(m => (m.fecha || '') >= d1 && (m.fecha || '') <= dF)
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '') || (a.ts || 0) - (b.ts || 0));
+    const historicosMes = (base.movsHistoricos || []).filter(m => (m.fecha || '') >= d1 && (m.fecha || '') <= dF);
+    const primerMov = movs.reduce((min, m) => !min || (m.fecha || '') < min ? (m.fecha || min) : min, '');
+    const antesDelSistema = primerMov && dF < primerMov;
+
+    const enRD = (c, v) => c.moneda === 'USD' ? r2(v * tasa) : v;
+    const totRD = (saldos, grupo) => r2(base.cuentas.filter(c => c.grupo === grupo)
+      .reduce((s, c) => s + enRD(c, saldos[c.id]), 0));
+    const dispon = saldos => r2(totRD(saldos, 'banco') + totRD(saldos, 'usd'));
+    const dif = r2(dispon(cierre) - dispon(apertura));
+
+    const mesNav = paso => {
+      const d = new Date(d1 + 'T00:00:00'); d.setMonth(d.getMonth() + paso);
+      return UI.fechaISO(d).slice(0, 7);
+    };
+
+    const filaCta = c => {
+      const a = apertura[c.id], z = cierre[c.id], delta = r2(z - a);
+      return `<div class="abono-row">
+        <span>${esc(c.nombre)}<br><span class="muted" style="font-size:.76rem">inicio ${fmt(a, c.moneda)}${delta ? ` · <b class="${delta > 0 ? 'verde' : 'rojo'}">${delta > 0 ? '+' : '−'}${fmt(Math.abs(delta), c.moneda)}</b> en el mes` : ' · sin movimiento'}</span></span>
+        <b>${fmt(z, c.moneda)}</b>
+      </div>`;
+    };
+
+    abrirModal(`📅 Cuadre de ${mesTxt}`, `
+      <div class="row" style="align-items:center;margin-bottom:10px">
+        <button type="button" class="btn-ghost btn-sm" id="cmAntes">‹ ${new Date(mesNav(-1) + '-01T00:00:00').toLocaleDateString('es-DO', { month: 'short' })}</button>
+        <span style="flex:1;text-align:center"><b>${mesTxt}</b><br><span class="muted" style="font-size:.76rem">del ${fmtFecha(d1)} al ${fmtFecha(dF)}</span></span>
+        <button type="button" class="btn-ghost btn-sm" id="cmDespues" ${mes >= hoyISO().slice(0, 7) ? 'disabled' : ''}>${new Date(mesNav(1) + '-01T00:00:00').toLocaleDateString('es-DO', { month: 'short' })} ›</button>
+      </div>
+      ${antesDelSistema ? '<p class="muted" style="margin-bottom:10px">⚠ Este mes es anterior al sistema de movimientos por evento — los saldos de apertura/cierre no están garantizados; abajo van los movimientos históricos como referencia.</p>' : ''}
+
+      <div class="stat-grid" style="margin-bottom:12px">
+        ${UI.statTile(UI.fmtDinero(dispon(apertura)), 'Disponible al abrir el mes')}
+        ${UI.statTile(UI.fmtDinero(dispon(cierre)), 'Disponible al cierre', dif >= 0 ? 'verde' : 'rojo')}
+        ${UI.statTile((dif >= 0 ? '+' : '−') + UI.fmtDinero(Math.abs(dif)), 'Variación del mes', dif >= 0 ? 'verde' : 'rojo')}
+      </div>
+      <p class="muted" style="margin:0 0 12px;font-size:.78rem">Los US$ se convierten a la tasa de hoy (${tasa}) para los totales; cada cuenta abajo va en su moneda. Saldo al cierre del ${fmtFecha(dF)}.</p>
+
+      <h3 class="sub-h">🏦 Cuentas — cierre del mes</h3>
+      ${base.cuentas.map(filaCta).join('')}
+
+      <h3 class="sub-h" style="margin-top:14px">📒 Movimientos del mes (${delMes.length})</h3>
+      ${delMes.map(m => `
+        <div class="abono-row">
+          <span>${fmtFecha(m.fecha)} · ${esc(m.desc)}</span>
+          <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b>
+        </div>`).join('') || '<p class="muted" style="margin:0">Sin movimientos registrados este mes.</p>'}
+
+      ${historicosMes.length ? `<h3 class="sub-h" style="margin-top:14px">📜 Históricos del cuadre viejo (referencia, no suman)</h3>` +
+        historicosMes.map(m => `
+        <div class="abono-row">
+          <span>${fmtFecha(m.fecha)} · ${esc(m.desc)}</span>
+          <b class="${m.signo < 0 ? 'rojo' : 'verde'}">${m.signo < 0 ? '−' : '+'}${fmt(m.monto, m.moneda)}</b>
+        </div>`).join('') : ''}
+
+      <div class="row" style="margin-top:14px">
+        <button type="button" class="btn-ghost btn-sm" data-cmes="imp">🖨 Imprimir</button>
+        <button type="button" class="btn-ghost btn-sm" data-cmes="pdf">📄 PDF</button>
+        <button type="button" class="btn-gold btn-sm" data-cmes="csv">📥 Excel</button>
+      </div>
+    `);
+
+    $('#cmAntes').addEventListener('click', () => cuadreMes(mesNav(-1)));
+    const bDesp = $('#cmDespues');
+    if (bDesp) bDesp.addEventListener('click', () => cuadreMes(mesNav(1)));
+
+    /* Reporte del mes: apertura · movimiento neto · cierre por cuenta */
+    const n2 = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const GRUPOS = { banco: 'Bancos y caja', usd: 'Dólares', tarjeta: 'Tarjeta (disponible)' };
+    const salidaMes = async salida => {
+      const secCtas = {
+        titulo: `Saldos por cuenta — ${mesTxt}`,
+        columnas: [
+          { t: 'Cuenta', w: 170 }, { t: 'Grupo', w: 100 }, { t: 'Mon.', w: 40 },
+          { t: 'Apertura', w: 85, a: 'right' }, { t: 'Mes', w: 85, a: 'right' }, { t: 'Cierre', w: 85, a: 'right' },
+        ],
+        filas: base.cuentas.map(c => [c.nombre, GRUPOS[c.grupo] || c.grupo, c.moneda === 'USD' ? 'US$' : 'RD$',
+          n2(apertura[c.id]), n2(r2(cierre[c.id] - apertura[c.id])), n2(cierre[c.id])]),
+      };
+      const secRes = {
+        titulo: 'Resumen en RD$',
+        columnas: [{ t: 'Concepto', w: 300 }, { t: 'Apertura', w: 110, a: 'right' }, { t: 'Cierre', w: 110, a: 'right' }],
+        filas: [
+          ['Efectivo, caja y bancos', n2(totRD(apertura, 'banco')), n2(totRD(cierre, 'banco'))],
+          [`Dólares en pesos (tasa de hoy ${tasa})`, n2(totRD(apertura, 'usd')), n2(totRD(cierre, 'usd'))],
+          ['TOTAL DISPONIBLE', n2(dispon(apertura)), n2(dispon(cierre))],
+          ['Crédito disponible en tarjetas', n2(totRD(apertura, 'tarjeta')), n2(totRD(cierre, 'tarjeta'))],
+        ],
+        totales: ['Variación del mes (disponible)', '', (dif >= 0 ? '+' : '-') + n2(Math.abs(dif))],
+      };
+      const secMovs = {
+        titulo: `Movimientos de ${mesTxt} (${delMes.length})`,
+        columnas: [
+          { t: 'Fecha', w: 62 }, { t: 'Descripción', w: 300 },
+          { t: 'Monto', w: 80, a: 'right' }, { t: 'Mon.', w: 36 },
+        ],
+        filas: delMes.map(m => [UI.fmtFecha(m.fecha), m.desc,
+          (m.signo < 0 ? '-' : '+') + n2(m.monto), m.moneda === 'USD' ? 'US$' : 'RD$']),
+      };
+      const secciones = [secCtas, secRes, secMovs];
+      const archivo = `silvershine-cuadre-${mes}`;
+      const sub = `Del ${fmtFecha(d1)} al ${fmtFecha(dF)} · US$ a la tasa de hoy (${tasa})`;
+      if (salida === 'csv') Reportes.descargarXLSX(archivo + '.xlsx', secciones);
+      else if (salida === 'pdf') await Reportes.pdf(archivo + '.pdf', `Cuadre de ${mesTxt}`, sub, secciones);
+      else await Reportes.imprimir(`Cuadre de ${mesTxt}`, sub, secciones);
+    };
+    UI.$$('#modalBody [data-cmes]').forEach(b =>
+      b.addEventListener('click', () => salidaMes(b.dataset.cmes)));
   }
 
   /* ── Movimiento sobre una cuenta ── */
