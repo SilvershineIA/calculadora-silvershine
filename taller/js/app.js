@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-10-12', en: '🔎 Track button on every shipment: next to "Copy" there is now a Track button that opens the carrier\'s tracking page (FedEx, DHL, UPS — or 17track for others) with the number already filled in. No more copy & paste.' },
     { f: '2026-09-29', en: 'Fty Batch # row on every piece (you asked for it ✅): opening an item now shows YOUR batch number as the first row — the piece\'s own batch, or the batch of its lot if the piece doesn\'t have one.' },
     { f: '2026-09-21', en: 'Production day counter: once the deposit is in, each batch shows how many days it has been in production. After 10 days the batch card turns ORANGE, after 15 days RED ("please ship the pieces!") — so both sides see what needs to move.' },
     { f: '2026-09-15', en: 'Split shipments! Mark SOME pieces as shipment #1 with its tracking, ship the rest later with another tracking — and when everything is on its way, upload the balance invoice (the app asks for it right there). Each shipment shows which pieces it carries.' },
@@ -392,6 +393,20 @@ const App = (() => {
     }
     return [];
   }
+  /* 🔎 link directo al rastreo: saca el número del texto (Tonglin escribe
+     "Fedex： 878355161330") y arma la URL del carrier — FedEx/DHL/UPS
+     por nombre, FedEx si son 12/15 dígitos pelados, y 17track de comodín */
+  function urlRastreo(txt) {
+    const t = String(txt || '');
+    const num = (t.replace(/[^A-Za-z0-9]/g, ' ').match(/[A-Za-z0-9]{8,}/) || [t.trim()])[0] || '';
+    if (/fed\s*ex/i.test(t) || /^\d{12}$/.test(num) || /^\d{15}$/.test(num)) {
+      return 'https://www.fedex.com/fedextrack/?trknbr=' + encodeURIComponent(num);
+    }
+    if (/dhl/i.test(t)) return 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=' + encodeURIComponent(num);
+    if (/ups/i.test(t)) return 'https://www.ups.com/track?tracknum=' + encodeURIComponent(num);
+    return 'https://t.17track.net/en#nums=' + encodeURIComponent(num);
+  }
+
   const idsEnviados = l => new Set(enviosDe(l).flatMap(e => e.piezas || []));
   function todoEnviado(l) {
     const ps = piezasDe(l.id);
@@ -974,7 +989,10 @@ const App = (() => {
             <div class="nombre">✈️ #${e2.n} <span class="mono" style="font-size:12.5px">${esc(e2.tracking)}</span></div>
             <div class="sub">${fmtFecha(e2.fecha)} · ${nombres.map(esc).join(' · ')}</div>
           </div>
-          <button class="btn-sm" data-copiar="${esc(e2.tracking)}">${T('copiar')}</button></div>
+          <div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto">
+            <button class="btn-sm" data-rastrear="${esc(e2.tracking)}">🔎 ${karen ? 'Track' : 'Rastrear'}</button>
+            <button class="btn-sm" data-copiar="${esc(e2.tracking)}">${T('copiar')}</button>
+          </div></div>
           ${e2.directo ? `<div class="sub verde" style="margin-top:6px"><b>${T('env_directo')} ✓</b></div>`
             : e2.recibido ? `<div class="sub verde" style="margin-top:6px"><b>${T('env_recibido')}</b> · ${fmtFecha(e2.recibido)}</div>`
             : (!karen ? `<button class="btn rosa" data-envrec="${i}" style="margin-top:6px">${T('env_recibir')}</button>` : '')}
@@ -1098,6 +1116,11 @@ const App = (() => {
     $$('#cuerpo [data-ver]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); verSegunTipo(b.dataset.ver); }));
     $$('#cuerpo [data-link]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); window.open(b.dataset.link, '_blank'); }));
     $$('#cuerpo [data-copiar]').forEach(b => b.addEventListener('click', () => { navigator.clipboard.writeText(b.dataset.copiar); toast(T('copiado')); }));
+    /* 🔎 abrir el rastreo del carrier con el número ya puesto */
+    $$('#cuerpo [data-rastrear]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      window.open(urlRastreo(b.dataset.rastrear), '_blank');
+    }));
 
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
 
