@@ -5,3 +5,6 @@
 CRM-SilverShine/*.xls
 CRM-SilverShine/*.xlsx
 CRM-SilverShine/datos-quickbooks.json
+
+respaldo-crm-*.json
+brief-fase2-*.md
