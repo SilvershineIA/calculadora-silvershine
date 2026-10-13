@@ -217,6 +217,8 @@ const I18N = (() => {
     ev_noDisp:      ['Tonglin devolvió una pieza (no disponible)', 'Piece marked not available'],
     ev_ordenEditada:['Orden editada', '⚠ José EDITED an order — please check the changes'],
     ev_cadOmitido:  ['⏭ Tonglin seguirá SIN CAD nuevo (ya lo tienen u otra razón)', 'CAD skipped'],
+    ev_finalCorregida: ['⚖️ Tonglin CORRIGIÓ el balance final (el viejo tenía un error) — léelo con la IA de nuevo', 'Balance invoice corrected — the old one was archived'],
+    ev_finalDescartada: ['🗑 Balance final descartado', '⚠ José DISCARDED the balance invoice (it had an error) — please upload the CORRECT one'],
 
     /* ── Taller RD (Rubén) — solo lo ve José ── */
     ev_rdRecibido:  ['📥 Rubén recibió un trabajo', ''],

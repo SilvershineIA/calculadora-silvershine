@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-10-13', en: 'Balance invoice corrections! If a final balance invoice has an error, you can now upload a CORRECTED one (button under the PDF) until José uploads his payment receipt — the old one is archived and José re-reads the new one. José can also discard a wrong one and ask for the correct file.' },
     { f: '2026-10-12', en: '🔎 Track button on every shipment: next to "Copy" there is now a Track button that opens the carrier\'s tracking page (FedEx, DHL, UPS — or 17track for others) with the number already filled in. No more copy & paste.' },
     { f: '2026-09-29', en: 'Fty Batch # row on every piece (you asked for it ✅): opening an item now shows YOUR batch number as the first row — the piece\'s own batch, or the batch of its lot if the piece doesn\'t have one.' },
     { f: '2026-09-21', en: 'Production day counter: once the deposit is in, each batch shows how many days it has been in production. After 10 days the batch card turns ORANGE, after 15 days RED ("please ship the pieces!") — so both sides see what needs to move.' },
@@ -915,7 +916,14 @@ const App = (() => {
         html += `<div class="tira"><span class="ico">📄</span>
           <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(l.cotFinal.pdfNombre || 'PI-final.pdf')}</div>
           <div class="sub">${l.cotFinal.leida ? T('l_leido') : fmtFecha(l.cotFinal.fecha)}</div></div>
-          <button class="btn-sm" data-ver="${l.cotFinal.pdfPath}">${T('verPdf')}</button></div>`;
+          <button class="btn-sm" data-ver="${l.cotFinal.pdfPath}">${T('verPdf')}</button></div>
+        ${(l.cotFinalAnteriores || []).map(p => `<div class="tira" style="opacity:.65"><span class="ico">🗄</span>
+          <div class="crece"><div class="nombre" style="font-size:13.5px">${esc(p.pdfNombre || 'PI-final.pdf')}</div>
+          <div class="sub">${karen ? 'replaced — had an error' : 'reemplazado — tenía un error'} · ${fmtFecha(p.fecha)}</div></div>
+          <button class="btn-sm" data-ver="${p.pdfPath}">${T('verPdf')}</button></div>`).join('')}
+        ${!l.comprobanteFinal ? (karen
+          ? `<button class="btn ghost" id="btnCorregirFinal">↻ Upload a CORRECTED balance invoice (replaces this one)</button>`
+          : `<button class="btn ghost" id="btnDescartarFinal" style="color:var(--red)">🗑 Descartar este balance (error de Tonglin — que suban el correcto)</button>`) : ''}`;
         if (l.cotFinal.leida) {
           const lf = l.cotFinal.leida, tot = totalCot(l), fin = lf.total_final || 0;
           const dif = fin && tot ? fin - tot : 0;
@@ -1332,16 +1340,26 @@ const App = (() => {
     on('#btnComprobante', async () => subirComprobante(await elegirArchivo('image/*,application/pdf', true)));
     zonaArrastre($('#btnComprobante'), archivos => subirComprobante(archivos[0]), true);
 
+    /* Balance final NUEVO o CORREGIDO: si ya había uno (error de Tonglin),
+       el viejo se archiva, el link de pago se anula (el monto cambió) y a
+       José le llega el aviso para re-leerlo con la IA. Vale hasta que
+       José suba el comprobante final. */
     const subirFinalPdf = async f => {
       toast(T('subiendo'));
       try {
+        const correccion = !!l.cotFinal;
         const tipo = f.type && f.type.startsWith('image/') ? f.type : 'application/pdf';
         const ext = tipo === 'application/pdf' ? 'pdf' : (tipo.split('/')[1] || 'png');
         const path = `lotes/${l.id}/pi-final-${Date.now()}.${ext}`;
         await Nube.subirArchivo(path, f, tipo);
+        if (correccion) {
+          l.cotFinalAnteriores = l.cotFinalAnteriores || [];
+          l.cotFinalAnteriores.push({ pdfPath: l.cotFinal.pdfPath, pdfNombre: l.cotFinal.pdfNombre, fecha: l.cotFinal.fecha });
+          delete l.linkPagoFinal;
+        }
         l.cotFinal = { pdfPath: path, pdfNombre: f.name, fecha: hoyISO() };
         await guardarDoc(l);
-        await avisar('final', l.nombre, l.id);
+        await avisar(correccion ? 'finalCorregida' : 'final', l.nombre, l.id);
         toast(T('l_finalSubido'));
         modalLinkPago(l, 'linkPagoFinal', 'final');
       } catch (e) { toast('⚠ ' + e.message); }
@@ -1351,6 +1369,25 @@ const App = (() => {
       if (f) subirFinalPdf(f);
     });
     zonaArrastre($('#btnSubirFinal'), archivos => subirFinalPdf(archivos[0]), true);
+    /* ↻ Tonglin corrige un balance final con error (hasta el comprobante) */
+    on('#btnCorregirFinal', async () => {
+      const f = await elegirArchivo('application/pdf,image/*');
+      if (f) subirFinalPdf(f);
+    });
+    zonaArrastre($('#btnCorregirFinal'), archivos => subirFinalPdf(archivos[0]), true);
+    /* 🗑 José descarta un balance final erróneo: se archiva y el lote
+       vuelve a pedir el balance invoice — a Tonglin le llega el aviso */
+    on('#btnDescartarFinal', async () => {
+      if (!confirm('¿Descartar este balance final? Queda archivado y a Tonglin le llegará el aviso de subir el correcto.')) return;
+      l.cotFinalAnteriores = l.cotFinalAnteriores || [];
+      l.cotFinalAnteriores.push({ pdfPath: l.cotFinal.pdfPath, pdfNombre: l.cotFinal.pdfNombre, fecha: l.cotFinal.fecha });
+      delete l.cotFinal;
+      delete l.linkPagoFinal;
+      await guardarDoc(l);
+      await avisar('finalDescartada', l.nombre, l.id);
+      toast('🗑 ✓ — Tonglin verá el aviso');
+      render();
+    });
 
     on('#btnComprobanteFinal', async () => {
       subirComprobanteFinal(await elegirArchivo('image/*,application/pdf', true));
