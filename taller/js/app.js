@@ -13,6 +13,7 @@ const App = (() => {
      en el MISMO commit. Si nació de una sugerencia de ellas, marcarla
      ✅ implementada desde el Ajustes de José. ═══ */
   const NOVEDADES_APP = [
+    { f: '2026-10-20', en: '💍 Ring model code (you asked for it ✅): pieces can now carry SilverShine\'s ring model code, shown right under the ORDER # on the spec sheet — so you can match it with your own code. Optional: not every piece has one.' },
     { f: '2026-10-13', en: 'Balance invoice corrections! If a final balance invoice has an error, you can now upload a CORRECTED one (button under the PDF) until José uploads his payment receipt — the old one is archived and José re-reads the new one. José can also discard a wrong one and ask for the correct file.' },
     { f: '2026-10-12', en: '🔎 Track button on every shipment: next to "Copy" there is now a Track button that opens the carrier\'s tracking page (FedEx, DHL, UPS — or 17track for others) with the number already filled in. No more copy & paste.' },
     { f: '2026-09-29', en: 'Fty Batch # row on every piece (you asked for it ✅): opening an item now shows YOUR batch number as the first row — the piece\'s own batch, or the batch of its lot if the piece doesn\'t have one.' },
@@ -1569,6 +1570,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
     html += `<div class="card"><div class="spec">
       ${filaSpec('🏷 Fty Batch #', ftyBatch)}
       ${filaSpec(T('o_numero'), o.numero ? '#' + esc(o.numero) : '')}
+      ${filaSpec('💍 ' + (karen ? 'Ring model code' : 'Código del modelo'), esc(o.codigoModelo || ''))}
       ${filaSpec(T('o_material'), esc(o.material))}
       ${filaSpec(T('o_size'), esc(o.size))}
       ${filaSpec(T('o_engraving'), esc(o.engraving))}
@@ -1881,6 +1883,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
       borrador = {
         destino: o.destino || 'cliente', etsyNum: o.etsyNum || '', shipTo: o.shipTo || '',
         numero: o.numero || '',
+        codigoModelo: o.codigoModelo || '',
         nombre: o.nombre || '', material: o.material || '', igLink: o.igLink || '',
         size: o.size || '', qty: o.qty || '1', engraving: o.engraving || '',
         stone: o.stone || '', cert: o.cert === 'Yes' ? 'Yes' : 'No',
@@ -2192,6 +2195,8 @@ Si no es legible responde {"error": "motivo corto"}.`;
           <div><label>${T('o_numero')}</label><input id="noNumero" autocomplete="off" inputmode="numeric" placeholder="1882" value="${esc(b.numero || '')}"></div>
           <div><label>${T('o_nombre')}</label><input id="noNombre" autocomplete="off" placeholder="Ej: Anillo rubí 14K" value="${esc(b.nombre || '')}"></div>
         </div>
+        <label>💍 ${T('o_codigo')}</label>
+        <input id="noCodigo" autocomplete="off" placeholder="Ej: RE-104 — Tonglin lo cruza con su código" value="${esc(b.codigoModelo || '')}">
         <label>${T('o_material')}</label>
         <div class="chips" id="noMatBase" style="margin-bottom:6px">
           <button data-m="925R" class="${b.matBase === '925R' ? 'on' : ''}">925 rodio</button>
@@ -2278,6 +2283,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         destino: ($('#noDestino button.on') || {}).dataset ? $('#noDestino button.on').dataset.d : 'cliente',
         etsyNum: $('#noEtsyNum').value, shipTo: $('#noShipTo').value,
         numero: $('#noNumero').value,
+        codigoModelo: $('#noCodigo').value,
         nombre: $('#noNombre').value, material: $('#noMaterial').value,
         igLink: $('#noIg').value, size: $('#noSize').value, qty: $('#noQty').value,
         engraving: $('#noEng').value, stone: $('#noStone').value,
@@ -2501,6 +2507,7 @@ Si no es legible responde {"error": "motivo corto"}.`;
         const o = editando || { id: uid('ord'), tipo: 'orden', creado: new Date().toISOString(), fotos: [] };
         Object.assign(o, {
           numero: $('#noNumero').value.trim(),
+          codigoModelo: $('#noCodigo').value.trim(),
           nombre, destino,
           material: $('#noMaterial').value.trim(),
           size: $('#noSize').value.trim(),

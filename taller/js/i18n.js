@@ -63,6 +63,7 @@ const I18N = (() => {
     o_lote:         ['🗂 Lote', '🗂 Batch'],
     o_loteNuevo:    ['— crear lote nuevo —', ''],
     o_nombre:       ['Nombre corto de la pieza *', 'Piece name'],
+    o_codigo:       ['Código del modelo (opcional)', 'Ring model code'],
     o_guardada:     ['🧵 Orden guardada en el lote', 'Order saved'],
     o_suelta:       ['Órdenes sueltas (sin lote)', 'Unassigned orders'],
     o_noDisp:       ['🚫 No disponible — devuelta por Tonglin', '🚫 Not available'],
