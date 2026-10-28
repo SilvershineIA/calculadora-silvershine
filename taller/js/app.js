@@ -2467,8 +2467,11 @@ Si no es legible responde {"error": "motivo corto"}.`;
        (028 → 029…): al marcar Stock, el número se rellena solo con el
        siguiente — sin pisar un número escrito a mano */
     const sigStock = () => {
+      /* SOLO números con formato de stock: cortos (1-3 dígitos) o con
+         cero adelante — una orden vieja de stock con número de factura
+         (1918) NO cuenta, o la secuencia saltaría a 1919 */
       const max = Math.max(0, ...ordenes()
-        .filter(o => o.destino === 'stock' && /^\d+$/.test(o.numero || '') && o.id !== editandoOrden)
+        .filter(o => o.destino === 'stock' && /^(0\d+|\d{1,3})$/.test((o.numero || '').trim()) && o.id !== editandoOrden)
         .map(o => Number(o.numero)));
       return String(max + 1).padStart(3, '0');
     };
