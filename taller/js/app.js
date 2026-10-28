@@ -2463,10 +2463,28 @@ Si no es legible responde {"error": "motivo corto"}.`;
       anotar();
     }));
 
+    /* 🏪 las órdenes de STOCK llevan su propia numeración corrida
+       (028 → 029…): al marcar Stock, el número se rellena solo con el
+       siguiente — sin pisar un número escrito a mano */
+    const sigStock = () => {
+      const max = Math.max(0, ...ordenes()
+        .filter(o => o.destino === 'stock' && /^\d+$/.test(o.numero || '') && o.id !== editandoOrden)
+        .map(o => Number(o.numero)));
+      return String(max + 1).padStart(3, '0');
+    };
+    let numSugerido = null;
     $$('#noDestino button').forEach(btn => btn.addEventListener('click', () => {
       $$('#noDestino button').forEach(x => x.classList.remove('on'));
       btn.classList.add('on');
       $('#noEtsy').style.display = btn.dataset.d === 'etsy' ? 'block' : 'none';
+      const v = $('#noNumero').value.trim();
+      if (btn.dataset.d === 'stock') {
+        if (!v || v === numSugerido) { numSugerido = sigStock(); $('#noNumero').value = numSugerido; }
+      } else if (v && v === numSugerido) {
+        /* se arrepintió del stock: el número auto-sugerido se limpia */
+        $('#noNumero').value = '';
+        numSugerido = null;
+      }
       anotar();
     }));
     $('#noLote').addEventListener('change', () => {
