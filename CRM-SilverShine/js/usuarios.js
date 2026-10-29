@@ -113,7 +113,46 @@ const Usuarios = (() => {
     }));
   }
 
+  /* ── 🕵️ Registro de cambios (solo admin): la bitácora que db.js va
+     llenando — quién creó/editó/eliminó qué, filtrable por usuario ── */
+  const TABLAS_AUD = { clientes: 'cliente', productos: 'producto', facturas: 'factura', pagos: 'pago', cotizaciones: 'cotización', tareas: 'tarea', inventario: 'inventario', config: 'configuración', taller: 'taller' };
+  let audFiltro = '';   // '' = todos
+  async function pintarAuditoria() {
+    const cont = document.getElementById('auditoriaCRM');
+    if (!cont) return;
+    await cargar();   // el rol SIEMPRE con la lista fresca (sin carreras)
+    if (!esAdmin()) { cont.innerHTML = ''; return; }
+    const docsA = (await DB.config.list()).filter(d => d.tipo === 'auditoria');
+    /* poda: la bitácora guarda 60 días */
+    const limite = UI.fechaISO(new Date(Date.now() - 60 * 864e5));
+    for (const d of docsA.filter(x => (x.dia || '') < limite)) await DB.config.remove(d.id);
+    const evs = docsA.filter(x => (x.dia || '') >= limite)
+      .flatMap(d => d.eventos || [])
+      .sort((a, b) => (b.f || '').localeCompare(a.f || ''));
+    const usuarios = [...new Set(evs.map(e => e.q))].sort();
+    const vis = (audFiltro ? evs.filter(e => e.q === audFiltro) : evs).slice(0, 150);
+    const cuando = f => new Date(f).toLocaleString('es-DO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    cont.innerHTML = `
+      <div class="card">
+        <h2>🕵️ Registro de cambios</h2>
+        <p class="muted" style="margin-bottom:10px">Cada cambio queda firmado con quién lo hizo (últimos 60 días). Los toques repetidos a lo mismo en 5 minutos se agrupan (×n).</p>
+        <div class="chips" style="margin-bottom:10px">
+          <button type="button" class="chip-tab ${audFiltro === '' ? 'on' : ''}" data-audq="">Todos</button>
+          ${usuarios.map(u => `<button type="button" class="chip-tab ${audFiltro === u ? 'on' : ''}" data-audq="${esc(u)}">${esc(u.split('@')[0])}</button>`).join('')}
+        </div>
+        ${vis.map(e => `
+          <div class="abono-row"><span><b>${esc((e.q || '').split('@')[0])}</b> ${e.a === 'eliminó' ? '<span class="rojo">eliminó</span>' : e.a} ${TABLAS_AUD[e.t] || esc(e.t)}${e.r ? ` — ${esc(e.r)}` : ''}${e.n > 1 ? ` <span class="muted">(×${e.n})</span>` : ''}</span>
+          <span class="muted" style="font-size:.78rem;white-space:nowrap">${cuando(e.f)}</span></div>`).join('') ||
+          '<p class="muted">Aún sin cambios registrados — desde ahora todo queda anotado.</p>'}
+        ${evs.length > 150 && !audFiltro ? `<p class="muted" style="margin-top:8px">Mostrando 150 de ${evs.length} — filtra por usuario para afinar.</p>` : ''}
+      </div>`;
+    UI.$$('#auditoriaCRM [data-audq]').forEach(b => b.addEventListener('click', () => {
+      audFiltro = b.dataset.audq;
+      pintarAuditoria();
+    }));
+  }
+
   function init() { /* el gating corre con aplicar() desde app.js */ }
 
-  return { init, cargar, aplicar, pintarAjustes, rolActual, puedeVer, esAdmin };
+  return { init, cargar, aplicar, pintarAjustes, pintarAuditoria, rolActual, puedeVer, esAdmin };
 })();

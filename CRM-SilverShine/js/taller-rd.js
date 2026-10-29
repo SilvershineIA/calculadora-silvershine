@@ -50,12 +50,16 @@ const TallerRD = (() => {
   /* write-through por la cola del sync: si no hay internet, sube al volver */
   function guardar(d) {
     const i = docs.findIndex(x => x.id === d.id);
-    if (i >= 0) docs[i] = d; else docs.unshift(d);
+    const existia = i >= 0;
+    if (existia) docs[i] = d; else docs.unshift(d);
     Sync.notificar('taller', 'upsert', d);
+    if (DB.auditar) DB.auditar('taller', existia ? 'editó' : 'creó', d);
   }
   function borrar(id) {
+    const viejo = docs.find(d => d.id === id);
     docs = docs.filter(d => d.id !== id);
     Sync.notificar('taller', 'remove', id);
+    if (DB.auditar) DB.auditar('taller', 'eliminó', viejo || { id });
   }
 
   /* ── modelo (idéntico al de la app de Rubén) ── */

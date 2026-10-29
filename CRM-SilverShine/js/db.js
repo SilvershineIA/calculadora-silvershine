@@ -81,6 +81,56 @@ const DB = (() => {
     if (typeof Sync !== 'undefined') Sync.notificar(n, op, obj);
   };
 
+  /* ═══ 🕵️ Auditoría: cada cambio queda FIRMADO con quién lo hizo.
+     · El doc se estampa con _cambio {por, f} (el último que lo tocó).
+     · Cada evento va a una bitácora diaria POR DISPOSITIVO (doc
+       'aud-<día>-<device>' en config, sincronizada) — un doc por
+       dispositivo evita que dos aparatos se pisen el mismo registro.
+     · Toques repetidos al mismo doc en <5 min se COLAPSAN (×n) para
+       que los guardados campo-por-campo no inunden la bitácora. ═══ */
+  const quien = () => {
+    try { return ((typeof Sync !== 'undefined' && Sync.info()) || {}).email || 'sin-nube'; }
+    catch { return 'sin-nube'; }
+  };
+  const DEVICE = (() => {
+    let d = localStorage.getItem('sscrm_device');
+    if (!d) { d = Math.random().toString(36).slice(2, 8); localStorage.setItem('sscrm_device', d); }
+    return d;
+  })();
+  function resumenDe(tabla, obj) {
+    if (!obj || typeof obj !== 'object') return '';
+    const num = obj.sec ? '#' + (obj.facturaOrden ? obj.facturaOrden + '-' : '') + obj.sec
+      : (obj.orden ? '#' + obj.orden : '');
+    const nom = obj.clienteNombre || obj.nombre || obj.titulo ||
+      String(obj.desc || obj.descripcion || '').split('\n')[0] ||
+      (tabla === 'config' ? obj.id : '');
+    return [num, nom].filter(Boolean).join(' · ').slice(0, 60);
+  }
+  async function auditar(tabla, accion, obj) {
+    try {
+      const id = (obj && obj.id) || String(obj || '');
+      if (tabla === 'config' && /^aud-/.test(id)) return;   // la bitácora no se audita a sí misma
+      const hoy = new Date().toISOString().slice(0, 10);
+      const idDoc = `aud-${hoy}-${DEVICE}`;
+      const arr = (await load('config')).slice();
+      let d = arr.find(x => x.id === idDoc);
+      if (!d) { d = { id: idDoc, tipo: 'auditoria', dia: hoy, eventos: [] }; arr.unshift(d); }
+      const ent = { f: new Date().toISOString(), q: quien(), a: accion, t: tabla, id, r: resumenDe(tabla, obj) };
+      const ult = d.eventos[d.eventos.length - 1];
+      if (ult && ult.q === ent.q && ult.t === ent.t && ult.id === ent.id && ult.a === ent.a &&
+          (new Date(ent.f) - new Date(ult.f)) < 5 * 60e3) {
+        ult.f = ent.f;
+        ult.n = (ult.n || 1) + 1;
+        if (ent.r) ult.r = ent.r;
+      } else {
+        d.eventos.push(ent);
+        if (d.eventos.length > 400) d.eventos.shift();
+      }
+      await save('config', arr);
+      avisar('config', 'upsert', d);
+    } catch (e) { console.warn('auditoría:', e.message); }
+  }
+
   // CRUD genérico sobre una colección
   const coll = n => ({
     async list() {
@@ -91,6 +141,11 @@ const DB = (() => {
     },
     async upsert(obj) {
       const arr = (await load(n)).slice();
+      const existia = !!obj.id && arr.some(x => x.id === obj.id);
+      /* firma: el último que tocó este doc (no aplica a la bitácora) */
+      if (!(n === 'config' && /^aud-/.test(obj.id || ''))) {
+        obj._cambio = { por: quien(), f: new Date().toISOString() };
+      }
       if (!obj.id) {
         obj.id = uid();
         obj.creado = new Date().toISOString();
@@ -102,11 +157,14 @@ const DB = (() => {
       }
       await save(n, arr);
       avisar(n, 'upsert', obj);
+      await auditar(n, existia ? 'editó' : 'creó', obj);
       return obj;
     },
     async remove(id) {
+      const viejo = (await load(n)).find(x => x.id === id);
       await save(n, (await load(n)).filter(x => x.id !== id));
       avisar(n, 'remove', id);
+      await auditar(n, 'eliminó', viejo || { id });
     },
   });
 
@@ -160,6 +218,9 @@ const DB = (() => {
       return n;
     },
   };
+  /* la bitácora también la usan módulos que escriben FUERA de DB
+     (el Taller RD escribe la tabla `taller` directo por Sync) */
+  api.auditar = auditar;
   for (const n of NOMBRES) api[n] = coll(n);
   return api;
 })();

@@ -18,7 +18,7 @@
     inventario:   () => Inventario.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
-    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); Leads.pintarAjustes(); Usuarios.pintarAjustes(); },
+    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); Leads.pintarAjustes(); Usuarios.pintarAjustes(); Usuarios.pintarAuditoria(); },
   };
 
   let vistaActual = 'panel';
