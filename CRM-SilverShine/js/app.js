@@ -18,11 +18,13 @@
     inventario:   () => Inventario.render(),
     tareas:       () => Tareas.render(),
     panel:        () => renderPanel(),
-    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); Leads.pintarAjustes(); },
+    ajustes:      () => { pintarEstadoNube(); cargarFormEmpresa(); Leads.pintarAjustes(); Usuarios.pintarAjustes(); },
   };
 
   let vistaActual = 'panel';
   function irA(nombre) {
+    /* 👥 roles: una vista que el rol no ve manda al panel */
+    if (typeof Usuarios !== 'undefined' && !Usuarios.puedeVer(nombre)) nombre = 'panel';
     vistaActual = nombre;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === nombre));
     $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === nombre));
@@ -661,7 +663,9 @@
       }
       e.target.password.value = '';
       pintarEstadoNube();
+      await Usuarios.aplicar();   // 👥 el rol del recién conectado manda en el menú
       renderPanel();
+      if (!Usuarios.puedeVer('ajustes')) irA('panel');
     } catch (err) {
       pintarEstadoNube();
       $('#nubeEstado').innerHTML = `🔴 ${err.message}`;
@@ -1175,6 +1179,7 @@
     await cargarCatalogoSiVacio();
     await seedProductoConfeccion();
     if (ok) pintarEstadoNube();
+    await Usuarios.aplicar();   // 👥 roles: esconder del menú lo que el rol no ve
     renderPanel();
   });
   Leads.init();
