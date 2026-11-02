@@ -117,18 +117,30 @@ const UI = (() => {
   /* Firma personal de los mensajes: "José de SilverShine" (editable en Ajustes) */
   const quienSaluda = emp => emp.vendedor ? `${emp.vendedor} de ${emp.nombre}` : emp.nombre;
 
-  /* ── Rango de fechas para historiales: Hoy · Semana · Mes · Todo ── */
-  const RANGOS = [['dia', 'Hoy'], ['semana', '7 días'], ['mes', 'Este mes'], ['todo', 'Todo']];
+  /* ── Rango de fechas para historiales: Hoy · Semana · Mes · Mes
+     anterior · Todo. También acepta rangos libres con la forma
+     'YYYY-MM-DD..YYYY-MM-DD' (los pone el chip 📅 de algunas vistas;
+     cualquiera de los dos extremos puede ir vacío). ── */
+  const RANGOS = [['dia', 'Hoy'], ['semana', '7 días'], ['mes', 'Este mes'], ['mesPasado', 'Mes anterior'], ['todo', 'Todo']];
   function enRango(fecha, rango) {
     if (rango === 'todo') return true;
     if (!fecha) return false;
     const hoy = fechaISO();
     if (rango === 'dia') return fecha === hoy;
     if (rango === 'semana') return fecha >= fechaISO(new Date(Date.now() - 7 * 864e5));
+    if (rango === 'mesPasado') {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+      return fecha.slice(0, 7) === fechaISO(d).slice(0, 7);
+    }
+    if (rango && rango.includes('..')) {
+      const [d1, d2] = rango.split('..');
+      return (!d1 || fecha >= d1) && (!d2 || fecha <= d2);
+    }
     return fecha.slice(0, 7) === hoy.slice(0, 7);   // mes calendario
   }
-  const chipsRango = activo => `<div class="chips" style="margin:8px 0">${
-    RANGOS.map(([k, t]) => `<button type="button" class="chip-tab mini chip-rango ${k === activo ? 'on' : ''}" data-rango="${k}">${t}</button>`).join('')}</div>`;
+  const chipsRango = (activo, conPicker) => `<div class="chips" style="margin:8px 0">${
+    RANGOS.map(([k, t]) => `<button type="button" class="chip-tab mini chip-rango ${k === activo ? 'on' : ''}" data-rango="${k}">${t}</button>`).join('')}${
+    conPicker ? `<button type="button" class="chip-tab mini chip-rango ${String(activo).includes('..') ? 'on' : ''}" data-rango="pick">📅 Rango</button>` : ''}</div>`;
 
   /* ── Chips de navegación cruzada: saltar entre los detalles de los
      módulos enlazados (cliente ↔ factura ↔ cotización ↔ confección ↔

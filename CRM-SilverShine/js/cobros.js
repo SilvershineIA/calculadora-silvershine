@@ -537,7 +537,15 @@ const Cobros = (() => {
       : UI.statTile('—', 'Sin cobros en el rango');
 
     const cont = $('#listaCobros');
-    cont.innerHTML = UI.chipsRango(rangoRec) + (enR.slice(0, 60).map((m, i) => `
+    /* Chips + picker 📅: el rango libre se guarda como 'desde..hasta' */
+    const esCustom = String(rangoRec).includes('..');
+    const [cDesde, cHasta] = esCustom ? rangoRec.split('..') : ['', ''];
+    cont.innerHTML = UI.chipsRango(rangoRec, true) + `
+      <div id="recPicker" class="row" style="align-items:flex-end;margin:0 0 12px;${esCustom ? '' : 'display:none'}">
+        <div><label>Desde</label><input type="date" id="recDesde" value="${cDesde}"></div>
+        <div><label>Hasta</label><input type="date" id="recHasta" value="${cHasta}"></div>
+        <div style="flex:0 0 auto"><button type="button" class="btn-gold btn-sm" id="recAplicar">Aplicar</button></div>
+      </div>` + (enR.slice(0, 60).map((m, i) => `
       <div class="item rec-fila" data-fid="${m.fid || ''}" style="${m.fid ? 'cursor:pointer' : ''}">
         <div class="item-info">
           <div class="item-name">${esc(m.cliente)}${m.ref ? ` <span class="muted">${esc(m.ref)}</span>` : ''}</div>
@@ -549,9 +557,21 @@ const Cobros = (() => {
       (enR.length > 60 ? `<p class="muted" style="text-align:center;padding:10px">Mostrando 60 de ${enR.length} — el reporte 📤 de Finanzas los trae todos.</p>` : '');
 
     UI.$$('#listaCobros .chip-rango').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.rango === 'pick') {        // 📅 solo muestra/esconde las fechas
+        const p = $('#recPicker');
+        p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+        return;
+      }
       rangoRec = b.dataset.rango;
       render();
     }));
+    $('#recAplicar').addEventListener('click', () => {
+      const d = $('#recDesde').value, h = $('#recHasta').value;
+      if (!d && !h) { toast('Pon al menos una de las dos fechas'); return; }
+      if (d && h && d > h) { toast('La fecha "desde" es mayor que "hasta"'); return; }
+      rangoRec = `${d}..${h}`;
+      render();
+    });
     UI.$$('#listaCobros .rec-fila[data-fid]').forEach(el => {
       if (el.dataset.fid) el.addEventListener('click', () => Facturas.detalle(el.dataset.fid));
     });
