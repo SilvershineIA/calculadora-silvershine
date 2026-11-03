@@ -1124,7 +1124,8 @@
       const n = await DB.cargarCatalogoShopify();
       await seedProductoConfeccion();   // la recarga reemplaza el catálogo: reponer el producto
       await seedFichasDesdeCatalogo();  // 📦 fichas en 0 para los diseños nuevos
-      toast(`🛍 Catálogo recargado: ${n} diseños`);
+      const nf = await seedFichasShopifyCompleto();   // 📦 TODOS los productos de la tienda (~400)
+      toast(`🛍 Catálogo recargado: ${n} diseños${nf ? ` · ${nf} fichas nuevas de inventario` : ''}`);
       if (Sync.conectado()) { pintarEstadoNube('Subiendo catálogo…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('catalogo');
     } catch (err) {
@@ -1238,6 +1239,50 @@
     }
     await DB.config.upsert({ id: 'inv-fichas-catalogo', hecho: true, creadas: n, fecha: UI.fechaISO() });
     if (n) console.log(`Inventario: ${n} fichas creadas desde el catálogo (en 0)`);
+  }
+
+  /* ── TODOS los productos de Shopify (~400) como fichas de inventario ──
+     La tienda vende cada diseño×color como producto aparte; el catálogo
+     del CRM los agrupa (23 diseños) pero el INVENTARIO necesita la ficha
+     individual (pedido de José). Corre al Recargar catálogo: fetch de
+     products.json completo, crea en 0 las que falten (idempotente por
+     nombre). El metal sale de título/tags/opciones (Materiales = oro
+     con kilates a elegir). El código sigue siendo manual. */
+  async function seedFichasShopifyCompleto() {
+    try {
+      let prods = [];
+      for (let page = 1; page <= 4; page++) {
+        const r = await fetch(`https://silvershine.com.do/products.json?limit=250&page=${page}`);
+        if (!r.ok) break;
+        const d = await r.json();
+        prods = prods.concat(d.products || []);
+        if ((d.products || []).length < 250) break;
+      }
+      if (!prods.length) return 0;
+      const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+      const ya = new Set((await DB.inventario.list()).filter(x => x.tallas).map(f => norm(f.nombre)));
+      const metalDe = p => {
+        const t = norm(p.title + ' ' + (p.tags || []).join(' ') + ' ' + (p.product_type || ''));
+        if (t.includes('vermeil')) return 'vermeil';
+        if (t.includes('plata') && !t.includes('oro ')) return 'plata';
+        if (t.includes('10k')) return 'oro10k';
+        if (t.includes('14k')) return 'oro14k';
+        if (t.includes('18k')) return 'oro18k';
+        if ((p.options || []).some(o => /material/i.test(o.name))) return 'oro';
+        return 'otro';
+      };
+      let creadas = 0;
+      for (const p of prods) {
+        if (/^servicio$/i.test(p.product_type || '')) continue;
+        if (ya.has(norm(p.title))) continue;
+        await DB.inventario.upsert({ nombre: p.title, metal: metalDe(p), cod: '', costo: 0, monedaCosto: 'DOP',
+          venta: Number((p.variants && p.variants[0] && p.variants[0].price) || 0), tallas: {}, prod: [], enAjuste: [],
+          hist: [{ f: UI.fechaISO(), t: '✨ Ficha creada desde Shopify (a pedido — en 0)', d: 0 }] });
+        ya.add(norm(p.title));
+        creadas++;
+      }
+      return creadas;
+    } catch (e) { console.warn('seedFichasShopifyCompleto:', e.message); return 0; }
   }
 
   async function rebasarConfecciones() {
