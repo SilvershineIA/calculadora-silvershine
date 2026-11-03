@@ -1123,6 +1123,7 @@
     try {
       const n = await DB.cargarCatalogoShopify();
       await seedProductoConfeccion();   // la recarga reemplaza el catálogo: reponer el producto
+      await seedFichasDesdeCatalogo();  // 📦 fichas en 0 para los diseños nuevos
       toast(`🛍 Catálogo recargado: ${n} diseños`);
       if (Sync.conectado()) { pintarEstadoNube('Subiendo catálogo…'); await Sync.subirTodo(); pintarEstadoNube(); }
       irA('catalogo');
@@ -1206,8 +1207,8 @@
      nombre normalizado contra las fichas ya existentes (p. ej. las del
      conteo físico) para no duplicar. */
   async function seedFichasDesdeCatalogo() {
-    const flag = await DB.config.get('inv-fichas-catalogo');
-    if (flag && flag.hecho) return;
+    /* corre SIEMPRE (idempotente: matchea por nombre normalizado) —
+       así cada recarga del catálogo crea las fichas que falten */
     const productos = await DB.productos.list();
     if (!productos.length) return;                  // sin catálogo aún: reintentar luego
     const fichas = (await DB.inventario.list()).filter(x => x.tallas);
