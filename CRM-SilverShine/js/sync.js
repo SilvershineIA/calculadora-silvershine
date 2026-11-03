@@ -182,35 +182,46 @@ const Sync = (() => {
     if (vaciando || !conectado() || !navigator.onLine) return;
     vaciando = true;
     try {
-      /* CRÍTICO: releer la cola en CADA vuelta. Antes se tomaba una foto
-         al empezar y se reescribía tras cada envío — todo lo que se
-         encolaba mientras un envío estaba en el aire se PERDÍA (así se
-         esfumaron costos aplicados en lote). Como agregar() solo añade
-         al final, procesar siempre la cabeza releída es seguro. */
+      /* CRÍTICO: releer la cola en cada vuelta (lo que se encole mientras
+         un envío está en el aire no debe perderse — lección v60; agregar()
+         solo añade al final, así que la cabeza releída es estable).
+         EN LOTES: los upserts consecutivos de la MISMA tabla van en un
+         solo POST (hasta 100) y la cola se reescribe una vez por lote —
+         antes era 1 request + 2 pasadas completas de JSON de localStorage
+         POR ELEMENTO, y con cientos encolados (p. ej. la carga de las
+         fichas de Shopify) eso congelaba la app por minutos. */
       while (true) {
         const arr = cola.leer();
         if (!arr.length) break;
         const it = arr[0];
+        let n = 1;
         try {
           if (it.op === 'upsert') {
-            await rest('POST', it.tabla, [{ id: it.id, data: it.data }], 'resolution=merge-duplicates');
+            while (n < arr.length && n < 100 && arr[n].op === 'upsert' && arr[n].tabla === it.tabla) n++;
+            await rest('POST', it.tabla, arr.slice(0, n).map(x => ({ id: x.id, data: x.data })), 'resolution=merge-duplicates');
           } else if (it.op === 'remove') {
             await rest('DELETE', `${it.tabla}?id=eq.${encodeURIComponent(it.id)}`);
           }
         } catch (e) {
           // un cambio de una tabla opcional que falla no debe atascar la cola…
           if (!OPCIONALES.has(it.tabla)) throw e;
-          console.warn(`Cambio de ${it.tabla} descartado:`, e.message);
+          console.warn(`${n} cambio(s) de ${it.tabla} descartado(s):`, e.message);
           // …pero tampoco callar: el Cuadre vive en config y perderlo duele
           if (!avisoOpcional && typeof UI !== 'undefined') {
             avisoOpcional = true;
             UI.toast(`⚠ La nube rechazó "${it.tabla}": ${String(e.message).slice(0, 90)} — corre el SQL del esquema en Supabase`);
           }
         }
-        /* Quitar SOLO el elemento procesado de la cola actual (no de la foto) */
+        /* Quitar SOLO lo procesado de la cola ACTUAL: la cabeza no cambia
+           entre lecturas (solo se agrega al final) — se verifica igual */
         const ahora = cola.leer();
-        if (ahora.length && ahora[0].ts === it.ts && ahora[0].id === it.id) ahora.shift();
-        cola.guardar(ahora);
+        if (ahora.length >= n && ahora[0].ts === arr[0].ts && ahora[0].id === arr[0].id &&
+            ahora[n - 1].ts === arr[n - 1].ts && ahora[n - 1].id === arr[n - 1].id) {
+          cola.guardar(ahora.slice(n));
+        } else if (ahora.length && ahora[0].ts === it.ts && ahora[0].id === it.id) {
+          ahora.shift();                       // respaldo conservador: de a uno
+          cola.guardar(ahora);
+        }
       }
     } catch (e) {
       console.warn('Sync pendiente:', e.message);
