@@ -1269,6 +1269,7 @@
     await seedProductoConfeccion();
     await migrarInventarioFichas();
     await seedFichasDesdeCatalogo();
+    await Inventario.reconciliarLlegadas();   // fase 2: llegadas de Tonglin pendientes
     if (ok) pintarEstadoNube();
     await Usuarios.aplicar();   // 👥 roles: esconder del menú lo que el rol no ve
     renderPanel();

@@ -306,6 +306,9 @@ const Facturas = (() => {
     on('#fAnular', async () => {
       if (!confirm(`¿Anular la factura ${f.numero}? Se conserva en el historial como anulada y podrás desanularla después.`)) return;
       f.estado = 'anulada';   // el saldo se conserva para poder desanular con su balance exacto
+      if (typeof Inventario !== 'undefined' && Inventario.revertirAnulacion) {
+        await Inventario.revertirAnulacion(f);   // las piezas vendidas vuelven al stock con rastro
+      }
       await DB.facturas.upsert(f);
       cerrarModal(); toast('Factura anulada'); render();
     });
@@ -317,6 +320,9 @@ const Facturas = (() => {
       f.saldo = saldoRest;
       f.estado = saldoRest > 0.005 ? 'pendiente' : 'pagada';
       if (f.planPago) actualizarProxCobro(f);
+      if (typeof Inventario !== 'undefined' && Inventario.aplicarDesanulacion) {
+        await Inventario.aplicarDesanulacion(f);   // vuelve a descontar lo vendido
+      }
       await DB.facturas.upsert(f);
       toast('↩ Factura restaurada');
       render();

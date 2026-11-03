@@ -104,6 +104,7 @@ const Inventario = (() => {
 
   /* ═══ VISTA ═══ */
   async function render() {
+    reconciliarLlegadas().then(() => {});     // fase 2: llegadas de Tonglin al entrar
     $('#invTabs').innerHTML = `
       <button class="chip-tab ${tab === 'fichas' ? 'on' : ''}" data-t="fichas">📦 Fichas</button>
       <button class="chip-tab ${tab === 'prod' ? 'on' : ''}" data-t="prod">🏭 En producción</button>
@@ -580,33 +581,135 @@ const Inventario = (() => {
     });
   }
 
-  /* al GUARDAR la factura: descuenta ventas y deja órdenes pendientes.
-     Devuelve true si quedaron órdenes por mandar (para abrir el modal). */
+  /* ── al GUARDAR la factura (fase 2: cuadre por DIFERENCIAS) ──
+     f.invAplicado registra lo que la factura tiene descontado del
+     stock; en cada guardado se compara lo nuevo contra eso y se
+     aplica solo el delta — así las EDICIONES re-cuadran (cambiar
+     talla, quitar línea, cambiar cantidad) y la anulación puede
+     devolver todo con rastro. Devuelve true si quedaron órdenes
+     de taller por mandar. */
+  const claveMov = m => m.fid + '|' + m.talla;
+  async function aplicarDiff(objetivo, previo, rotulo, motivoMas, motivoMenos) {
+    const mapa = new Map();
+    for (const m of previo) mapa.set(claveMov(m), (mapa.get(claveMov(m)) || 0) + m.n);
+    for (const m of objetivo) mapa.set(claveMov(m), (mapa.get(claveMov(m)) || 0) - m.n);
+    for (const [k, delta] of mapa) {
+      if (!delta) continue;                       // sin cambio
+      const [fid, talla] = k.split('|');
+      const p = await DB.inventario.get(fid);
+      if (!p || !p.tallas) continue;
+      p.tallas[talla] = Math.max(0, (Number(p.tallas[talla]) || 0) + delta);
+      anotar(p, `${delta > 0 ? motivoMas : motivoMenos} ${rotulo} · talla ${talla}`, delta);
+      await DB.inventario.upsert(p);
+    }
+  }
   async function alGuardarFactura(f, esNueva) {
-    if (!esNueva) return false;          // ediciones no re-descuentan (v1)
     const rotulo = f.orden ? '#' + f.orden : (f.numero || 's/n');
-    let pendientes = [];
+    /* 1) ventas: objetivo según las líneas de ahora */
+    const objetivo = [];
     for (const l of (f.lineas || [])) {
-      const n = Math.max(1, Math.round(Number(l.cantidad) || 1));
       if (l.inv && l.inv.modo === 'venta') {
-        const p = await DB.inventario.get(l.inv.fid);
-        if (p && p.tallas[l.inv.talla] !== undefined) {
-          p.tallas[l.inv.talla] = Math.max(0, (Number(p.tallas[l.inv.talla]) || 0) - n);
-          anotar(p, `⬇ Venta ${rotulo} · talla ${l.inv.talla}`, -n);
-          await DB.inventario.upsert(p);
-        }
-      } else if (l.inv && l.inv.modo === 'confeccion') {
-        const codConf = l.inv.fid === 'inv-confeccion' ? await siguienteCodigoConf(rotulo) : '';
-        pendientes.push({ fid: l.inv.fid, talla: l.inv.talla, det: l.inv.det || l.descripcion, codConf, tipo: 'confeccion' });
-      } else if (l.serv) {
-        pendientes.push({ tipo: l.serv.tipo, det: l.serv.det || '', soloRuben: true });
+        objetivo.push({ fid: l.inv.fid, talla: l.inv.talla, n: Math.max(1, Math.round(Number(l.cantidad) || 1)) });
+      }
+    }
+    const previo = f.invAplicado || [];
+    let cambia = JSON.stringify(objetivo) !== JSON.stringify(previo);
+    if (cambia) {
+      await aplicarDiff(objetivo, previo, rotulo, '↩ Devuelta por edición de', '⬇ Venta');
+      f.invAplicado = objetivo;
+    }
+    /* 2) órdenes de taller: agregar SOLO las líneas nuevas (match por
+       tipo+det+talla contra las ya registradas) */
+    const firma = o => [o.tipo, o.det || '', o.talla || ''].join('|');
+    const yaTiene = new Set((f.ordenesTaller || []).map(firma));
+    const pendientes = [];
+    for (const l of (f.lineas || [])) {
+      let o = null;
+      if (l.inv && l.inv.modo === 'confeccion') o = { fid: l.inv.fid, talla: l.inv.talla, det: l.inv.det || l.descripcion, tipo: 'confeccion' };
+      else if (l.serv) o = { tipo: l.serv.tipo, det: l.serv.det || '', soloRuben: true };
+      if (o && !yaTiene.has(firma(o))) {
+        if (o.tipo === 'confeccion' && o.fid === 'inv-confeccion') o.codConf = await siguienteCodigoConf(rotulo);
+        pendientes.push({ ...o, creada: hoyISO() });
+        yaTiene.add(firma(o));
       }
     }
     if (pendientes.length) {
-      f.ordenesTaller = [...(f.ordenesTaller || []), ...pendientes.map(o => ({ ...o, creada: hoyISO() }))];
-      await DB.facturas.upsert(f);
+      f.ordenesTaller = [...(f.ordenesTaller || []), ...pendientes];
+      cambia = true;
     }
-    return pendientes.length > 0;
+    if (cambia) await DB.facturas.upsert(f);
+    return pendientes.length > 0 || (f.ordenesTaller || []).some(o => !o.mandada);
+  }
+
+  /* anular ↔ desanular: devolver / re-descontar lo aplicado, con rastro */
+  async function revertirAnulacion(f) {
+    if (f.invRevertido || !(f.invAplicado || []).length) return;
+    const rotulo = f.orden ? '#' + f.orden : (f.numero || 's/n');
+    await aplicarDiff([], f.invAplicado, rotulo, '↩ Devuelta por anulación de', '⬇');
+    f.invRevertido = true;
+  }
+  async function aplicarDesanulacion(f) {
+    if (!f.invRevertido || !(f.invAplicado || []).length) return;
+    const rotulo = f.orden ? '#' + f.orden : (f.numero || 's/n');
+    await aplicarDiff(f.invAplicado, [], rotulo, '↩', '⬇ Re-descontada al desanular');
+    delete f.invRevertido;
+  }
+
+  /* ── FASE 2: llegadas automáticas desde los talleres ──
+     Los módulos mandan, el inventario obedece: cuando ALLÁ se marca
+     la llegada/entrega, aquí se le da entrada (o se entrega el
+     encargo) sin segundo toque. Si el match es ambiguo, no se toca
+     nada — queda el botón 📦 Llegó manual de siempre. */
+  async function llegadaRuben(t) {
+    try {
+      const refFact = t.facturaCRM ? ('#' + (t.facturaCRM.orden || '')) : null;
+      const lista = await fichas();
+      const candidatos = [];
+      for (const p of lista) {
+        (p.prod || []).forEach((a, i) => {
+          if (a.origen !== 'ruben') return;
+          if (refFact && a.para && a.para.includes(refFact)) candidatos.push({ p, i, peso: 2 });
+          else if (!refFact && !a.para) candidatos.push({ p, i, peso: 1 });
+        });
+      }
+      const fuertes = candidatos.filter(c => c.peso === 2);
+      const elegido = fuertes[0] || (candidatos.length === 1 ? candidatos[0] : null);
+      if (!elegido) return;
+      await marcarLlegada(elegido.p, elegido.i);
+    } catch (e) { console.warn('llegadaRuben:', e.message); }
+  }
+
+  async function reconciliarLlegadas() {
+    try {
+      const lista = await fichas();
+      const facturas = await DB.facturas.list();
+      const cstocks = (await DB.config.list()).filter(x => x.tipo === 'conf-stock');
+      for (const p of lista) {
+        for (let i = (p.prod || []).length - 1; i >= 0; i--) {
+          const a = p.prod[i];
+          if (a.origen !== 'tonglin') continue;
+          if (a.para) {
+            /* encargo de cliente: la confección de SU factura llegó/se entregó */
+            const m = /^#(\S+)/.exec(a.para || '');
+            const f = m && facturas.find(x => String(x.orden) === m[1] || x.numero === m[1]);
+            if (f && f.confeccion && ['lista', 'entregada'].includes(f.confeccion.estado)) {
+              await marcarLlegada(p, i);
+            }
+          } else {
+            /* stock: una confección de stock entregada (en vitrina) cuyo
+               texto nombra esta ficha — o la única pendiente que haya */
+            const libres = cstocks.filter(d => !d.invConsumido && d.confeccion && d.confeccion.estado === 'entregada' && ['stock', 'etsy'].includes(d.destino || 'stock'));
+            let doc = libres.find(d => norm(d.descripcion || '').includes(norm(p.nombre)));
+            if (!doc && libres.length === 1 && lista.reduce((s, x) => s + (x.prod || []).filter(y => y.origen === 'tonglin' && !y.para).length, 0) === 1) doc = libres[0];
+            if (doc) {
+              doc.invConsumido = true;
+              await DB.config.upsert(doc);
+              await marcarLlegada(p, i);
+            }
+          }
+        }
+      }
+    } catch (e) { console.warn('reconciliarLlegadas:', e.message); }
   }
 
   /* modal «mandar las órdenes» — después de guardar la factura */
@@ -679,5 +782,6 @@ const Inventario = (() => {
   }
 
   return { init, render, detalle, formularioFicha, buscadorInventario, alGuardarFactura,
+           revertirAnulacion, aplicarDesanulacion, llegadaRuben, reconciliarLlegadas,
            modalOrdenes, avisosMiDia, abrirProduccion, fichas, METALES, SERVICIOS };
 })();

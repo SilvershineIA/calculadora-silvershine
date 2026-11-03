@@ -678,7 +678,13 @@ const TallerRD = (() => {
     const on = (sel, fn) => { const x = $(sel); if (x) x.addEventListener('click', fn); };
     on('#trdVolver', () => { cerrarModal(); pintarTablero(); });
     on('#trdSalioBtn', () => { t.salio = hoyISO(); guardar(t); toast('📤 Marcado — el trabajo le apareció a Rubén'); pintarTablero(); detalle(id); });
-    on('#trdVuelta', () => { t.llegoDeVuelta = hoyISO(); guardar(t); toast('📦 ✓'); pintarTablero(); detalle(id); });
+    on('#trdVuelta', () => {
+      t.llegoDeVuelta = hoyISO(); guardar(t);
+      /* fase 2 inventario: si hay una pieza en producción con Rubén que
+         calza con este trabajo, se le da entrada sola */
+      if (typeof Inventario !== 'undefined' && Inventario.llegadaRuben) Inventario.llegadaRuben(t);
+      toast('📦 ✓'); pintarTablero(); detalle(id);
+    });
     /* ↩ deshacer marcas puestas por error (pruebas, toques accidentales) */
     const undo = (sel, msj, fn) => on(sel, () => {
       if (!confirm(msj)) return;
