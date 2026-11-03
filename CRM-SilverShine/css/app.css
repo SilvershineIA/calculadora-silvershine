@@ -675,3 +675,29 @@ button:hover{filter:brightness(1.12)}
   .lead-fila{flex-wrap:wrap}
   .lead-acc{max-width:none;width:100%;justify-content:flex-start;padding-left:54px}
 }
+
+/* ── Inventario por fichas (nov 2026) ── */
+.inv-cant{flex:0 0 40px;height:40px;border-radius:10px;background:#EFEAE2;display:flex;align-items:center;
+  justify-content:center;font-weight:700;font-size:1.05rem;font-variant-numeric:tabular-nums}
+.inv-cant.agotado{background:#F9E4E2;color:var(--red)}
+.badge-inv{font-size:.68rem;background:#E9EFF9;color:#3E62A8;font-weight:700;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.inv-cod{font-family:ui-monospace,Consolas,monospace;font-size:.82em;color:var(--gold-bright)}
+.inv-tallas{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-bottom:10px}
+.inv-talla{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:8px;text-align:center}
+.inv-talla.punteada{border-style:dashed}
+.inv-talla .t{font-size:.68rem;color:var(--muted);font-weight:700;text-transform:uppercase}
+.inv-talla .n{font-size:1.25rem;font-weight:700;margin:2px 0;font-variant-numeric:tabular-nums}
+.inv-talla .n.cero{color:var(--red)}
+.inv-talla .pm{display:flex;gap:4px;justify-content:center}
+.inv-talla .pm button{width:26px;height:24px;border:1px solid var(--border);border-radius:6px;background:#FAF7F2;
+  cursor:pointer;font-weight:700}
+.inv-talla .pm button:hover{background:#F6ECE8}
+.plazo{display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:4px 12px 4px 7px;
+  font-size:.72rem;font-weight:650;white-space:nowrap}
+.plazo svg{display:block}
+.plazo.ok{background:#E7F2EA;color:#2E7D46}
+.plazo.pronto{background:#F6EDDC;color:#9C6F1E}
+.plazo.tarde{background:#F9E7E5;color:#B3261E}
+.sug-item{padding:9px 12px;font-size:.85rem;cursor:pointer;border-bottom:1px dashed var(--border)}
+.sug-item:last-child{border-bottom:none}
+.sug-item:hover{background:#F6ECE8}

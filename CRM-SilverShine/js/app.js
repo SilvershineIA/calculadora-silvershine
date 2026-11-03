@@ -221,6 +221,31 @@
       });
     }
 
+    // 5b) Inventario: órdenes de taller sin mandar (factura guardada
+    //     pero la orden nunca salió) y encargos con el tope de 25 días
+    //     encima — para que ninguna pieza se quede sin producir.
+    try {
+      for (const av of await Inventario.avisosMiDia()) {
+        if (av.tipo === 'ordenes') {
+          items.push({
+            grupo: 4, monto: 0, hecho: false,
+            icono: '🧵', titulo: `Orden de taller sin mandar — ${av.cliente || 'factura ' + av.ref}`,
+            ref: `factura ${av.ref} · ${av.n} orden${av.n === 1 ? '' : 'es'} pendiente${av.n === 1 ? '' : 's'} — toca 🧵`,
+            pill: { t: '🧵 Por mandar', c: 'var(--tb-ambar)' }, fechaTxt: '',
+            accion: 'ordtaller', id: av.id, btn: '🧵', rojo: false,
+          });
+        } else if (av.tipo === 'vence') {
+          items.push({
+            grupo: 4, monto: 0, hecho: false,
+            icono: '⏳', titulo: `Encargo ${av.quedan < 0 ? 'VENCIDO' : 'por vencer'} — ${av.nombre}`,
+            ref: `${av.codConf ? av.codConf + ' · ' : ''}cliente ${av.para} · ${av.quedan < 0 ? 'se pasó ' + (-av.quedan) + ' d del tope' : 'quedan ' + av.quedan + ' d de 25'}`,
+            pill: { t: av.quedan < 0 ? '🔴 Vencido' : `⏳ ${av.quedan} d`, c: av.quedan < 0 ? 'var(--tb-rojo)' : 'var(--tb-ambar)' },
+            fechaTxt: '', accion: 'invprod', id: av.id, btn: '🏭', rojo: av.quedan < 0,
+          });
+        }
+      }
+    } catch (e) { console.warn('avisos inventario:', e.message); }
+
     // 6) Vigilante de números duplicados: si el sync trae un choque de
     //    orden #/NCF (dos dispositivos facturando a la vez), aparece
     //    aquí el mismo día para resolverlo en un toque.
@@ -362,6 +387,8 @@
       else if (x.accion === 'tarea') await Tareas.marcarPaso(x.id, x.paso);
       else if (x.accion === 'respaldo') await descargarRespaldo();
       else if (x.accion === 'dupnum') { await Facturas.repararNumeros(); return; }
+      else if (x.accion === 'ordtaller') { await Inventario.modalOrdenes(x.id); return; }
+      else if (x.accion === 'invprod') { Inventario.abrirProduccion(); return; }
       renderPanel();
     }));
     cont.querySelectorAll('.dia-mas').forEach(b => b.addEventListener('click', e => {
@@ -374,6 +401,8 @@
       else if (x.accion === 'cobro') Cobros.detalle(x.id);
       else if (x.accion === 'tarea') DB.tareas.get(x.id).then(t => t && Tareas.formulario(t));
       else if (x.accion === 'dupnum') Facturas.repararNumeros();
+      else if (x.accion === 'ordtaller') Inventario.modalOrdenes(x.id);
+      else if (x.accion === 'invprod') Inventario.abrirProduccion();
     }));
   }
 
@@ -1150,6 +1179,66 @@
      Auto-reparable e idempotente: solo re-basa si la entrega sigue
      siendo inicio+dias (una entrega movida a mano se respeta), y tras
      re-basar inicio === f.fecha, así que no vuelve a tocarla. */
+  /* ── Inventario por fichas (nov 2026): migrar artículos del diseño
+     viejo (nombre/cantidad/costo sin tallas) al shape nuevo, y sembrar
+     la pseudo-ficha de confecciones. Auto-reparable e idempotente. ── */
+  async function migrarInventarioFichas() {
+    const lista = await DB.inventario.list();
+    for (const i of lista) {
+      if (i.tallas) continue;                        // ya es del shape nuevo
+      await DB.inventario.upsert({
+        id: i.id, nombre: i.nombre || 'Artículo', metal: 'otro', cod: '',
+        costo: Number(i.costo) || 0, monedaCosto: i.moneda === 'USD' ? 'USD' : 'DOP',
+        venta: 0, tallas: { 'única': Number(i.cantidad) || 0 },
+        prod: [], enAjuste: [],
+        hist: (i.historial || []).map(h => ({ f: h.fecha, t: h.motivo || 'movimiento', d: h.delta })).slice(-20),
+        notas: i.notas || '',
+      });
+    }
+    if (!lista.some(x => x.id === 'inv-confeccion')) {
+      await DB.inventario.upsert({ id: 'inv-confeccion', oculto: true, nombre: '🧵 Confección personalizada',
+        metal: 'otro', cod: '', costo: 0, monedaCosto: 'DOP', venta: 0, tallas: {}, prod: [], enAjuste: [], hist: [] });
+    }
+  }
+
+  /* fichas en 0 desde el catálogo de Shopify — SOLO para tener la ficha
+     en la factura (pedido de José): corre una vez (bandera), matchea por
+     nombre normalizado contra las fichas ya existentes (p. ej. las del
+     conteo físico) para no duplicar. */
+  async function seedFichasDesdeCatalogo() {
+    const flag = await DB.config.get('inv-fichas-catalogo');
+    if (flag && flag.hecho) return;
+    const productos = await DB.productos.list();
+    if (!productos.length) return;                  // sin catálogo aún: reintentar luego
+    const fichas = (await DB.inventario.list()).filter(x => x.tallas);
+    const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    const ya = new Set(fichas.map(f => norm(f.nombre)));
+    const metalDe = p => {
+      const t = norm((p.nombre || '') + ' ' + (p.categoria || ''));
+      if (t.includes('vermeil')) return 'vermeil';
+      if (t.includes('10k')) return 'oro10k';
+      if (t.includes('14k')) return 'oro14k';
+      if (t.includes('18k')) return 'oro18k';
+      if (t.includes('plata')) return 'plata';
+      if (t.includes('oro')) return 'oro';
+      return 'otro';
+    };
+    let n = 0;
+    for (const p of productos) {
+      if (p.id === 'prod-confeccion' || norm(p.categoria) === 'confecciones') continue;
+      if (ya.has(norm(p.nombre))) continue;
+      const tasa = (typeof Calculadora !== 'undefined' && Calculadora.tasaActual()) || 60;
+      const ventaRD = p.moneda === 'USD' ? Math.round((Number(p.precio) || 0) * tasa) : (Number(p.precio) || 0);
+      await DB.inventario.upsert({ nombre: p.nombre, metal: metalDe(p), cod: '', costo: 0, monedaCosto: 'DOP',
+        venta: ventaRD, tallas: {}, prod: [], enAjuste: [],
+        hist: [{ f: UI.fechaISO(), t: '✨ Ficha creada desde el catálogo (en 0 — solo para la factura)', d: 0 }] });
+      ya.add(norm(p.nombre));
+      n++;
+    }
+    await DB.config.upsert({ id: 'inv-fichas-catalogo', hecho: true, creadas: n, fecha: UI.fechaISO() });
+    if (n) console.log(`Inventario: ${n} fichas creadas desde el catálogo (en 0)`);
+  }
+
   async function rebasarConfecciones() {
     const facturas = await DB.facturas.list();
     for (const f of facturas) {
@@ -1178,6 +1267,8 @@
     await actualizarGarantiaVieja();
     await cargarCatalogoSiVacio();
     await seedProductoConfeccion();
+    await migrarInventarioFichas();
+    await seedFichasDesdeCatalogo();
     if (ok) pintarEstadoNube();
     await Usuarios.aplicar();   // 👥 roles: esconder del menú lo que el rol no ve
     renderPanel();

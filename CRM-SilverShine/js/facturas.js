@@ -615,6 +615,10 @@ const Facturas = (() => {
         <div class="row" style="margin-top:6px">
           <button type="button" class="btn-ghost btn-sm" id="addLinea">+ Línea libre</button>
           <div style="flex:1;position:relative">
+            <input id="addInvBuscar" placeholder="📦 Del inventario… (producto, código, garantía, grabado…)" autocomplete="off">
+            <div id="addInvSug" class="sugerencias" hidden></div>
+          </div>
+          <div style="flex:1;position:relative">
             <input id="addProdBuscar" placeholder="🛍 Del catálogo…" autocomplete="off">
             <div id="addProdSug" class="sugerencias" hidden></div>
           </div>
@@ -693,6 +697,15 @@ const Facturas = (() => {
       el.textContent = `${inicial > 0 ? 'Inicial de ' + fmtMoneda(inicial, m) + ' + ' : ''}${n} cuota(s) de ~${fmtMoneda(cuotas[0].monto, m)} · última el ${fmtFecha(cuotas[cuotas.length - 1].fecha)}`;
     }
     $('#addLinea').addEventListener('click', () => { lineas.push({ descripcion: '', cantidad: 1, precio: '' }); pintarLineas(); });
+    /* 📦 Inventario: la línea trae la ficha enlazada (l.inv) o el servicio
+       (l.serv); la talla decide el flujo y al GUARDAR se descuenta o la
+       orden queda pendiente — factura primero, orden al taller después */
+    if (typeof Inventario !== 'undefined' && Inventario.buscadorInventario) {
+      Inventario.buscadorInventario($('#addInvBuscar'), $('#addInvSug'), linea => {
+        lineas.push(linea);
+        pintarLineas();
+      });
+    }
     UI.buscadorCatalogo($('#addProdBuscar'), $('#addProdSug'), item => {
       const m = $('#formFactura').moneda.value;
       let precio = item.precio;
@@ -737,7 +750,7 @@ const Facturas = (() => {
       const fd = new FormData(e.target);
       const lineasOk = lineas
         .map(l => ({ ...l, descripcion: l.descripcion.trim(), cantidad: Number(l.cantidad) || 1, precio: Number(l.precio) || 0 }))
-        .filter(l => l.descripcion && l.precio > 0);
+        .filter(l => l.descripcion && (l.precio > 0 || l.serv || l.inv));   // garantía va en RD$0
       if (!lineasOk.length) { toast('Agrega al menos una línea con precio'); return; }
       const { imp, total } = totalDe(lineasOk, fd.get('itbis') === 'si');
       const totalR = Math.round(total * 100) / 100;
@@ -859,8 +872,16 @@ const Facturas = (() => {
       cerrarModal();
       toast(esNueva ? `Factura ${nueva.numero} creada` : 'Factura actualizada');
       render();
-      // Si la factura lleva una línea de confección, la confección se pacta sola
-      if (esNueva && !guardada.confeccion && Confecciones.esDeConfeccion(guardada)) {
+      /* Inventario: descuenta las ventas enlazadas y deja las órdenes de
+         taller pendientes — la factura PRIMERO, la orden después */
+      let hayOrdenes = false;
+      if (typeof Inventario !== 'undefined' && Inventario.alGuardarFactura) {
+        hayOrdenes = await Inventario.alGuardarFactura(guardada, esNueva);
+      }
+      if (hayOrdenes) {
+        Inventario.modalOrdenes(guardada.id);
+      } else if (esNueva && !guardada.confeccion && Confecciones.esDeConfeccion(guardada)) {
+        // línea de confección escrita a mano (sin pasar por el inventario): flujo clásico
         Confecciones.pactar(guardada, () => detalle(guardada.id));
       }
     });

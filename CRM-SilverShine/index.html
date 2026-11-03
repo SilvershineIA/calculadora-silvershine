@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="css/app.css?v=156">
+<link rel="stylesheet" href="css/app.css?v=157">
 </head>
 <body>
 
@@ -306,14 +306,13 @@
     <section class="view" data-view="inventario">
       <div class="view-head">
         <h1 class="view-title">Inventario</h1>
-        <button class="btn-gold btn-sm" id="btnNuevoInv">+ Nuevo artículo</button>
+        <button class="btn-gold btn-sm" id="btnNuevoInv">➕ Nueva ficha</button>
       </div>
+      <div class="chips" id="invTabs" style="margin-bottom:10px"></div>
       <div class="stat-grid" id="invResumen"></div>
-      <div class="filter-row">
-        <input type="search" id="buscarInv" class="search" placeholder="Buscar artículo…">
-        <select id="filtroCatInv"><option value="">Todas las categorías</option></select>
-      </div>
-      <div id="listaInventario" class="list"></div>
+      <input type="search" id="buscarInv" class="search" placeholder="🔍 Buscar por nombre o código…">
+      <div class="chips" id="invMetales" style="margin:8px 0 12px"></div>
+      <div id="invCont" class="list"></div>
     </section>
 
     <section class="view" data-view="tareas">
@@ -466,25 +465,25 @@
 <div id="printArea"></div>
 
 <script src="js/jspdf.min.js"></script>
-<script src="js/pdf.js?v=156"></script>
-<script src="js/reportes.js?v=156"></script>
-<script src="js/db.js?v=156"></script>
-<script src="js/sync.js?v=156"></script>
-<script src="js/ui.js?v=156"></script>
-<script src="js/clientes.js?v=156"></script>
-<script src="js/catalogo.js?v=156"></script>
-<script src="js/calculadora.js?v=156"></script>
-<script src="js/facturas.js?v=156"></script>
-<script src="js/cotizaciones.js?v=156"></script>
-<script src="js/confecciones.js?v=156"></script>
-<script src="js/taller-rd.js?v=156"></script>
-<script src="js/usuarios.js?v=156"></script>
-<script src="js/cobros.js?v=156"></script>
-<script src="js/finanzas.js?v=156"></script>
-<script src="js/caja.js?v=156"></script>
-<script src="js/inventario.js?v=156"></script>
-<script src="js/tareas.js?v=156"></script>
-<script src="js/leads.js?v=156"></script>
-<script src="js/app.js?v=156"></script>
+<script src="js/pdf.js?v=157"></script>
+<script src="js/reportes.js?v=157"></script>
+<script src="js/db.js?v=157"></script>
+<script src="js/sync.js?v=157"></script>
+<script src="js/ui.js?v=157"></script>
+<script src="js/clientes.js?v=157"></script>
+<script src="js/catalogo.js?v=157"></script>
+<script src="js/calculadora.js?v=157"></script>
+<script src="js/facturas.js?v=157"></script>
+<script src="js/cotizaciones.js?v=157"></script>
+<script src="js/confecciones.js?v=157"></script>
+<script src="js/taller-rd.js?v=157"></script>
+<script src="js/usuarios.js?v=157"></script>
+<script src="js/cobros.js?v=157"></script>
+<script src="js/finanzas.js?v=157"></script>
+<script src="js/caja.js?v=157"></script>
+<script src="js/inventario.js?v=157"></script>
+<script src="js/tareas.js?v=157"></script>
+<script src="js/leads.js?v=157"></script>
+<script src="js/app.js?v=157"></script>
 </body>
 </html>
