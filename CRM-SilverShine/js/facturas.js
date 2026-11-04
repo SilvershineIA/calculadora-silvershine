@@ -550,6 +550,7 @@ const Facturas = (() => {
     const numero = f.numero || await siguienteNumero();
     const productos = await DB.productos.list();
     let lineas = f.lineas ? f.lineas.map(l => ({ ...l })) : [{ descripcion: '', cantidad: 1, precio: '' }];
+    const ordenesForm = [];   // órdenes de taller capturadas que NO viajan como líneas (nota privada)
     let clienteSel = f.clienteId ? await DB.clientes.get(f.clienteId) : null;
 
     abrirModal(esNueva ? 'Nueva factura' : `Editar ${f.numero}`, `
@@ -707,7 +708,22 @@ const Facturas = (() => {
        (l.serv); la talla decide el flujo y al GUARDAR se descuenta o la
        orden queda pendiente — factura primero, orden al taller después */
     if (typeof Inventario !== 'undefined' && Inventario.buscadorInventario) {
-      Inventario.buscadorInventario($('#addInvBuscar'), $('#addInvSug'), linea => {
+      Inventario.buscadorInventario($('#addInvBuscar'), $('#addInvSug'), item => {
+        /* lo interno (servicios, ajustes) NO es línea de la factura: el
+           cliente no debe ver el detalle del taller — va a la 🔒 nota
+           privada y la orden sale al guardar (pedido de José) */
+        const anotar = txt => {
+          const ta = $('#formFactura').notasInternas;
+          ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + txt;
+        };
+        if (item.interna) {
+          ordenesForm.push(item.orden);
+          anotar(item.nota);
+          toast('🔒 Anotado en la nota privada — la orden al taller sale al guardar');
+          return;
+        }
+        if (item.nota) anotar(item.nota);
+        const { nota, ...linea } = item;
         lineas.push(linea);
         pintarLineas();
       });
@@ -757,7 +773,7 @@ const Facturas = (() => {
       const lineasOk = lineas
         .map(l => ({ ...l, descripcion: l.descripcion.trim(), cantidad: Number(l.cantidad) || 1, precio: Number(l.precio) || 0 }))
         .filter(l => l.descripcion && (l.precio > 0 || l.serv || l.inv));   // garantía va en RD$0
-      if (!lineasOk.length) { toast('Agrega al menos una línea con precio'); return; }
+      if (!lineasOk.length && !ordenesForm.length) { toast('Agrega al menos una línea con precio'); return; }
       const { imp, total } = totalDe(lineasOk, fd.get('itbis') === 'si');
       const totalR = Math.round(total * 100) / 100;
       const numeroF = fd.get('numero').trim();
@@ -887,7 +903,7 @@ const Facturas = (() => {
          taller pendientes — la factura PRIMERO, la orden después */
       let hayOrdenes = false;
       if (typeof Inventario !== 'undefined' && Inventario.alGuardarFactura) {
-        hayOrdenes = await Inventario.alGuardarFactura(guardada, esNueva);
+        hayOrdenes = await Inventario.alGuardarFactura(guardada, esNueva, ordenesForm);
       }
       if (hayOrdenes) {
         Inventario.modalOrdenes(guardada.id);

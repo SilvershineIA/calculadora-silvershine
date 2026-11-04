@@ -535,9 +535,11 @@ const Inventario = (() => {
         sug.querySelector('#svOk').addEventListener('click', () => {
           const det = sug.querySelector('#svDet').value.trim();
           sug.hidden = true; inp.value = '';
-          onLinea({ descripcion: `${s.nombre}${det ? ' — ' + det : ''}`, cantidad: 1, precio: s.precio,
-            serv: { tipo: s.tipo, det } });
-          if (s.tipo === 'garantia') toast('🛡️ Garantía: RD$0 — el costo del taller no tocará la factura');
+          /* los servicios NO son líneas de la factura: el cliente no debe
+             ver el detalle del taller (pedido de José) — van a la nota
+             privada y la orden sale al guardar. Si se cobra, línea libre. */
+          onLinea({ interna: true, nota: `${s.nombre}${det ? ' — ' + det : ''} (taller Rubén)`,
+            orden: { tipo: s.tipo, det: det || '', soloRuben: true } });
         });
         sug.querySelector('#svDet').focus();
       }));
@@ -551,8 +553,11 @@ const Inventario = (() => {
           const det = sug.querySelector('#cfDet').value.trim() || 'Confección personalizada';
           const talla = sug.querySelector('#cfTalla').value.trim() || 'única';
           sug.hidden = true; inp.value = '';
-          onLinea({ descripcion: `🧵 Confección personalizada — ${det}${talla !== 'única' ? ' · talla ' + talla : ''}`,
-            cantidad: 1, precio: '', inv: { fid: 'inv-confeccion', talla, modo: 'confeccion', det } });
+          /* la línea que ve el cliente va LIMPIA (sin marcas internas);
+             el rastro del taller queda en la nota privada */
+          onLinea({ descripcion: `${det}${talla !== 'única' ? ' · talla ' + talla : ''}`,
+            cantidad: 1, precio: '', inv: { fid: 'inv-confeccion', talla, modo: 'confeccion', det },
+            nota: `🧵 Confección personalizada — ${det} · talla ${talla} (nace con código SS- y va a producción)` });
         });
         sug.querySelector('#cfDet').focus();
       }));
@@ -616,9 +621,10 @@ const Inventario = (() => {
           const a = zona.querySelector('#ajA').value.trim() || '?';
           cb({ descripcion: `${p.nombre} · talla ${t}`, cantidad: 1, precio: p.venta || '',
             inv: { fid: p.id, talla: t, modo: 'venta' } });
-          cb({ descripcion: `📏 Ajuste de talla — t.${t} → t.${a}`, cantidad: 1, precio: 0,
-            serv: { tipo: 'ajuste', det: `t.${t} → t.${a}` } });
-          toast('2 líneas: la pieza sale del stock al guardar y el ajuste va a Rubén');
+          /* el ajuste NO es una línea: el cliente no debe verlo — nota
+             privada + orden a Rubén al guardar (pedido de José) */
+          cb({ interna: true, nota: `📏 Ajuste de talla — ${p.nombre} t.${t} → t.${a} (taller Rubén)`,
+            orden: { tipo: 'ajuste', det: `t.${t} → t.${a}`, soloRuben: true } });
         });
         zona.querySelector('#ajA').focus();
       });
@@ -630,8 +636,10 @@ const Inventario = (() => {
           <button type="button" class="btn-gold btn-sm" id="tnOk">Agregar (confección)</button></div>`;
       zona.querySelector('#tnOk').addEventListener('click', () => {
         const t = zona.querySelector('#tnVal').value.trim() || '?';
-        cb({ descripcion: `${p.nombre} · talla ${t} (confección)`, cantidad: 1, precio: p.venta || '',
-          inv: { fid: p.id, talla: t, modo: 'confeccion' } });
+        /* sin "(confección)": esa marca es interna — va a la nota privada */
+        cb({ descripcion: `${p.nombre} · talla ${t}`, cantidad: 1, precio: p.venta || '',
+          inv: { fid: p.id, talla: t, modo: 'confeccion' },
+          nota: `🧵 ${p.nombre} talla ${t} — se confecciona (la orden va al taller)` });
       });
       zona.querySelector('#tnVal').focus();
     });
@@ -659,7 +667,7 @@ const Inventario = (() => {
       await DB.inventario.upsert(p);
     }
   }
-  async function alGuardarFactura(f, esNueva) {
+  async function alGuardarFactura(f, esNueva, extras) {
     const rotulo = f.orden ? '#' + f.orden : (f.numero || 's/n');
     /* 1) ventas: objetivo según las líneas de ahora */
     const objetivo = [];
@@ -679,10 +687,15 @@ const Inventario = (() => {
     const firma = o => [o.tipo, o.det || '', o.talla || ''].join('|');
     const yaTiene = new Set((f.ordenesTaller || []).map(firma));
     const pendientes = [];
+    const candidatas = [];
     for (const l of (f.lineas || [])) {
-      let o = null;
-      if (l.inv && l.inv.modo === 'confeccion') o = { fid: l.inv.fid, talla: l.inv.talla, det: l.inv.det || l.descripcion, tipo: 'confeccion' };
-      else if (l.serv) o = { tipo: l.serv.tipo, det: l.serv.det || '', soloRuben: true };
+      if (l.inv && l.inv.modo === 'confeccion') candidatas.push({ fid: l.inv.fid, talla: l.inv.talla, det: l.inv.det || l.descripcion, tipo: 'confeccion' });
+      else if (l.serv) candidatas.push({ tipo: l.serv.tipo, det: l.serv.det || '', soloRuben: true });  // facturas viejas (los servicios ya no viajan como líneas)
+    }
+    /* órdenes capturadas en el formulario que NO son líneas (servicios,
+       ajustes): el cliente no las ve — viajan aparte desde Facturas */
+    for (const o of (extras || [])) candidatas.push({ ...o });
+    for (const o of candidatas) {
       if (o && !yaTiene.has(firma(o))) {
         if (o.tipo === 'confeccion' && o.fid === 'inv-confeccion') o.codConf = await siguienteCodigoConf(rotulo);
         pendientes.push({ ...o, creada: hoyISO() });
