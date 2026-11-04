@@ -562,7 +562,25 @@ const Inventario = (() => {
         panelTalla(p, sug, linea => { sug.hidden = true; onLinea(linea); });
       }));
     });
-    document.addEventListener('click', e => { if (!sug.contains(e.target) && e.target !== inp) sug.hidden = true; });
+    /* Cerrar al tocar fuera. OJO: cuando un toque RE-PINTA el desplegable
+       (vender+ajuste, servicios, confección), ese mismo toque sigue
+       burbujeando hasta aquí con e.target ya DESCONECTADO del DOM —
+       contains() da false y el panel se ocultaba en el instante de
+       abrirse (bug de José: «no se registra en la factura»). */
+    document.addEventListener('click', e => {
+      if (!e.target.isConnected) return;            // el toque nació dentro del panel
+      if (!sug.contains(e.target) && e.target !== inp) sug.hidden = true;
+    });
+    /* Enter dentro del buscador o de un campo inline NO debe guardar la
+       factura entera (el formulario la envolvía): agrega la línea. */
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    sug.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+      e.preventDefault();
+      const form = e.target.closest('.sug-form');
+      const btn = form && form.querySelector('button');
+      if (btn) btn.click();
+    });
   }
 
   /* la TALLA decide el flujo: lista de disponibles + «otra talla →
