@@ -239,11 +239,20 @@ const Inventario = (() => {
       anotar(p, `${d > 0 ? '⬆ Entrada' : '⬇ Salida'} manual · talla ${t}`, d);
       await guardar(); render(); detalle(id);
     }));
-    $('#invAddTalla').addEventListener('click', async () => {
-      const t = prompt('¿Qué talla agregar? (ej: 7.5 — o “única”)');
-      if (!t || p.tallas[t.trim()] !== undefined) return;
-      p.tallas[t.trim()] = 0;
-      await guardar(); detalle(id);
+    $('#invAddTalla').addEventListener('click', () => {
+      /* input inline — prompt() se bloquea en la PWA del teléfono */
+      const celda = $('#invAddTalla').closest('.inv-talla');
+      celda.innerHTML = `<div class="t">talla</div>
+        <input id="invTallaNueva" placeholder="7.5" autocomplete="off"
+          style="width:100%;border:1px solid var(--border);border-radius:7px;padding:4px 6px;text-align:center;margin:2px 0">
+        <div class="pm"><button id="invTallaOk" style="width:auto;padding:0 10px">✓</button></div>`;
+      $('#invTallaOk').addEventListener('click', async () => {
+        const t = ($('#invTallaNueva').value || '').trim();
+        if (!t || p.tallas[t] !== undefined) return;
+        p.tallas[t] = 0;
+        await guardar(); detalle(id);
+      });
+      $('#invTallaNueva').focus();
     });
     $$('#modalBody [data-llego]').forEach(b => b.addEventListener('click', async () => {
       await marcarLlegada(p, Number(b.dataset.llego));
@@ -513,20 +522,39 @@ const Inventario = (() => {
           return `<div class="sug-item" data-inv="${p.id}">${esc(p.nombre)} <span class="muted">· ${(METALES[p.metal] || {}).t || ''}${p.cod ? ' · ' + esc(p.cod) : ''} · ${RD(p.venta)} · ${c > 0 ? 'quedan ' + c : '⚠ sin stock'}</span></div>`;
         }).join('') || '<div class="sug-item muted">Sin coincidencias…</div>';
       sug.hidden = false;
+      /* ⚠ NUNCA window.prompt/confirm aquí: las PWA instaladas (teléfono)
+         los bloquean en silencio — se toca y "no pasa nada" (bug de José).
+         Todo se captura con campos inline dentro del desplegable. */
       sug.querySelectorAll('[data-serv]').forEach(d => d.addEventListener('click', () => {
         const s = SERVICIOS.find(x => x.tipo === d.dataset.serv);
-        sug.hidden = true; inp.value = '';
-        const det = prompt(`${s.nombre} — detalle (ej: ${s.tipo === 'grabado' ? 'grabar «J&K 14.02.26»' : s.tipo === 'ajuste' ? 'de talla 9 a 7' : 'soldar uñeta'})`) || '';
-        onLinea({ descripcion: `${s.nombre}${det ? ' — ' + det : ''}`, cantidad: 1, precio: s.precio,
-          serv: { tipo: s.tipo, det } });
-        if (s.tipo === 'garantia') toast('🛡️ Garantía: RD$0 — el costo del taller no tocará la factura');
+        const ej = s.tipo === 'grabado' ? 'grabar «J&K 14.02.26»' : s.tipo === 'ajuste' ? 'de talla 9 a 7' : 'soldar uñeta';
+        sug.innerHTML = `
+          <div class="sug-item" style="cursor:default;background:#FAF7F2"><b>${s.nombre}</b> <span class="muted">· la orden va donde Rubén${s.tipo === 'garantia' ? ' · RD$0 para el cliente' : ''}</span></div>
+          <div class="sug-form"><input id="svDet" placeholder="Detalle (ej: ${ej})" autocomplete="off">
+            <button type="button" class="btn-gold btn-sm" id="svOk">Agregar</button></div>`;
+        sug.querySelector('#svOk').addEventListener('click', () => {
+          const det = sug.querySelector('#svDet').value.trim();
+          sug.hidden = true; inp.value = '';
+          onLinea({ descripcion: `${s.nombre}${det ? ' — ' + det : ''}`, cantidad: 1, precio: s.precio,
+            serv: { tipo: s.tipo, det } });
+          if (s.tipo === 'garantia') toast('🛡️ Garantía: RD$0 — el costo del taller no tocará la factura');
+        });
+        sug.querySelector('#svDet').focus();
       }));
       sug.querySelectorAll('[data-conf]').forEach(d => d.addEventListener('click', () => {
-        sug.hidden = true; inp.value = '';
-        const det = prompt('Confección — descripción corta (ej: oro 14K, 2 aros 2mm, grabado interno)') || 'Confección personalizada';
-        const talla = prompt('Talla (o “única”)') || 'única';
-        onLinea({ descripcion: `🧵 Confección personalizada — ${det}${talla !== 'única' ? ' · talla ' + talla : ''}`,
-          cantidad: 1, precio: '', inv: { fid: 'inv-confeccion', talla, modo: 'confeccion', det } });
+        sug.innerHTML = `
+          <div class="sug-item" style="cursor:default;background:#FAF7F2"><b>🧵 Confección personalizada</b> <span class="muted">· nace con código SS- y va a producción</span></div>
+          <div class="sug-form"><input id="cfDet" placeholder="Descripción (ej: oro 14K, 2 aros 2mm, grabado…)" autocomplete="off">
+            <input id="cfTalla" placeholder="Talla" style="max-width:80px" autocomplete="off">
+            <button type="button" class="btn-gold btn-sm" id="cfOk">Agregar</button></div>`;
+        sug.querySelector('#cfOk').addEventListener('click', () => {
+          const det = sug.querySelector('#cfDet').value.trim() || 'Confección personalizada';
+          const talla = sug.querySelector('#cfTalla').value.trim() || 'única';
+          sug.hidden = true; inp.value = '';
+          onLinea({ descripcion: `🧵 Confección personalizada — ${det}${talla !== 'única' ? ' · talla ' + talla : ''}`,
+            cantidad: 1, precio: '', inv: { fid: 'inv-confeccion', talla, modo: 'confeccion', det } });
+        });
+        sug.querySelector('#cfDet').focus();
       }));
       sug.querySelectorAll('[data-inv]').forEach(d => d.addEventListener('click', async () => {
         const p = await DB.inventario.get(d.dataset.inv);
@@ -561,20 +589,33 @@ const Inventario = (() => {
           inv: { fid: p.id, talla: t, modo: 'venta' } });
       });
       zona.querySelector('[data-ajini]').addEventListener('click', () => {
-        const a = prompt(`La talla ${t} se ajusta… ¿a qué talla?`, '');
-        if (a === null) return;
-        cb({ descripcion: `${p.nombre} · talla ${t}`, cantidad: 1, precio: p.venta || '',
-          inv: { fid: p.id, talla: t, modo: 'venta' } });
-        cb({ descripcion: `📏 Ajuste de talla — t.${t} → t.${a.trim() || '?'}`, cantidad: 1, precio: 0,
-          serv: { tipo: 'ajuste', det: `t.${t} → t.${a.trim() || '?'}` } });
-        toast('2 líneas: la pieza sale del stock al guardar y el ajuste va a Rubén');
+        /* input inline — nada de prompt(): las PWA del teléfono lo bloquean */
+        zona.innerHTML = `
+          <div class="sug-form"><span class="muted" style="align-self:center;font-size:.8rem">t.${esc(t)} se ajusta a:</span>
+            <input id="ajA" placeholder="7.5" style="max-width:80px" autocomplete="off">
+            <button type="button" class="btn-gold btn-sm" id="ajOk2">Agregar las 2 líneas</button></div>`;
+        zona.querySelector('#ajOk2').addEventListener('click', () => {
+          const a = zona.querySelector('#ajA').value.trim() || '?';
+          cb({ descripcion: `${p.nombre} · talla ${t}`, cantidad: 1, precio: p.venta || '',
+            inv: { fid: p.id, talla: t, modo: 'venta' } });
+          cb({ descripcion: `📏 Ajuste de talla — t.${t} → t.${a}`, cantidad: 1, precio: 0,
+            serv: { tipo: 'ajuste', det: `t.${t} → t.${a}` } });
+          toast('2 líneas: la pieza sale del stock al guardar y el ajuste va a Rubén');
+        });
+        zona.querySelector('#ajA').focus();
       });
     }));
     sug.querySelector('[data-sotra]').addEventListener('click', () => {
-      const t = prompt('Talla nueva para la confección (ej: 10)', '');
-      if (t === null) return;
-      cb({ descripcion: `${p.nombre} · talla ${t.trim() || '?'} (confección)`, cantidad: 1, precio: p.venta || '',
-        inv: { fid: p.id, talla: t.trim() || '?', modo: 'confeccion' } });
+      zona.innerHTML = `
+        <div class="sug-form"><span class="muted" style="align-self:center;font-size:.8rem">Talla nueva:</span>
+          <input id="tnVal" placeholder="10" style="max-width:80px" autocomplete="off">
+          <button type="button" class="btn-gold btn-sm" id="tnOk">Agregar (confección)</button></div>`;
+      zona.querySelector('#tnOk').addEventListener('click', () => {
+        const t = zona.querySelector('#tnVal').value.trim() || '?';
+        cb({ descripcion: `${p.nombre} · talla ${t} (confección)`, cantidad: 1, precio: p.venta || '',
+          inv: { fid: p.id, talla: t, modo: 'confeccion' } });
+      });
+      zona.querySelector('#tnVal').focus();
     });
   }
 

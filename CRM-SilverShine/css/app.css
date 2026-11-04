@@ -701,3 +701,5 @@ button:hover{filter:brightness(1.12)}
 .sug-item{padding:9px 12px;font-size:.85rem;cursor:pointer;border-bottom:1px dashed var(--border)}
 .sug-item:last-child{border-bottom:none}
 .sug-item:hover{background:#F6ECE8}
+.sug-form{display:flex;gap:7px;padding:9px 12px;align-items:center;flex-wrap:wrap;background:var(--panel)}
+.sug-form input{flex:1;min-width:120px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.86rem}
