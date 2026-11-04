@@ -789,7 +789,12 @@ const Facturas = (() => {
         costo: Number(fd.get('costo')) || null,
         abonos: f.abonos || [],
         leadId: f.leadId || null,   // lead de WhatsApp de origen → evento Purchase a Meta al pagarse
+        /* estado del inventario: SIN esto, cada edición re-descontaba el
+           stock y re-creaba las órdenes de taller (bug de José) */
+        invAplicado: f.invAplicado || [],
+        ordenesTaller: f.ordenesTaller || [],
       };
+      if (f.invRevertido) nueva.invRevertido = f.invRevertido;
 
       /* Candado anti doble-toque: el guardado es async — un doble tap
          creaba dos facturas idénticas antes de que cerrara el modal */

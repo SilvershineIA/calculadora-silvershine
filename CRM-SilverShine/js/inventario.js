@@ -376,7 +376,10 @@ const Inventario = (() => {
       <button class="btn-gold btn-block" id="prOk" style="margin-top:12px">Registrar y abrir el módulo del taller</button>
       <button class="btn-ghost btn-block" id="prSolo" style="margin-top:8px">Solo registrar (la orden ya existe allá)</button>
     `);
+    let creando = false;
     const crear = async abrirTaller => {
+      if (creando) return;
+      creando = true;
       const origen = $('#prOrigen').value, talla = $('#prTalla').value.trim() || 'única';
       const n = Math.max(1, Math.round(Number($('#prCant').value) || 1));
       p.prod = p.prod || [];
@@ -409,6 +412,8 @@ const Inventario = (() => {
       <button class="btn-gold btn-block" id="ajOk" style="margin-top:12px">Sacar del stock y abrir el Taller RD</button>
     `);
     $('#ajOk').addEventListener('click', async () => {
+      if ($('#ajOk').disabled) return;
+      $('#ajOk').disabled = true;
       const de = $('#ajDe').value, a = $('#ajA').value.trim() || '?';
       p.tallas[de] = (Number(p.tallas[de]) || 0) - 1;
       p.enAjuste = [...(p.enAjuste || []), { de, a, fecha: hoyISO() }];
@@ -433,6 +438,8 @@ const Inventario = (() => {
       <button class="btn-gold btn-block" id="cOk" style="margin-top:12px">${esDevol ? 'Registrar devolución' : 'Registrar cambio'}</button>
     `);
     $('#cOk').addEventListener('click', async () => {
+      if ($('#cOk').disabled) return;
+      $('#cOk').disabled = true;
       const te = $('#cEntra').value, fr = $('#cFact').value.trim();
       p.tallas[te] = (Number(p.tallas[te]) || 0) + 1;
       anotar(p, `${esDevol ? '↩ Devolución' : '🔁 Cambio: entra'} talla ${te}${fr ? ' · ' + fr : ''}`, 1);
@@ -523,61 +530,51 @@ const Inventario = (() => {
       }));
       sug.querySelectorAll('[data-inv]').forEach(d => d.addEventListener('click', async () => {
         const p = await DB.inventario.get(d.dataset.inv);
-        sug.hidden = true; inp.value = '';
-        elegirTalla(p, sel => onLinea(sel));
+        inp.value = '';
+        panelTalla(p, sug, linea => { sug.hidden = true; onLinea(linea); });
       }));
     });
     document.addEventListener('click', e => { if (!sug.contains(e.target) && e.target !== inp) sug.hidden = true; });
   }
 
-  /* la TALLA decide el flujo: lista de disponibles + «otra talla → confección» */
-  function elegirTalla(p, cb) {
+  /* la TALLA decide el flujo: lista de disponibles + «otra talla →
+     confección» + vender+ajuste. Se pinta DENTRO del desplegable del
+     formulario — NUNCA en el modal global, porque pisaría el modal del
+     formulario de factura y se perdería todo lo escrito (bug reportado
+     por José: «la factura no se guarda y hay que rehacer»). */
+  function panelTalla(p, sug, cb) {
     const disp = Object.entries(p.tallas).filter(([, n]) => n > 0);
-    abrirModal(esc(p.nombre), `
-      <p class="muted" style="margin:-4px 0 10px">${(METALES[p.metal] || {}).t || ''} · venta ${RD(p.venta)}${disp.length ? '' : ' · <b style="color:var(--red)">sin stock físico</b>'}</p>
-      ${disp.map(([t, n]) => `<button type="button" class="btn-ghost btn-block sel-talla" data-t="${esc(t)}" style="text-align:left;margin-bottom:6px">Talla ${esc(t)} <span class="muted">· quedan ${n}</span></button>`).join('')}
-      <button type="button" class="btn-ghost btn-block" id="selOtra" style="text-align:left;border-style:dashed">➕ Otra talla — <b>crear confección</b> <span class="muted">· la orden va al taller</span></button>
-      <div id="selZona" style="margin-top:10px"></div>
-    `);
-    $$('#modalBody .sel-talla').forEach(b => b.addEventListener('click', () => {
-      const t = b.dataset.t;
-      $('#selZona').innerHTML = `
-        <div class="row">
-          <button type="button" class="btn-gold btn-block" id="selVender">🧾 Vender talla ${esc(t)}</button>
-          <button type="button" class="btn-ghost btn-block" id="selAjuste">🧾 Vender + 📏 ajuste (Rubén)</button>
-        </div>
-        <div class="row" id="selAjZona" hidden style="margin-top:8px">
-          <div><label>Ajustar a talla</label><input id="selAjA" placeholder="7.5" autocomplete="off"></div>
-          <div style="flex:0 0 auto;display:flex;align-items:flex-end"><button type="button" class="btn-gold btn-sm" id="selAjOk">Agregar las 2 líneas</button></div>
-        </div>`;
-      $('#selVender').addEventListener('click', () => {
-        cerrarModal();
+    sug.hidden = false;
+    sug.innerHTML = `
+      <div class="sug-item" style="cursor:default;background:#FAF7F2"><b>${esc(p.nombre)}</b> <span class="muted">· ${(METALES[p.metal] || {}).t || ''} · venta ${RD(p.venta)}${disp.length ? ' — elige la talla:' : ' · ⚠ sin stock físico'}</span></div>
+      ${disp.map(([t, n]) => `<div class="sug-item" data-st="${esc(t)}">Talla ${esc(t)} <span class="muted">· quedan ${n}</span></div>`).join('')}
+      <div class="sug-item" data-sotra="1">➕ Otra talla — <b>crear confección</b> <span class="muted">· la orden va al taller</span></div>
+      <div id="selZona"></div>`;
+    const zona = sug.querySelector('#selZona');
+    sug.querySelectorAll('[data-st]').forEach(b => b.addEventListener('click', () => {
+      const t = b.dataset.st;
+      zona.innerHTML = `
+        <div class="sug-item" data-vender="1">🧾 <b>Vender la talla ${esc(t)}</b> <span class="muted">· descuenta al guardar</span></div>
+        <div class="sug-item" data-ajini="1">🧾 Vender + 📏 <b>ajuste de talla</b> <span class="muted">· la orden va a Rubén</span></div>`;
+      zona.querySelector('[data-vender]').addEventListener('click', () => {
         cb({ descripcion: `${p.nombre}${t !== 'única' ? ' · talla ' + t : ''}`, cantidad: 1, precio: p.venta || '',
           inv: { fid: p.id, talla: t, modo: 'venta' } });
       });
-      $('#selAjuste').addEventListener('click', () => { $('#selAjZona').hidden = false; });
-      $('#selAjOk').addEventListener('click', () => {
-        const a = $('#selAjA').value.trim() || '?';
-        cerrarModal();
+      zona.querySelector('[data-ajini]').addEventListener('click', () => {
+        const a = prompt(`La talla ${t} se ajusta… ¿a qué talla?`, '');
+        if (a === null) return;
         cb({ descripcion: `${p.nombre} · talla ${t}`, cantidad: 1, precio: p.venta || '',
           inv: { fid: p.id, talla: t, modo: 'venta' } });
-        cb({ descripcion: `📏 Ajuste de talla — t.${t} → t.${a}`, cantidad: 1, precio: 0,
-          serv: { tipo: 'ajuste', det: `t.${t} → t.${a}` } });
-        toast('2 líneas agregadas — la pieza saldrá del stock al guardar y el ajuste irá a Rubén');
+        cb({ descripcion: `📏 Ajuste de talla — t.${t} → t.${a.trim() || '?'}`, cantidad: 1, precio: 0,
+          serv: { tipo: 'ajuste', det: `t.${t} → t.${a.trim() || '?'}` } });
+        toast('2 líneas: la pieza sale del stock al guardar y el ajuste va a Rubén');
       });
     }));
-    $('#selOtra').addEventListener('click', () => {
-      $('#selZona').innerHTML = `
-        <div class="row">
-          <div><label>Talla nueva</label><input id="selTN" placeholder="10" autocomplete="off"></div>
-          <div style="flex:0 0 auto;display:flex;align-items:flex-end"><button type="button" class="btn-gold btn-sm" id="selTNok">Agregar línea (confección)</button></div>
-        </div>`;
-      $('#selTNok').addEventListener('click', () => {
-        const t = $('#selTN').value.trim() || '?';
-        cerrarModal();
-        cb({ descripcion: `${p.nombre} · talla ${t} (confección)`, cantidad: 1, precio: p.venta || '',
-          inv: { fid: p.id, talla: t, modo: 'confeccion' } });
-      });
+    sug.querySelector('[data-sotra]').addEventListener('click', () => {
+      const t = prompt('Talla nueva para la confección (ej: 10)', '');
+      if (t === null) return;
+      cb({ descripcion: `${p.nombre} · talla ${t.trim() || '?'} (confección)`, cantidad: 1, precio: p.venta || '',
+        inv: { fid: p.id, talla: t.trim() || '?', modo: 'confeccion' } });
     });
   }
 
@@ -731,8 +728,10 @@ const Inventario = (() => {
         </div>`).join('')}
       <button class="btn-ghost btn-block" id="ordLuego" style="margin-top:12px">Luego — Mi Día me lo recuerda</button>
     `);
-    const idxReal = o => (f.ordenesTaller || []).indexOf(o);
+    let mandando = false;                       // candado: un doble toque creaba la orden DOS veces
     const mandar = async (o, origen) => {
+      if (mandando || o.mandada) return;
+      mandando = true;
       o.mandada = { origen, fecha: hoyISO() };
       await DB.facturas.upsert(f);
       /* rastro en la ficha (o en la pseudo-ficha de confecciones) */
@@ -744,12 +743,14 @@ const Inventario = (() => {
           pedido: f.fecha || hoyISO(), det: o.det || '', codConf: o.codConf || '' }];
         await DB.inventario.upsert(p);
       }
+      const faltan = (f.ordenesTaller || []).filter(x => !x.mandada).length;
       cerrarModal();
-      toast(o.codConf ? `🧵 ${o.codConf} → ${origen === 'tonglin' ? 'Tonglin' : 'Rubén'}` : `🔨 Orden → ${origen === 'tonglin' ? 'Tonglin' : 'Rubén'}`);
+      toast((o.codConf ? `🧵 ${o.codConf} → ` : '🔨 Orden → ') + (origen === 'tonglin' ? 'Tonglin' : 'Rubén') +
+        (faltan ? ` · quedan ${faltan} — Mi Día te las recuerda` : ''));
+      /* el módulo del taller toma el mando (NO se re-abre este modal
+         encima: pisaba el formulario del taller — bug de José) */
       if (origen === 'ruben' && typeof TallerRD !== 'undefined') TallerRD.nueva(f);
-      else if (typeof Confecciones !== 'undefined') Confecciones.pactar(f, () => {});
-      /* si quedan más, re-abrir */
-      if ((f.ordenesTaller || []).some(x => !x.mandada)) setTimeout(() => modalOrdenes(f.id), 600);
+      else if (typeof Confecciones !== 'undefined') Confecciones.pactar(f);
     };
     $$('#modalBody [data-ton]').forEach(b => b.addEventListener('click', () => mandar(pend[Number(b.dataset.ton)], 'tonglin')));
     $$('#modalBody [data-rub]').forEach(b => b.addEventListener('click', () => mandar(pend[Number(b.dataset.rub)], 'ruben')));
