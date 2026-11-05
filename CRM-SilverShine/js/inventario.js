@@ -170,7 +170,14 @@ const Inventario = (() => {
       return;
     }
     const grupos = Object.keys(METALES).filter(k => !filtroMetal || k === filtroMetal);
-    cont.innerHTML = grupos.map(k => {
+    /* nada se esconde en silencio: si los filtros tapan fichas, se dice
+       cuántas y un toque lo muestra todo (bug: «no aparece en inventario») */
+    const ocultas = lista.length - vis.length;
+    const avisoOcultas = ocultas > 0 ? `
+      <div class="item" id="invOcultas" style="justify-content:center;border-style:dashed;cursor:pointer">
+        <span class="muted">🔎 ${ocultas} ficha${ocultas === 1 ? '' : 's'} oculta${ocultas === 1 ? '' : 's'} por los filtros — <b>Mostrar todo</b></span>
+      </div>` : '';
+    cont.innerHTML = avisoOcultas + grupos.map(k => {
       const g = vis.filter(p => p.metal === k).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
       if (!g.length) return '';
       const gp = g.reduce((s, p) => s + cuenta(p), 0);
@@ -190,7 +197,13 @@ const Inventario = (() => {
             <span class="item-arrow">›</span>
           </div>`;
         }).join('');
-    }).join('') || '<div class="empty"><span>🔍</span>Nada coincide.</div>';
+    }).join('') || (avisoOcultas || '<div class="empty"><span>🔍</span>Nada coincide.</div>');
+    const avO = $('#invOcultas');
+    if (avO) avO.addEventListener('click', () => {
+      filtroStock = false; filtroTalla = ''; filtroTxt = ''; filtroMetal = '';
+      const bi = $('#buscarInv'); if (bi) bi.value = '';
+      render();
+    });
     $$('#invCont .inv-f').forEach(el => el.addEventListener('click', () => detalle(el.dataset.id)));
   }
 
@@ -527,6 +540,13 @@ const Inventario = (() => {
       };
       if (esNueva) doc.hist = [{ f: hoyISO(), t: '✨ Ficha creada', d: 0 }];
       const g = await DB.inventario.upsert(doc);
+      if (esNueva) {
+        /* una ficha nueva nace en 0: si quedó pegado «Con existencia»,
+           una talla o una búsqueda, la esconderían — se limpian para que
+           se VEA de inmediato (bug reportado: «no aparece en inventario») */
+        filtroStock = false; filtroTalla = ''; filtroTxt = ''; filtroMetal = '';
+        const bi = $('#buscarInv'); if (bi) bi.value = '';
+      }
       cerrarModal(); toast(esNueva ? '✨ Ficha creada' : 'Ficha actualizada');
       render(); detalle(g.id);
     });
