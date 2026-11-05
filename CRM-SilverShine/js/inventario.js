@@ -190,7 +190,7 @@ const Inventario = (() => {
             <div class="inv-cant ${c <= 0 ? 'agotado' : ''}">${c}</div>
             <div class="item-info">
               <div class="item-name">${esc(p.nombre)}</div>
-              <div class="item-sub">${p.cod ? esc(p.cod) + ' · ' : ''}${filtroTalla ? 'talla ' + esc(filtroTalla) + ' · ' : ''}venta ${RD(p.venta)} · valor ${RD(c * (Number(p.venta) || 0))}</div>
+              <div class="item-sub">${p.cod ? esc(p.cod) + ' · ' : ''}${filtroTalla ? 'talla ' + esc(filtroTalla) + ' · ' : ''}costo ${p.monedaCosto === 'USD' ? 'US$' + (Number(p.costo) || 0) + ' ≈' + RD(costoRD(p)) : RD(p.costo)} · venta ${RD(p.venta)} · valor ${RD(c * (Number(p.venta) || 0))}</div>
             </div>
             ${prodN ? `<span class="badge-inv">🏭 ${prodN}</span>` : ''}
             ${ajN ? `<span class="badge-inv">🔨 ${ajN}</span>` : ''}
