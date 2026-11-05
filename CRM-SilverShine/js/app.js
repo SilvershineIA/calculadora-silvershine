@@ -1243,6 +1243,21 @@
     if (n) console.log(`Inventario: ${n} fichas creadas desde el catálogo (en 0)`);
   }
 
+  /* ── 'Oro sólido' retirado (regla de José, 5 nov): auto-reparable ──
+     Un dispositivo con cola vieja puede re-subir fichas con metal 'oro';
+     al abrir se recolocan solas: Brillo del Destino → 10K, chatarra
+     («mal producida») → Otros, el resto → 14K. */
+  async function migrarOroSolido() {
+    const lista = await DB.inventario.list();
+    for (const p of lista) {
+      if (p.metal !== 'oro') continue;
+      const chatarra = /mal producid/i.test(p.nombre || '');
+      p.metal = chatarra ? 'otro' : (/brillo del destino/i.test(p.nombre || '') ? 'oro10k' : 'oro14k');
+      (p.hist = p.hist || []).unshift({ f: UI.fechaISO(), t: '🥇 Recolocada automáticamente (Oro sólido se retiró)', d: 0 });
+      await DB.inventario.upsert(p);
+    }
+  }
+
   /* ── TODOS los productos de Shopify (~400) como fichas de inventario ──
      La tienda vende cada diseño×color como producto aparte; el catálogo
      del CRM los agrupa (23 diseños) pero el INVENTARIO necesita la ficha
@@ -1318,6 +1333,7 @@
     await seedProductoConfeccion();
     await migrarInventarioFichas();
     await seedFichasDesdeCatalogo();
+    await migrarOroSolido();
     await Inventario.reconciliarLlegadas();   // fase 2: llegadas de Tonglin pendientes
     if (ok) pintarEstadoNube();
     await Usuarios.aplicar();   // 👥 roles: esconder del menú lo que el rol no ve
