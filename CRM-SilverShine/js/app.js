@@ -1322,6 +1322,30 @@
   });
   Leads.init();
 
+  /* ── Guardián anti-autofill ──
+     Chrome IGNORA autocomplete="off" para su autorrelleno de contactos
+     y mete el correo guardado en los buscadores (bug de José, persistió
+     tras v167). Si un buscador amanece con un correo que nadie está
+     tecleando, se limpia solo; el detector de la animación
+     :-webkit-autofill (css) atrapa los rellenos tardíos. */
+  const BUSCADORES = ['buscarCliente', 'buscarProducto', 'buscarFactura', 'buscarCot', 'buscarInv'];
+  const esCorreo = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v || '').trim());
+  const limpiarAutofill = forzar => BUSCADORES.forEach(id => {
+    const e = document.getElementById(id);
+    if (e && esCorreo(e.value) && (forzar || document.activeElement !== e)) {
+      e.value = '';
+      e.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  limpiarAutofill();
+  setTimeout(limpiarAutofill, 800);     // el autofill a veces entra después del load
+  setTimeout(limpiarAutofill, 2500);
+  /* la animación :-webkit-autofill SOLO la dispara el autorrelleno del
+     navegador (nunca el tecleo humano) → aquí se limpia aunque haya foco */
+  document.addEventListener('animationstart', e => {
+    if (e.animationName === 'sscrmAutofill' && BUSCADORES.includes(e.target.id)) setTimeout(() => limpiarAutofill(true), 50);
+  });
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

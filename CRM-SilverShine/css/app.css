@@ -703,3 +703,8 @@ button:hover{filter:brightness(1.12)}
 .sug-item:hover{background:#F6ECE8}
 .sug-form{display:flex;gap:7px;padding:9px 12px;align-items:center;flex-wrap:wrap;background:var(--panel)}
 .sug-form input{flex:1;min-width:120px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.86rem}
+
+/* detector de autofill: Chrome pinta :-webkit-autofill y esta animación
+   vacía avisa a app.js para limpiar el correo que mete solo (v168) */
+@keyframes sscrmAutofill { from { opacity: 1; } }
+input.search:-webkit-autofill { animation-name: sscrmAutofill; animation-duration: 0.001s; }
