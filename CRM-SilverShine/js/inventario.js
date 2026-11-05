@@ -40,7 +40,7 @@ const Inventario = (() => {
   ];
 
   let tab = 'fichas';          // fichas · prod · registro
-  let filtroTxt = '', filtroMetal = '';
+  let filtroTxt = '', filtroMetal = '', filtroStock = false, filtroTalla = '';
 
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const cantDe = p => Object.values(p.tallas || {}).reduce((s, n) => s + (Number(n) || 0), 0);
@@ -122,13 +122,22 @@ const Inventario = (() => {
 
   async function renderFichas() {
     const lista = (await fichas()).filter(p => !p.oculto);
-    const vis = lista.filter(p => (!filtroMetal || p.metal === filtroMetal) && buscaEn(p, filtroTxt));
-    const piezas = vis.reduce((s, p) => s + cantDe(p), 0);
-    const costoT = vis.reduce((s, p) => s + cantDe(p) * costoRD(p), 0);
-    const ventaT = vis.reduce((s, p) => s + cantDe(p) * (Number(p.venta) || 0), 0);
+    /* filtros combinables: metal + texto + 📦 con existencia + talla.
+       Con talla elegida, TODOS los números cuentan solo esa talla. */
+    const base = lista.filter(p => (!filtroMetal || p.metal === filtroMetal) && buscaEn(p, filtroTxt));
+    const porTalla = {};
+    for (const p of base) for (const [t, n] of Object.entries(p.tallas || {})) {
+      if (Number(n) > 0) porTalla[t] = (porTalla[t] || 0) + Number(n);
+    }
+    if (filtroTalla && !porTalla[filtroTalla]) filtroTalla = '';   // la talla no existe en este metal/búsqueda
+    const cuenta = p => filtroTalla ? (Number((p.tallas || {})[filtroTalla]) || 0) : cantDe(p);
+    const vis = base.filter(p => (!filtroStock && !filtroTalla) || cuenta(p) > 0);
+    const piezas = vis.reduce((s, p) => s + cuenta(p), 0);
+    const costoT = vis.reduce((s, p) => s + cuenta(p) * costoRD(p), 0);
+    const ventaT = vis.reduce((s, p) => s + cuenta(p) * (Number(p.venta) || 0), 0);
     $('#invResumen').innerHTML =
       UI.statTile(vis.length, 'Productos' + (filtroMetal ? ' · ' + METALES[filtroMetal].t : '')) +
-      UI.statTile(piezas, 'Piezas') +
+      UI.statTile(piezas, 'Piezas' + (filtroTalla ? ' · talla ' + filtroTalla : '')) +
       UI.statTile(RD(costoT), 'Costo total') +
       UI.statTile(RD(ventaT), 'Valor de venta', 'verde');
 
@@ -136,6 +145,24 @@ const Inventario = (() => {
       Object.entries(METALES).map(([k, m]) => lista.some(p => p.metal === k)
         ? `<button class="chip-tab mini ${filtroMetal === k ? 'on' : ''}" data-m="${k}">${m.t}</button>` : '').join('');
     $$('#invMetales .chip-tab').forEach(b => b.addEventListener('click', () => { filtroMetal = b.dataset.m; render(); }));
+
+    /* chips de existencia + tallas con stock (ordenadas numéricamente) */
+    const tallasOrd = Object.keys(porTalla).sort((a, b) => {
+      const na = parseFloat(a), nb = parseFloat(b);
+      if (isNaN(na) && isNaN(nb)) return a.localeCompare(b, 'es');
+      if (isNaN(na)) return 1; if (isNaN(nb)) return -1;
+      return na - nb;
+    });
+    const zt = $('#invTallas');
+    if (zt) {
+      zt.innerHTML =
+        `<button class="chip-tab mini ${filtroStock ? 'on' : ''}" data-stk="1">📦 Con existencia</button>` +
+        (tallasOrd.length ? `<span class="muted" style="align-self:center;font-size:.76rem;margin:0 2px">talla:</span>
+          <button class="chip-tab mini ${!filtroTalla ? 'on' : ''}" data-ta="">Todas</button>` +
+          tallasOrd.map(t => `<button class="chip-tab mini ${filtroTalla === t ? 'on' : ''}" data-ta="${esc(t)}">${esc(t)} <small style="opacity:.65">· ${porTalla[t]}</small></button>`).join('') : '');
+      zt.querySelector('[data-stk]').addEventListener('click', () => { filtroStock = !filtroStock; render(); });
+      zt.querySelectorAll('[data-ta]').forEach(b => b.addEventListener('click', () => { filtroTalla = b.dataset.ta; render(); }));
+    }
 
     const cont = $('#invCont');
     if (!lista.length) {
@@ -146,17 +173,17 @@ const Inventario = (() => {
     cont.innerHTML = grupos.map(k => {
       const g = vis.filter(p => p.metal === k).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
       if (!g.length) return '';
-      const gp = g.reduce((s, p) => s + cantDe(p), 0);
-      const gv = g.reduce((s, p) => s + cantDe(p) * (Number(p.venta) || 0), 0);
+      const gp = g.reduce((s, p) => s + cuenta(p), 0);
+      const gv = g.reduce((s, p) => s + cuenta(p) * (Number(p.venta) || 0), 0);
       return `<h3 class="sub-h" style="display:flex;justify-content:space-between"><span>${METALES[k].t}</span>
-          <span class="muted" style="font-weight:400;font-size:.78rem">${gp} pzas · ${RD(gv)} en venta</span></h3>` +
+          <span class="muted" style="font-weight:400;font-size:.78rem">${gp} pzas${filtroTalla ? ' t.' + esc(filtroTalla) : ''} · ${RD(gv)} en venta</span></h3>` +
         g.map(p => {
-          const c = cantDe(p), prodN = (p.prod || []).length, ajN = (p.enAjuste || []).length;
+          const c = cuenta(p), prodN = (p.prod || []).length, ajN = (p.enAjuste || []).length;
           return `<div class="item inv-f" data-id="${p.id}">
             <div class="inv-cant ${c <= 0 ? 'agotado' : ''}">${c}</div>
             <div class="item-info">
               <div class="item-name">${esc(p.nombre)}</div>
-              <div class="item-sub">${p.cod ? esc(p.cod) + ' · ' : ''}venta ${RD(p.venta)} · valor ${RD(c * (Number(p.venta) || 0))}</div>
+              <div class="item-sub">${p.cod ? esc(p.cod) + ' · ' : ''}${filtroTalla ? 'talla ' + esc(filtroTalla) + ' · ' : ''}venta ${RD(p.venta)} · valor ${RD(c * (Number(p.venta) || 0))}</div>
             </div>
             ${prodN ? `<span class="badge-inv">🏭 ${prodN}</span>` : ''}
             ${ajN ? `<span class="badge-inv">🔨 ${ajN}</span>` : ''}
@@ -306,6 +333,7 @@ const Inventario = (() => {
       UI.statTile(stockT.filter(x => x.a.origen === 'tonglin').length, '🇨🇳 para stock') +
       UI.statTile(stockT.filter(x => x.a.origen === 'ruben').length, '🔨 para stock');
     $('#invMetales').innerHTML = '';
+    if ($('#invTallas')) $('#invTallas').innerHTML = '';
 
     const fila = x => `
       <div class="item" style="cursor:default;flex-wrap:wrap">
@@ -354,6 +382,7 @@ const Inventario = (() => {
       UI.statTile(enc.length - aTiempo, 'Tarde', enc.length - aTiempo ? 'rojo' : '') +
       UI.statTile(prom + ' d', 'Promedio de entrega');
     $('#invMetales').innerHTML = '';
+    if ($('#invTallas')) $('#invTallas').innerHTML = '';
     const pintar = txt => {
       const vis = enc.filter(e => !txt || norm([e.cliente, e.nombre, e.ref, e.codConf].join(' ')).includes(norm(txt)));
       $('#invCont').innerHTML = `<input type="search" class="search" id="invRegBuscar" placeholder="Buscar cliente, pieza, código o factura…" value="${esc(txt || '')}" style="margin-bottom:10px">` +
