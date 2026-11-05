@@ -1214,7 +1214,9 @@
     if (!productos.length) return;                  // sin catálogo aún: reintentar luego
     const fichas = (await DB.inventario.list()).filter(x => x.tallas);
     const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-    const ya = new Set(fichas.map(f => norm(f.nombre)));
+    /* el alias conserva el nombre original (p.ej. ficha renombrada a
+       "Duo Rocío del Alba") para que el seed no la re-cree duplicada */
+    const ya = new Set(fichas.flatMap(f => [norm(f.nombre), ...(f.alias ? [norm(f.alias)] : [])]));
     const metalDe = p => {
       const t = norm((p.nombre || '') + ' ' + (p.categoria || ''));
       if (t.includes('vermeil')) return 'vermeil';
@@ -1222,7 +1224,7 @@
       if (t.includes('14k')) return 'oro14k';
       if (t.includes('18k')) return 'oro18k';
       if (t.includes('plata')) return 'plata';
-      if (t.includes('oro')) return 'oro';
+      if (t.includes('oro')) return 'oro14k';   // 'oro sólido' se retiró: sin kilates explícitos = 14K (regla de José, 5 nov)
       return 'otro';
     };
     let n = 0;
@@ -1260,7 +1262,8 @@
       }
       if (!prods.length) return 0;
       const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-      const ya = new Set((await DB.inventario.list()).filter(x => x.tallas).map(f => norm(f.nombre)));
+      const ya = new Set((await DB.inventario.list()).filter(x => x.tallas)
+        .flatMap(f => [norm(f.nombre), ...(f.alias ? [norm(f.alias)] : [])]));   // alias = nombre original de fichas renombradas
       const metalDe = p => {
         const t = norm(p.title + ' ' + (p.tags || []).join(' ') + ' ' + (p.product_type || ''));
         if (t.includes('vermeil')) return 'vermeil';
@@ -1268,7 +1271,7 @@
         if (t.includes('10k')) return 'oro10k';
         if (t.includes('14k')) return 'oro14k';
         if (t.includes('18k')) return 'oro18k';
-        if ((p.options || []).some(o => /material/i.test(o.name))) return 'oro';
+        if ((p.options || []).some(o => /material/i.test(o.name))) return 'oro14k';   // 'oro sólido' retirado: sin kilates = 14K
         return 'otro';
       };
       let creadas = 0;

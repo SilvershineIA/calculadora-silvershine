@@ -21,7 +21,7 @@ const Inventario = (() => {
   const METALES = {
     plata:   { t: 'Plata 925' },
     vermeil: { t: 'Vermeil' },
-    oro:     { t: 'Oro sólido' },
+    oro:     { t: 'Oro sólido', legado: true },   // ya no se usa: todo pasó a 10K/14K (5 nov) — queda para renderizar docs rezagados
     oro10k:  { t: 'Oro 10K' },
     oro14k:  { t: 'Oro 14K' },
     oro18k:  { t: 'Oro 18K' },
@@ -500,7 +500,8 @@ const Inventario = (() => {
         <div class="row"><div><label>Nombre *</label>
           <input name="nombre" required value="${esc(p.nombre || '')}" autocomplete="off" placeholder="Esencia Radiante"></div></div>
         <div class="row">
-          <div><label>Metal</label><select name="metal">${Object.entries(METALES).map(([k, m]) =>
+          <div><label>Metal</label><select name="metal">${Object.entries(METALES)
+            .filter(([k, m]) => !m.legado || p.metal === k).map(([k, m]) =>
             `<option value="${k}" ${p.metal === k ? 'selected' : ''}>${m.t}</option>`).join('')}</select></div>
           <div><label>Código (opcional)</label><input name="cod" value="${esc(p.cod || '')}" placeholder="TGL-… o SS-…" autocomplete="off"></div>
         </div>
